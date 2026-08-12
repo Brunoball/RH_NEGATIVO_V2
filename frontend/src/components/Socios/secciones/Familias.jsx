@@ -286,7 +286,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
           <div className="familias-form-note">
             <FontAwesomeIcon icon={faCircleInfo} />
             <span>
-              Las empresas no pueden integrar familias. Cada persona puede tener
+              Cada socio puede tener
               un solo vínculo familiar activo.
             </span>
           </div>

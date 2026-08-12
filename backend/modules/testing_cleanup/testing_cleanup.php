@@ -35,7 +35,6 @@ final class TestingCleanup
             'categorias' => 0,
             'descuentos_familiares' => 0,
             'medios_pago' => 0,
-            'condiciones_iva' => 0,
             'usuarios' => 0,
             'login_auditoria' => 0,
             'auditoria' => 0,
@@ -49,11 +48,8 @@ final class TestingCleanup
                 "SELECT DISTINCT s.id_socio
                  FROM socios s
                  LEFT JOIN socios_personas p ON p.id_socio = s.id_socio
-                 LEFT JOIN socios_empresas e ON e.id_socio = s.id_socio
                  WHERE p.apellido LIKE 'PW EE APELLIDO %'
-                    OR p.email LIKE 'pw.socio.%@example.test'
-                    OR e.razon_social LIKE 'PW E2E EMPRESA %'
-                    OR e.email LIKE 'pw.empresa.%@example.test'"
+                    OR p.email LIKE 'pw.socio.%@example.test'"
             );
             $testFamilies = self::ids($db,
                 "SELECT id_familia FROM familias
@@ -72,10 +68,6 @@ final class TestingCleanup
             );
             $testMeans = self::ids($db,
                 "SELECT id_medio_pago FROM medios_pago
-                 WHERE nombre LIKE 'PW E2E %' OR nombre LIKE 'PW EE %'"
-            );
-            $testIva = self::ids($db,
-                "SELECT id_condicion_iva FROM condiciones_iva
                  WHERE nombre LIKE 'PW E2E %' OR nombre LIKE 'PW EE %'"
             );
             $testOptions = self::ids($db,
@@ -158,16 +150,6 @@ final class TestingCleanup
                 $counts['medios_pago'] += self::deleteByIds($db, 'medios_pago', 'id_medio_pago', $safeMeans);
             }
 
-            if ($testIva !== []) {
-                $safeIva = [];
-                foreach ($testIva as $id) {
-                    $uses = self::scalar($db, 'SELECT COUNT(*) FROM socios_empresas WHERE id_condicion_iva = ?', [$id]);
-                    if ($uses === 0) $safeIva[] = $id;
-                    else $skipped['condiciones_iva_en_uso'][] = $id;
-                }
-                $counts['condiciones_iva'] += self::deleteByIds($db, 'condiciones_iva', 'id_condicion_iva', $safeIva);
-            }
-
             if ($testUsers !== []) {
                 self::deleteByIds($db, 'sis_sesiones', 'idUsuario', $testUsers);
                 $counts['login_auditoria'] += self::deleteByIds($db, 'sis_login_auditoria', 'idUsuario', $testUsers);
@@ -187,7 +169,6 @@ final class TestingCleanup
                 'contable_egresos' => $testExpenseIds,
                 'contable_opciones' => $testOptions,
                 'medios_pago' => $testMeans,
-                'condiciones_iva' => $testIva,
                 'sis_usuarios' => $testUsers,
             ];
             foreach ($auditReferences as $table => $ids) {

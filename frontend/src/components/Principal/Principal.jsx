@@ -33,7 +33,6 @@ const NAV_ITEMS = [
     icon: faUsers,
     children: [
       { key: "socios-personas", label: "Socios", path: "/socios/personas" },
-      { key: "socios-empresas", label: "Empresas", path: "/socios/empresas" },
       { key: "socios-familias", label: "Familias", path: "/socios/familias" },
     ],
   },

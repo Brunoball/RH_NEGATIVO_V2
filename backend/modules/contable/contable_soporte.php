@@ -336,9 +336,9 @@ trait ContableSoporte
 
     protected static function uploadFolder(): string
     {
-        $folder = preg_replace('/[^A-Za-z0-9_-]+/', '-', (string)env_value('APP_UPLOAD_FOLDER', 'lalcec')) ?? 'lalcec';
+        $folder = preg_replace('/[^A-Za-z0-9_-]+/', '-', (string)env_value('APP_UPLOAD_FOLDER', 'rh_negativo')) ?? 'rh_negativo';
         $folder = trim($folder, '-_');
-        return $folder !== '' ? $folder : 'lalcec';
+        return $folder !== '' ? $folder : 'rh_negativo';
     }
 
     protected static function validUploadPath(string $relativePath): bool

@@ -7,15 +7,7 @@ trait SociosConsultas
     {
         $where = [];
         $params = [];
-
-        $type = strtoupper(trim((string)($filters['tipo'] ?? '')));
-        if (!in_array($type, ['', 'PERSONA', 'EMPRESA'], true)) {
-            api_error('El tipo de socio solicitado no es válido.', 'FILTRO_INVALIDO');
-        }
-        if ($type !== '') {
-            $where[] = 's.tipo_socio = :tipo';
-            $params['tipo'] = $type;
-        }
+        $where[] = "s.tipo_socio = 'PERSONA'";
 
         $status = strtoupper(trim((string)($filters['estado'] ?? 'ACTIVO')));
         if (!in_array($status, ['', 'ACTIVO', 'INACTIVO'], true)) {
@@ -31,7 +23,6 @@ trait SociosConsultas
             ["CONCAT_WS(' ',
                 p.apellido, p.nombre, p.dni, p.domicilio, p.numero_domicilio,
                 p.localidad, p.telefono, p.email,
-                e.razon_social, e.cuit, e.domicilio, e.telefono, e.email,
                 c.nombre, mp.nombre, f.nombre
             ) LIKE {param}"],
             150,
@@ -56,7 +47,7 @@ trait SociosConsultas
 
         $familyFilter = trim((string)($filters['familia'] ?? ''));
         if ($familyFilter === 'sin_familia') {
-            $where[] = 's.tipo_socio = \'PERSONA\' AND f.id_familia IS NULL';
+            $where[] = 'f.id_familia IS NULL';
         } elseif ($familyFilter !== '') {
             $familyId = filter_var($familyFilter, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
             if ($familyId === false) api_error('La familia solicitada no es válida.', 'FILTRO_INVALIDO');
@@ -102,7 +93,7 @@ trait SociosConsultas
         $statement = $db->prepare(
             self::baseQuery($sqlWhere)
             . " ORDER BY (s.estado = 'ACTIVO') DESC,
-                       COALESCE(p.apellido, e.razon_social) ASC,
+                       p.apellido ASC,
                        p.nombre ASC,
                        s.id_socio ASC
                 LIMIT {$perPage} OFFSET {$offset}"
@@ -122,7 +113,7 @@ trait SociosConsultas
                 'tiene_anterior' => $page > 1,
                 'tiene_siguiente' => $page < $totalPages,
             ],
-            'resumen' => self::resumen($db, $type),
+            'resumen' => self::resumen($db),
             'catalogos' => self::catalogos($db),
         ];
     }
@@ -176,27 +167,24 @@ trait SociosConsultas
         }
         unset($row);
 
-        $familyRows = [];
-        if ($item['tipo_socio'] === 'PERSONA') {
-            $families = $db->prepare(
-                'SELECT fs.id_familia_socio, fs.id_familia, f.nombre AS familia,
-                        fs.parentesco, fs.es_titular, fs.observaciones,
-                        fs.fecha_incorporacion, fs.fecha_desvinculacion, fs.motivo_desvinculacion
-                 FROM familias_socios fs
-                 INNER JOIN familias f ON f.id_familia = fs.id_familia
-                 WHERE fs.id_socio = ?
-                 ORDER BY fs.fecha_incorporacion DESC, fs.id_familia_socio DESC'
-            );
-            $families->execute([$id]);
-            $familyRows = $families->fetchAll();
-            foreach ($familyRows as &$row) {
-                $row['id_familia_socio'] = (int)$row['id_familia_socio'];
-                $row['id_familia'] = (int)$row['id_familia'];
-                $row['es_titular'] = (bool)$row['es_titular'];
-                $row['activo'] = $row['fecha_desvinculacion'] === null;
-            }
-            unset($row);
+        $families = $db->prepare(
+            'SELECT fs.id_familia_socio, fs.id_familia, f.nombre AS familia,
+                    fs.parentesco, fs.es_titular, fs.observaciones,
+                    fs.fecha_incorporacion, fs.fecha_desvinculacion, fs.motivo_desvinculacion
+             FROM familias_socios fs
+             INNER JOIN familias f ON f.id_familia = fs.id_familia
+             WHERE fs.id_socio = ?
+             ORDER BY fs.fecha_incorporacion DESC, fs.id_familia_socio DESC'
+        );
+        $families->execute([$id]);
+        $familyRows = $families->fetchAll();
+        foreach ($familyRows as &$row) {
+            $row['id_familia_socio'] = (int)$row['id_familia_socio'];
+            $row['id_familia'] = (int)$row['id_familia'];
+            $row['es_titular'] = (bool)$row['es_titular'];
+            $row['activo'] = $row['fecha_desvinculacion'] === null;
         }
+        unset($row);
 
         return [
             'item' => $item,
@@ -255,16 +243,6 @@ trait SociosConsultas
         }
         unset($row);
 
-        $taxConditions = $db->query(
-            'SELECT id_condicion_iva, nombre, activo
-             FROM condiciones_iva
-             ORDER BY activo DESC, nombre ASC'
-        )->fetchAll();
-        foreach ($taxConditions as &$row) {
-            $row['id_condicion_iva'] = (int)$row['id_condicion_iva'];
-            $row['activo'] = (bool)$row['activo'];
-        }
-        unset($row);
 
         $families = $db->query(
             'SELECT id_familia, nombre, activo
@@ -280,36 +258,28 @@ trait SociosConsultas
         return [
             'categorias' => $categories,
             'medios_pago' => $methods,
-            'condiciones_iva' => $taxConditions,
             'familias' => $families,
         ];
     }
 
-    private static function resumen(PDO $db, string $type): array
+    private static function resumen(PDO $db): array
     {
-        $params = [];
-        $typeWhere = '';
-        if ($type !== '') {
-            $typeWhere = 'WHERE s.tipo_socio = :tipo';
-            $params['tipo'] = $type;
-        }
-
         $statement = $db->prepare(
             "SELECT COUNT(*) AS total,
                     COALESCE(SUM(s.estado = 'ACTIVO'), 0) AS activos,
                     COALESCE(SUM(s.estado = 'INACTIVO'), 0) AS inactivos,
                     COALESCE(SUM(s.estado = 'ACTIVO' AND s.fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS altas_recientes,
                     COALESCE(SUM(s.estado = 'ACTIVO' AND s.id_categoria IS NULL), 0) AS sin_categoria,
-                    COALESCE(SUM(s.tipo_socio = 'PERSONA' AND s.estado = 'ACTIVO' AND NOT EXISTS (
+                    COALESCE(SUM(s.estado = 'ACTIVO' AND NOT EXISTS (
                         SELECT 1
                         FROM familias_socios fs
                         INNER JOIN familias f ON f.id_familia = fs.id_familia AND f.activo = 1
                         WHERE fs.id_socio = s.id_socio AND fs.fecha_desvinculacion IS NULL
                     )), 0) AS sin_familia
              FROM socios s
-             {$typeWhere}"
+             WHERE s.tipo_socio = 'PERSONA'"
         );
-        $statement->execute($params);
+        $statement->execute();
         $row = $statement->fetch() ?: [];
 
         return [
@@ -333,10 +303,6 @@ trait SociosConsultas
                     p.apellido, p.nombre, p.dni, p.domicilio AS persona_domicilio,
                     p.numero_domicilio, p.localidad, p.telefono AS persona_telefono,
                     p.email AS persona_email, p.domicilio_alternativo AS persona_domicilio_alternativo,
-                    e.razon_social, e.cuit,
-                    e.domicilio AS empresa_domicilio, e.telefono AS empresa_telefono,
-                    e.email AS empresa_email, e.domicilio_alternativo AS empresa_domicilio_alternativo,
-                    e.id_condicion_iva, ci.nombre AS condicion_iva,
                     f.id_familia, f.nombre AS familia,
                     fs.parentesco, fs.es_titular "
                 . self::baseFrom($extraWhere);
@@ -346,10 +312,8 @@ trait SociosConsultas
     {
         return "FROM socios s
                 LEFT JOIN socios_personas p ON p.id_socio = s.id_socio
-                LEFT JOIN socios_empresas e ON e.id_socio = s.id_socio
                 LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
                 LEFT JOIN medios_pago mp ON mp.id_medio_pago = s.id_medio_pago
-                LEFT JOIN condiciones_iva ci ON ci.id_condicion_iva = e.id_condicion_iva
                 LEFT JOIN familias_socios fs
                     ON fs.id_socio = s.id_socio AND fs.fecha_desvinculacion IS NULL
                 LEFT JOIN familias f
@@ -359,7 +323,7 @@ trait SociosConsultas
 
     private static function detalle(PDO $db, int $id): ?array
     {
-        $statement = $db->prepare(self::baseQuery('WHERE s.id_socio = :id') . ' LIMIT 1');
+        $statement = $db->prepare(self::baseQuery("WHERE s.id_socio = :id AND s.tipo_socio = 'PERSONA'") . ' LIMIT 1');
         $statement->execute(['id' => $id]);
         $row = $statement->fetch();
         return $row ? self::castSocio($row) : null;
@@ -368,7 +332,7 @@ trait SociosConsultas
     private static function castSocio(array $row): array
     {
         $row['id_socio'] = (int)$row['id_socio'];
-        foreach (['id_categoria', 'id_medio_pago', 'id_condicion_iva', 'id_familia'] as $field) {
+        foreach (['id_categoria', 'id_medio_pago', 'id_familia'] as $field) {
             $row[$field] = $row[$field] === null ? null : (int)$row[$field];
         }
         $row['enviar_recordatorio'] = (bool)$row['enviar_recordatorio'];
@@ -376,29 +340,17 @@ trait SociosConsultas
         $row['activo'] = $row['estado'] === 'ACTIVO';
         $row['monto_cuota'] = $row['monto_cuota'] === null ? null : (float)$row['monto_cuota'];
 
-        if ($row['tipo_socio'] === 'PERSONA') {
-            $row['domicilio'] = $row['persona_domicilio'];
-            $row['telefono'] = $row['persona_telefono'];
-            $row['email'] = $row['persona_email'];
-            $row['domicilio_alternativo'] = $row['persona_domicilio_alternativo'];
-            $row['denominacion'] = trim((string)$row['apellido'] . ', ' . (string)$row['nombre'], ', ');
-        } else {
-            $row['domicilio'] = $row['empresa_domicilio'];
-            $row['telefono'] = $row['empresa_telefono'];
-            $row['email'] = $row['empresa_email'];
-            $row['domicilio_alternativo'] = $row['empresa_domicilio_alternativo'];
-            $row['denominacion'] = (string)$row['razon_social'];
-        }
+        $row['domicilio'] = $row['persona_domicilio'];
+        $row['telefono'] = $row['persona_telefono'];
+        $row['email'] = $row['persona_email'];
+        $row['domicilio_alternativo'] = $row['persona_domicilio_alternativo'];
+        $row['denominacion'] = trim((string)$row['apellido'] . ', ' . (string)$row['nombre'], ', ');
 
         unset(
             $row['persona_domicilio'],
             $row['persona_telefono'],
             $row['persona_email'],
-            $row['persona_domicilio_alternativo'],
-            $row['empresa_domicilio'],
-            $row['empresa_telefono'],
-            $row['empresa_email'],
-            $row['empresa_domicilio_alternativo']
+            $row['persona_domicilio_alternativo']
         );
 
         return $row;

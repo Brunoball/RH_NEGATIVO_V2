@@ -146,7 +146,6 @@ const receiptDisplayData = (source) => {
   const amounts = uniqueValues(
     receipt.lineas.map((line) => Number(line.monto || line.montoBase || 0)),
   ).map(Number);
-  const isCompany = receipt.tipoEntidad === "EMPRESA";
   const hasSeveralPeople = uniqueValues(
     receipt.lineas.map((line) => line.socio),
   ).length > 1;
@@ -158,16 +157,8 @@ const receiptDisplayData = (source) => {
 
   return {
     receipt,
-    entityLabel: isCompany
-      ? "Empresa"
-      : hasSeveralPeople
-        ? "Socios"
-        : "Afiliado",
-    copyEntityLabel: isCompany
-      ? "Empresa"
-      : hasSeveralPeople
-        ? "Socios"
-        : "Nombre y Apellido",
+    entityLabel: hasSeveralPeople ? "Socios" : "Afiliado",
+    copyEntityLabel: hasSeveralPeople ? "Socios" : "Nombre y Apellido",
     people: compact(receipt.socios, 116),
     address: compact(receipt.domicilio || "Domicilio no registrado", 94),
     category: compact(categories.join(" · ") || "—", 68),

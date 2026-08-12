@@ -17,19 +17,15 @@ final class Dashboard
         $currentYear = (int)$today->format('Y');
         $currentMonth = (int)$today->format('n');
 
-        $activePartners = self::count($db, "SELECT COUNT(*) FROM socios WHERE estado = 'ACTIVO'");
-        $inactivePartners = self::count($db, "SELECT COUNT(*) FROM socios WHERE estado = 'INACTIVO'");
+        $activePartners = self::count($db, "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO'");
+        $inactivePartners = self::count($db, "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'INACTIVO'");
         $activePeople = self::count(
             $db,
             "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO'"
         );
-        $activeCompanies = self::count(
-            $db,
-            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'EMPRESA' AND estado = 'ACTIVO'"
-        );
         $newPartners = self::count(
             $db,
-            'SELECT COUNT(*) FROM socios WHERE fecha_alta >= ? AND fecha_alta < ?',
+            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND fecha_alta >= ? AND fecha_alta < ?",
             [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
         );
         $activeFamilies = self::count($db, 'SELECT COUNT(*) FROM familias WHERE activo = 1');
@@ -51,11 +47,11 @@ final class Dashboard
         );
         $withCategory = self::count(
             $db,
-            "SELECT COUNT(*) FROM socios WHERE estado = 'ACTIVO' AND id_categoria IS NOT NULL"
+            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO' AND id_categoria IS NOT NULL"
         );
         $withReminder = self::count(
             $db,
-            "SELECT COUNT(*) FROM socios WHERE estado = 'ACTIVO' AND enviar_recordatorio = 1"
+            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO' AND enviar_recordatorio = 1"
         );
         $activeCategories = self::count($db, 'SELECT COUNT(*) FROM categorias WHERE activo = 1');
 
@@ -63,7 +59,8 @@ final class Dashboard
             $db,
             "SELECT COUNT(*)
              FROM socios
-             WHERE estado = 'ACTIVO'
+             WHERE tipo_socio = 'PERSONA'
+               AND estado = 'ACTIVO'
                AND id_categoria IS NOT NULL
                AND (fecha_alta IS NULL OR fecha_alta < ?)",
             [$monthEnd->format('Y-m-d')]
@@ -75,6 +72,7 @@ final class Dashboard
              INNER JOIN socios s ON s.id_socio = p.id_socio
              WHERE p.anio = ?
                AND p.mes = ?
+               AND s.tipo_socio = 'PERSONA'
                AND s.estado = 'ACTIVO'
                AND s.id_categoria IS NOT NULL",
             [$currentYear, $currentMonth]
@@ -87,6 +85,7 @@ final class Dashboard
              WHERE p.anio = ?
                AND p.mes = ?
                AND p.estado = 'PAGADO'
+               AND s.tipo_socio = 'PERSONA'
                AND s.estado = 'ACTIVO'
                AND s.id_categoria IS NOT NULL",
             [$currentYear, $currentMonth]
@@ -96,17 +95,17 @@ final class Dashboard
 
         $paymentOperations = self::count(
             $db,
-            "SELECT COUNT(*) FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ?",
+            "SELECT COUNT(*) FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio WHERE s.tipo_socio = 'PERSONA' AND p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?",
             [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
         );
         $paymentsWithoutAmount = self::count(
             $db,
-            "SELECT COUNT(*) FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ? AND monto IS NULL",
+            "SELECT COUNT(*) FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio WHERE s.tipo_socio = 'PERSONA' AND p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ? AND monto IS NULL",
             [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
         );
         $partnerIncome = self::sum(
             $db,
-            "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ?",
+            "SELECT COALESCE(SUM(p.monto), 0) FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio WHERE s.tipo_socio = 'PERSONA' AND p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?",
             [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
         );
 
@@ -145,7 +144,6 @@ final class Dashboard
                 'activos' => $activePartners,
                 'inactivos' => $inactivePartners,
                 'personas_activas' => $activePeople,
-                'empresas_activas' => $activeCompanies,
                 'altas_mes' => $newPartners,
                 'con_familia' => $peopleWithFamily,
                 'sin_familia' => max(0, $activePeople - $peopleWithFamily),
@@ -207,9 +205,11 @@ final class Dashboard
             "SELECT
                 SUM(CASE WHEN tipo_evento = 'BAJA' THEN 1 ELSE 0 END) AS bajas,
                 SUM(CASE WHEN tipo_evento = 'REACTIVACION' THEN 1 ELSE 0 END) AS reactivaciones
-             FROM socios_historial_estados
-             WHERE COALESCE(fecha_efectiva, DATE(creado_en)) >= ?
-               AND COALESCE(fecha_efectiva, DATE(creado_en)) < ?"
+             FROM socios_historial_estados she
+             INNER JOIN socios s ON s.id_socio = she.id_socio
+             WHERE s.tipo_socio = 'PERSONA'
+               AND COALESCE(she.fecha_efectiva, DATE(she.creado_en)) >= ?
+               AND COALESCE(she.fecha_efectiva, DATE(she.creado_en)) < ?"
         );
         $statement->execute([$start->format('Y-m-d'), $end->format('Y-m-d')]);
         $row = $statement->fetch() ?: [];
@@ -227,11 +227,13 @@ final class Dashboard
         $endKey = ((int)$lastMonth->format('Y') * 100) + (int)$lastMonth->format('n');
 
         $statement = $db->prepare(
-            "SELECT anio, mes, COUNT(*) AS pagadas, COALESCE(SUM(monto), 0) AS importe
-             FROM pagos
-             WHERE estado = 'PAGADO'
-               AND (anio * 100 + mes) BETWEEN ? AND ?
-             GROUP BY anio, mes"
+            "SELECT p.anio, p.mes, COUNT(*) AS pagadas, COALESCE(SUM(p.monto), 0) AS importe
+             FROM pagos p
+             INNER JOIN socios s ON s.id_socio = p.id_socio
+             WHERE s.tipo_socio = 'PERSONA'
+               AND p.estado = 'PAGADO'
+               AND (p.anio * 100 + p.mes) BETWEEN ? AND ?
+             GROUP BY p.anio, p.mes"
         );
         $statement->execute([$startKey, $endKey]);
 
@@ -270,7 +272,8 @@ final class Dashboard
                 COUNT(*) AS cantidad
              FROM socios s
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
-             WHERE s.estado = 'ACTIVO'
+             WHERE s.tipo_socio = 'PERSONA'
+               AND s.estado = 'ACTIVO'
              GROUP BY s.id_categoria, c.nombre
              ORDER BY cantidad DESC, categoria ASC
              LIMIT 8"
@@ -295,19 +298,14 @@ final class Dashboard
                 p.mes,
                 p.fecha_pago,
                 p.monto,
-                s.tipo_socio,
                 COALESCE(mp.nombre, 'SIN MEDIO') AS medio_pago,
-                CASE
-                    WHEN s.tipo_socio = 'PERSONA'
-                        THEN TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, '')))
-                    ELSE COALESCE(se.razon_social, 'EMPRESA SIN RAZÓN SOCIAL')
-                END AS socio
+                TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))) AS socio
              FROM pagos p
              INNER JOIN socios s ON s.id_socio = p.id_socio
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
-             WHERE p.estado = 'PAGADO'
+             WHERE s.tipo_socio = 'PERSONA'
+               AND p.estado = 'PAGADO'
              ORDER BY p.fecha_pago DESC, p.creado_en DESC, p.id_pago DESC
              LIMIT 8"
         );
@@ -317,7 +315,6 @@ final class Dashboard
                 'id_pago' => (int)$row['id_pago'],
                 'id_socio' => (int)$row['id_socio'],
                 'socio' => (string)$row['socio'],
-                'tipo_socio' => (string)$row['tipo_socio'],
                 'periodo' => sprintf('%02d/%04d', (int)$row['mes'], (int)$row['anio']),
                 'mes_nombre' => self::monthName((int)$row['mes']),
                 'fecha_pago' => (string)$row['fecha_pago'],

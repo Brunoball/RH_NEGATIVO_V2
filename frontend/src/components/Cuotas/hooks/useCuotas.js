@@ -5,7 +5,6 @@ const emptyCatalogs = {
   categorias: [],
   medios_pago: [],
   socios: [],
-  empresas: [],
   anios: [],
   meses: [],
 };

@@ -6,7 +6,6 @@ import {
   faArrowRotateLeft,
   faCalculator,
   faChevronRight,
-  faFileInvoiceDollar,
   faGear,
   faMoneyBillTransfer,
   faPen,
@@ -47,21 +46,6 @@ const CATALOG_META = {
     empty: "Todavía no hay medios de pago configurados.",
     maxLength: 100,
     deletedFieldLabel: "medio de pago",
-  },
-  condiciones_iva: {
-    label: "condición frente al IVA",
-    title: "Condiciones frente al IVA",
-    description:
-      "Condiciones fiscales disponibles al registrar o editar una empresa.",
-    detail: "Se aplican únicamente a socios de tipo empresa.",
-    icon: faFileInvoiceDollar,
-    idField: "id_condicion_iva",
-    activeSingular: "activa",
-    activePlural: "activas",
-    inactivePlural: "inactivas",
-    empty: "Todavía no hay condiciones frente al IVA configuradas.",
-    maxLength: 100,
-    deletedFieldLabel: "condición frente al IVA",
   },
 };
 
@@ -124,11 +108,11 @@ function ConfigurationHome() {
       id: "catalogos",
       title: "Catálogos generales",
       description:
-        "Administrá en una sola caja los medios de pago y las condiciones frente al IVA.",
+        "Administrá los medios de pago disponibles para socios y movimientos.",
       icon: faSliders,
-      status: "2 pestañas",
+      status: "Catálogo",
       area: "Sistema",
-      detail: "Medios de pago y condición IVA",
+      detail: "Medios de pago",
       path: "/configuracion/catalogos",
     },
     {
@@ -586,7 +570,7 @@ function CatalogsPanel() {
         subtitle={
           form.lista === "medios_pago"
             ? "La opción estará disponible en socios y pagos nuevos."
-            : "La opción estará disponible en el formulario de empresas."
+            : "La opción estará disponible para nuevos registros."
         }
         onClose={() => setFormOpen(false)}
         onSubmit={saveItem}

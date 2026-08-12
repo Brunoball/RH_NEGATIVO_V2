@@ -14,16 +14,10 @@ trait SociosGestion
             ? positive_id($body['id_socio'], 'socio')
             : null;
 
-        $type = strtoupper(trim((string)($body['tipo_socio'] ?? '')));
-        if (!in_array($type, ['PERSONA', 'EMPRESA'], true)) {
-            api_error('Seleccioná un tipo de socio válido.', 'VALIDATION_ERROR');
-        }
+        $type = 'PERSONA';
 
         $current = $id === null ? null : self::detalle($db, $id);
         if ($id !== null && !$current) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
-        if ($current && $current['tipo_socio'] !== $type) {
-            api_error('El tipo de socio no puede modificarse después del alta.', 'TIPO_SOCIO_INMUTABLE', 409);
-        }
 
         $date = valid_date($body['fecha_alta'] ?? ($current['fecha_alta'] ?? date('Y-m-d')), 'alta');
         $observations = optional_text($body['observaciones'] ?? null, 5000);
@@ -45,9 +39,7 @@ trait SociosGestion
         );
         $reminder = self::booleanValue($body['enviar_recordatorio'] ?? false) ? 1 : 0;
 
-        $specific = $type === 'PERSONA'
-            ? self::validatePerson($body, $reminder === 1)
-            : self::validateCompany($db, $body, $current, $reminder === 1);
+        $specific = self::validatePerson($body, $reminder === 1);
 
         try {
             $saved = transaction($db, static function () use (
@@ -73,39 +65,22 @@ trait SociosGestion
                     $insert->execute([$type, $observations, $date, $categoryId, $paymentMethodId, $reminder]);
                     $partnerId = (int)$db->lastInsertId();
 
-                    if ($type === 'PERSONA') {
-                        $db->prepare(
-                            'INSERT INTO socios_personas
-                             (id_socio, apellido, nombre, dni, domicilio, numero_domicilio, localidad, telefono, email, domicilio_alternativo)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                        )->execute([
-                            $partnerId,
-                            $specific['apellido'],
-                            $specific['nombre'],
-                            $specific['dni'],
-                            $specific['domicilio'],
-                            $specific['numero_domicilio'],
-                            $specific['localidad'],
-                            $specific['telefono'],
-                            $specific['email'],
-                            $specific['domicilio_alternativo'],
-                        ]);
-                    } else {
-                        $db->prepare(
-                            'INSERT INTO socios_empresas
-                             (id_socio, razon_social, cuit, domicilio, telefono, email, domicilio_alternativo, id_condicion_iva)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-                        )->execute([
-                            $partnerId,
-                            $specific['razon_social'],
-                            $specific['cuit'],
-                            $specific['domicilio'],
-                            $specific['telefono'],
-                            $specific['email'],
-                            $specific['domicilio_alternativo'],
-                            $specific['id_condicion_iva'],
-                        ]);
-                    }
+                    $db->prepare(
+                        'INSERT INTO socios_personas
+                         (id_socio, apellido, nombre, dni, domicilio, numero_domicilio, localidad, telefono, email, domicilio_alternativo)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    )->execute([
+                        $partnerId,
+                        $specific['apellido'],
+                        $specific['nombre'],
+                        $specific['dni'],
+                        $specific['domicilio'],
+                        $specific['numero_domicilio'],
+                        $specific['localidad'],
+                        $specific['telefono'],
+                        $specific['email'],
+                        $specific['domicilio_alternativo'],
+                    ]);
 
                     self::ensureStateHistory(
                         $db,
@@ -124,13 +99,11 @@ trait SociosGestion
                     audit_change(
                         $db,
                         $auth,
-                        $type === 'PERSONA' ? 'SOCIOS' : 'EMPRESAS',
+                        'SOCIOS',
                         'CREAR',
                         'socios',
                         $partnerId,
-                        $type === 'PERSONA'
-                            ? "Se creó el socio {$specific['apellido']}, {$specific['nombre']}."
-                            : "Se creó la empresa {$specific['razon_social']}.",
+                        "Se creó el socio {$specific['apellido']}, {$specific['nombre']}.",
                         null,
                         $after
                     );
@@ -141,9 +114,6 @@ trait SociosGestion
                 $lock->execute([$id]);
                 $locked = $lock->fetch();
                 if (!$locked) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
-                if ((string)$locked['tipo_socio'] !== $type) {
-                    api_error('El tipo de socio no puede modificarse después del alta.', 'TIPO_SOCIO_INMUTABLE', 409);
-                }
                 $before = self::detalle($db, $id) ?? $locked;
 
                 $db->prepare(
@@ -152,49 +122,28 @@ trait SociosGestion
                      WHERE id_socio = ?'
                 )->execute([$observations, $date, $categoryId, $paymentMethodId, $reminder, $id]);
 
-                if ($type === 'PERSONA') {
-                    $detailUpdate = $db->prepare(
-                        'UPDATE socios_personas
-                         SET apellido = ?, nombre = ?, dni = ?, domicilio = ?, numero_domicilio = ?, localidad = ?,
-                             telefono = ?, email = ?, domicilio_alternativo = ?
-                         WHERE id_socio = ?'
-                    );
-                    $detailUpdate->execute([
-                        $specific['apellido'],
-                        $specific['nombre'],
-                        $specific['dni'],
-                        $specific['domicilio'],
-                        $specific['numero_domicilio'],
-                        $specific['localidad'],
-                        $specific['telefono'],
-                        $specific['email'],
-                        $specific['domicilio_alternativo'],
-                        $id,
-                    ]);
-                } else {
-                    $detailUpdate = $db->prepare(
-                        'UPDATE socios_empresas
-                         SET razon_social = ?, cuit = ?, domicilio = ?, telefono = ?, email = ?,
-                             domicilio_alternativo = ?, id_condicion_iva = ?
-                         WHERE id_socio = ?'
-                    );
-                    $detailUpdate->execute([
-                        $specific['razon_social'],
-                        $specific['cuit'],
-                        $specific['domicilio'],
-                        $specific['telefono'],
-                        $specific['email'],
-                        $specific['domicilio_alternativo'],
-                        $specific['id_condicion_iva'],
-                        $id,
-                    ]);
-                }
+                $detailUpdate = $db->prepare(
+                    'UPDATE socios_personas
+                     SET apellido = ?, nombre = ?, dni = ?, domicilio = ?, numero_domicilio = ?, localidad = ?,
+                         telefono = ?, email = ?, domicilio_alternativo = ?
+                     WHERE id_socio = ?'
+                );
+                $detailUpdate->execute([
+                    $specific['apellido'],
+                    $specific['nombre'],
+                    $specific['dni'],
+                    $specific['domicilio'],
+                    $specific['numero_domicilio'],
+                    $specific['localidad'],
+                    $specific['telefono'],
+                    $specific['email'],
+                    $specific['domicilio_alternativo'],
+                    $id,
+                ]);
 
                 if ($detailUpdate->rowCount() === 0) {
                     $exists = $db->prepare(
-                        $type === 'PERSONA'
-                            ? 'SELECT 1 FROM socios_personas WHERE id_socio = ?'
-                            : 'SELECT 1 FROM socios_empresas WHERE id_socio = ?'
+                        'SELECT 1 FROM socios_personas WHERE id_socio = ?'
                     );
                     $exists->execute([$id]);
                     if (!$exists->fetchColumn()) {
@@ -210,13 +159,11 @@ trait SociosGestion
                 audit_change(
                     $db,
                     $auth,
-                    $type === 'PERSONA' ? 'SOCIOS' : 'EMPRESAS',
+                    'SOCIOS',
                     'EDITAR',
                     'socios',
                     $id,
-                    $type === 'PERSONA'
-                        ? "Se modificó el socio {$specific['apellido']}, {$specific['nombre']}."
-                        : "Se modificó la empresa {$specific['razon_social']}.",
+                    "Se modificó el socio {$specific['apellido']}, {$specific['nombre']}.",
                     $before,
                     $after
                 );
@@ -224,7 +171,7 @@ trait SociosGestion
             });
         } catch (Throwable $error) {
             self::clearHistoryVariablesSilently($db);
-            if (duplicate_key($error)) self::throwDuplicateSocioError($error, $type);
+            if (duplicate_key($error)) self::throwDuplicateSocioError($error);
             throw $error;
         }
 
@@ -261,7 +208,7 @@ trait SociosGestion
 
                 $before = self::detalle($db, $id) ?? $locked;
                 $impact = self::impactoEliminacion($db, $id);
-                $module = ($before['tipo_socio'] ?? 'PERSONA') === 'EMPRESA' ? 'EMPRESAS' : 'SOCIOS';
+                $module = 'SOCIOS';
                 $name = trim((string)($before['denominacion'] ?? '')) ?: "ID {$id}";
 
                 // Las FK del modelo son RESTRICT para evitar borrados accidentales.
@@ -371,7 +318,7 @@ trait SociosGestion
                 self::clearHistoryVariables($db);
 
                 $after = self::detalle($db, $id);
-                $module = ($after['tipo_socio'] ?? $before['tipo_socio'] ?? 'PERSONA') === 'EMPRESA' ? 'EMPRESAS' : 'SOCIOS';
+                $module = 'SOCIOS';
                 audit_change(
                     $db,
                     $auth,
@@ -410,33 +357,6 @@ trait SociosGestion
             'telefono' => self::normalizePhone($body['telefono'] ?? null, $reminderEnabled),
             'email' => self::optionalEmail($body['email'] ?? null),
             'domicilio_alternativo' => optional_text($body['domicilio_alternativo'] ?? null, 255),
-        ];
-    }
-
-    private static function validateCompany(PDO $db, array $body, ?array $current, bool $reminderEnabled): array
-    {
-        $cuit = preg_replace('/\D+/', '', (string)($body['cuit'] ?? '')) ?? '';
-        if ($cuit !== '' && !preg_match('/^[0-9]{11}$/', $cuit)) {
-            api_error('El CUIT debe tener 11 dígitos.', 'VALIDATION_ERROR', 422, ['campo' => 'cuit']);
-        }
-
-        $taxConditionId = self::optionalForeignId(
-            $db,
-            $body['id_condicion_iva'] ?? null,
-            'condiciones_iva',
-            'id_condicion_iva',
-            'condición de IVA',
-            $current['id_condicion_iva'] ?? null
-        );
-
-        return [
-            'razon_social' => required_text($body, 'razon_social', 'razón social', 255),
-            'cuit' => $cuit === '' ? null : $cuit,
-            'domicilio' => optional_text($body['domicilio'] ?? null, 255),
-            'telefono' => self::normalizePhone($body['telefono'] ?? null, $reminderEnabled),
-            'email' => self::optionalEmail($body['email'] ?? null),
-            'domicilio_alternativo' => optional_text($body['domicilio_alternativo'] ?? null, 255),
-            'id_condicion_iva' => $taxConditionId,
         ];
     }
 
@@ -593,16 +513,14 @@ trait SociosGestion
         ]);
     }
 
-    private static function throwDuplicateSocioError(Throwable $error, string $type): never
+    private static function throwDuplicateSocioError(Throwable $error): never
     {
         $message = $error->getMessage();
         if (str_contains($message, 'uq_socios_personas_dni')) {
             api_error('Ya existe otro socio con ese DNI.', 'DNI_DUPLICADO', 409);
         }
         api_error(
-            $type === 'PERSONA'
-                ? 'No se pudo guardar el socio porque existe un dato único repetido.'
-                : 'No se pudo guardar la empresa porque existe un dato único repetido.',
+            'No se pudo guardar el socio porque existe un dato único repetido.',
             'REGISTRO_DUPLICADO',
             409
         );
