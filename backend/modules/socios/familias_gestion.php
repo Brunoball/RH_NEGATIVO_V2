@@ -8,19 +8,21 @@ trait FamiliasGestion
     private static function guardarDatos(array $auth, array $body): array
     {
         $db = $auth['db'];
-        $id = isset($body['id_familia']) && $body['id_familia'] !== ''
+        $id = isset($body['id_familia']) && $body['id_familia'] !== '' && $body['id_familia'] !== null
             ? positive_id($body['id_familia'], 'familia')
             : null;
-        $name = required_text($body, 'nombre', 'nombre', 150);
-        $description = optional_text($body['descripcion'] ?? null, 500);
+
+        $name = required_text($body, 'nombre', 'nombre de la familia', 120);
+        $observations = optional_text($body['observaciones'] ?? $body['descripcion'] ?? null, 2000);
         $members = self::normalizeMembers($body);
-        if ($members === []) api_error('Seleccioná al menos un integrante para la familia.', 'VALIDATION_ERROR');
-        if (count(array_filter($members, static fn(array $member): bool => $member['es_titular'])) > 1) {
-            api_error('Una familia puede tener como máximo un titular activo.', 'TITULAR_DUPLICADO', 409);
+        if ($members === []) {
+            api_error('Seleccioná al menos un integrante para la familia.', 'VALIDATION_ERROR', 422);
         }
 
         $unlinkDate = valid_date($body['fecha_desvinculacion'] ?? date('Y-m-d'), 'desvinculación');
-        $unlinkReason = optional_text($body['motivo_desvinculacion'] ?? null, 500);
+        if ($unlinkDate > date('Y-m-d')) {
+            api_error('La fecha de desvinculación no puede ser futura.', 'VALIDATION_ERROR', 422);
+        }
 
         try {
             $saved = transaction($db, static function () use (
@@ -28,21 +30,25 @@ trait FamiliasGestion
                 $auth,
                 $id,
                 $name,
-                $description,
+                $observations,
                 $members,
-                $unlinkDate,
-                $unlinkReason
+                $unlinkDate
             ): array {
                 $duplicate = $db->prepare(
-                    'SELECT id_familia FROM familias WHERE nombre = ? AND id_familia <> ? LIMIT 1'
+                    'SELECT id_familia FROM familias WHERE nombre_familia = ? AND id_familia <> ? LIMIT 1'
                 );
                 $duplicate->execute([$name, $id ?? 0]);
-                if ($duplicate->fetch()) api_error('Ya existe otra familia con ese nombre.', 'FAMILIA_DUPLICADA', 409);
+                if ($duplicate->fetch()) {
+                    api_error('Ya existe otra familia con ese nombre.', 'FAMILIA_DUPLICADA', 409);
+                }
 
                 $before = null;
                 if ($id === null) {
-                    $db->prepare('INSERT INTO familias (nombre, descripcion, activo) VALUES (?, ?, 1)')
-                        ->execute([$name, $description]);
+                    $db->prepare(
+                        'INSERT INTO familias
+                         (nombre_familia, observaciones, activo, creado_en, actualizado_en)
+                         VALUES (?, ?, 1, CURDATE(), CURDATE())'
+                    )->execute([$name, $observations]);
                     $familyId = (int)$db->lastInsertId();
                 } else {
                     $lock = $db->prepare('SELECT * FROM familias WHERE id_familia = ? FOR UPDATE');
@@ -51,49 +57,50 @@ trait FamiliasGestion
                     if (!$locked) api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
                     if (!(bool)$locked['activo']) {
                         api_error(
-                            'Reactivá la familia antes de modificar su composición.',
+                            'Reactivá la familia antes de modificar sus integrantes.',
                             'FAMILIA_INACTIVA',
                             409
                         );
                     }
+
                     $before = self::familyDetail($db, $id, true) ?? $locked;
                     $familyId = $id;
-                    $db->prepare('UPDATE familias SET nombre = ?, descripcion = ? WHERE id_familia = ?')
-                        ->execute([$name, $description, $familyId]);
+                    $db->prepare(
+                        'UPDATE familias
+                         SET nombre_familia = ?, observaciones = ?, actualizado_en = CURDATE()
+                         WHERE id_familia = ?'
+                    )->execute([$name, $observations, $familyId]);
                 }
 
                 $memberIds = array_keys($members);
                 $placeholders = implode(',', array_fill(0, count($memberIds), '?'));
 
-                // Libera vínculos heredados que hayan quedado abiertos dentro de una familia inactiva.
-                $releaseInactive = $db->prepare(
-                    "UPDATE familias_socios fs
-                     INNER JOIN familias f ON f.id_familia = fs.id_familia
-                     SET fs.fecha_desvinculacion = CURDATE(),
-                         fs.motivo_desvinculacion = COALESCE(fs.motivo_desvinculacion, 'FAMILIA INACTIVA')
-                     WHERE fs.id_socio IN ({$placeholders})
-                       AND fs.fecha_desvinculacion IS NULL
-                       AND fs.id_familia <> ?
-                       AND f.activo = 0"
-                );
-                $releaseInactive->execute(array_merge($memberIds, [$familyId]));
-
+                // Bloquea los socios elegidos para que dos altas simultáneas no
+                // puedan asignar al mismo socio a dos familias diferentes.
                 $people = $db->prepare(
-                    "SELECT s.id_socio, s.estado, p.apellido, p.nombre
-                     FROM socios s
-                     INNER JOIN socios_personas p ON p.id_socio = s.id_socio
-                     WHERE s.id_socio IN ({$placeholders})
-                       AND s.tipo_socio = 'PERSONA'
+                    "SELECT id_socio, nombre, dni, vigente
+                     FROM socios
+                     WHERE id_socio IN ({$placeholders})
                      FOR UPDATE"
                 );
                 $people->execute($memberIds);
                 $personRows = $people->fetchAll();
                 if (count($personRows) !== count($memberIds)) {
-                    api_error('Uno de los integrantes no existe o no es una persona.', 'SOCIO_INVALIDO');
+                    api_error('Uno de los integrantes seleccionados no existe.', 'SOCIO_INVALIDO', 422);
+                }
+
+                $peopleById = [];
+                foreach ($personRows as $person) {
+                    $peopleById[(int)$person['id_socio']] = $person;
                 }
 
                 $currentStatement = $db->prepare(
-                    'SELECT * FROM familias_socios WHERE id_familia = ? AND fecha_desvinculacion IS NULL FOR UPDATE'
+                    'SELECT *
+                     FROM familias_socios
+                     WHERE id_familia = ?
+                       AND activo = 1
+                       AND hasta IS NULL
+                     FOR UPDATE'
                 );
                 $currentStatement->execute([$familyId]);
                 $currentLinks = [];
@@ -101,127 +108,127 @@ trait FamiliasGestion
                     $currentLinks[(int)$link['id_socio']] = $link;
                 }
 
-                foreach ($personRows as $person) {
-                    $personId = (int)$person['id_socio'];
-                    if ((string)$person['estado'] !== 'ACTIVO' && !isset($currentLinks[$personId])) {
+                foreach ($memberIds as $memberId) {
+                    $person = $peopleById[$memberId];
+                    if (!(bool)$person['vigente'] && !isset($currentLinks[$memberId])) {
                         api_error(
-                            "{$person['apellido']}, {$person['nombre']} está dado de baja y no puede incorporarse.",
+                            "{$person['nombre']} está dado de baja y no puede incorporarse a una familia.",
                             'SOCIO_INACTIVO',
                             409
                         );
                     }
                 }
 
-                $conflicts = $db->prepare(
-                    "SELECT p.apellido, p.nombre, f.nombre AS familia
-                     FROM familias_socios fs
+                // Un vínculo abierto dentro de una familia dada de baja es un
+                // dato inconsistente heredado. Lo cerramos para no bloquear al
+                // socio al incorporarlo a una familia activa.
+                $releaseInactive = $db->prepare(
+                    "UPDATE familias_socios fs
                      INNER JOIN familias f ON f.id_familia = fs.id_familia
-                     INNER JOIN socios_personas p ON p.id_socio = fs.id_socio
+                     SET fs.activo = 0,
+                         fs.hasta = COALESCE(fs.hasta, CURDATE()),
+                         fs.actualizado_en = CURRENT_TIMESTAMP
                      WHERE fs.id_socio IN ({$placeholders})
                        AND fs.id_familia <> ?
-                       AND fs.fecha_desvinculacion IS NULL
-                     LIMIT 1"
+                       AND fs.activo = 1
+                       AND fs.hasta IS NULL
+                       AND f.activo = 0"
+                );
+                $releaseInactive->execute(array_merge($memberIds, [$familyId]));
+
+                $conflicts = $db->prepare(
+                    "SELECT s.nombre AS socio, f.nombre_familia AS familia
+                     FROM familias_socios fs
+                     INNER JOIN familias f
+                        ON f.id_familia = fs.id_familia
+                       AND f.activo = 1
+                     INNER JOIN socios s ON s.id_socio = fs.id_socio
+                     WHERE fs.id_socio IN ({$placeholders})
+                       AND fs.id_familia <> ?
+                       AND fs.activo = 1
+                       AND fs.hasta IS NULL
+                     LIMIT 1
+                     FOR UPDATE"
                 );
                 $conflicts->execute(array_merge($memberIds, [$familyId]));
                 if ($conflict = $conflicts->fetch()) {
                     api_error(
-                        "{$conflict['apellido']}, {$conflict['nombre']} ya pertenece a {$conflict['familia']}.",
+                        "{$conflict['socio']} ya pertenece a la familia {$conflict['familia']}.",
                         'SOCIO_YA_TIENE_FAMILIA',
                         409
                     );
                 }
 
                 $removedIds = array_values(array_diff(array_keys($currentLinks), $memberIds));
-                if ($removedIds !== [] && !$unlinkReason) {
-                    api_error(
-                        'Indicá el motivo de desvinculación para quitar integrantes actuales.',
-                        'MOTIVO_DESVINCULACION_REQUERIDO'
-                    );
-                }
-
                 if ($removedIds !== []) {
-                    $removePlaceholders = implode(',', array_fill(0, count($removedIds), '?'));
                     foreach ($removedIds as $removedId) {
-                        $incorporation = (string)$currentLinks[$removedId]['fecha_incorporacion'];
-                        if ($unlinkDate < $incorporation) {
-                            api_error('La fecha de desvinculación no puede ser anterior a la incorporación.', 'FECHA_INVALIDA');
+                        $from = $currentLinks[$removedId]['desde'];
+                        if ($from !== null && $unlinkDate < (string)$from) {
+                            api_error(
+                                'La fecha de desvinculación no puede ser anterior a la incorporación.',
+                                'FECHA_INVALIDA',
+                                422
+                            );
                         }
                     }
+
+                    $removePlaceholders = implode(',', array_fill(0, count($removedIds), '?'));
                     $close = $db->prepare(
                         "UPDATE familias_socios
-                         SET fecha_desvinculacion = ?, motivo_desvinculacion = ?
+                         SET activo = 0,
+                             hasta = ?,
+                             actualizado_en = CURRENT_TIMESTAMP
                          WHERE id_familia = ?
                            AND id_socio IN ({$removePlaceholders})
-                           AND fecha_desvinculacion IS NULL"
+                           AND activo = 1
+                           AND hasta IS NULL"
                     );
-                    $close->execute(array_merge([$unlinkDate, $unlinkReason, $familyId], $removedIds));
+                    $close->execute(array_merge([$unlinkDate, $familyId], $removedIds));
                 }
-
-                // Primero desmarca titulares para permitir cambiarlo sin chocar con la UNIQUE generada.
-                $db->prepare(
-                    'UPDATE familias_socios SET es_titular = 0 WHERE id_familia = ? AND fecha_desvinculacion IS NULL'
-                )->execute([$familyId]);
 
                 $update = $db->prepare(
                     'UPDATE familias_socios
-                     SET parentesco = ?, es_titular = ?, observaciones = ?
+                     SET desde = ?, actualizado_en = CURRENT_TIMESTAMP
                      WHERE id_familia_socio = ?'
                 );
                 $insert = $db->prepare(
                     'INSERT INTO familias_socios
-                     (id_familia, id_socio, parentesco, es_titular, observaciones, fecha_incorporacion)
-                     VALUES (?, ?, ?, ?, ?, ?)'
+                     (id_familia, id_socio, desde, hasta, activo)
+                     VALUES (?, ?, ?, NULL, 1)'
                 );
 
                 foreach ($members as $memberId => $member) {
                     if (isset($currentLinks[$memberId])) {
                         $update->execute([
-                            $member['parentesco'],
-                            $member['es_titular'] ? 1 : 0,
-                            $member['observaciones'],
+                            $member['desde'],
                             (int)$currentLinks[$memberId]['id_familia_socio'],
                         ]);
                     } else {
                         $insert->execute([
                             $familyId,
                             $memberId,
-                            $member['parentesco'],
-                            $member['es_titular'] ? 1 : 0,
-                            $member['observaciones'],
-                            $member['fecha_incorporacion'],
+                            $member['desde'],
                         ]);
                     }
                 }
 
                 $after = self::familyDetail($db, $familyId, true);
-                audit_change(
+                if (!$after) throw new RuntimeException('No se pudo recuperar la familia guardada.');
+
+                self::auditarFamilia(
                     $db,
                     $auth,
-                    'FAMILIAS',
-                    $id === null ? 'CREAR' : 'EDITAR',
                     'familias',
                     $familyId,
-                    $id === null ? "Se creó la familia {$name}." : "Se modificó la familia {$name}.",
+                    $id === null ? 'INSERT' : 'UPDATE',
                     $before,
                     $after
                 );
-                return $after ?? [];
+
+                return $after;
             });
-        } catch (Throwable $error) {
-            if (duplicate_key($error)) {
-                $message = $error->getMessage();
-                if (str_contains($message, 'uq_familias_nombre')) {
-                    api_error('Ya existe otra familia con ese nombre.', 'FAMILIA_DUPLICADA', 409);
-                }
-                if (str_contains($message, 'uq_familias_socios_titular_activo')) {
-                    api_error('La familia ya tiene un titular activo.', 'TITULAR_DUPLICADO', 409);
-                }
-                if (str_contains($message, 'uq_familias_socios_socio_activo')) {
-                    api_error('Uno de los socios ya pertenece a otra familia activa.', 'SOCIO_YA_TIENE_FAMILIA', 409);
-                }
-                api_error('No se pudo guardar la familia por un dato duplicado.', 'REGISTRO_DUPLICADO', 409);
-            }
-            throw $error;
+        } catch (PDOException $error) {
+            self::resolverErrorPersistenciaFamilia($error);
         }
 
         return ['item' => $saved, 'creada' => $id === null];
@@ -235,7 +242,19 @@ trait FamiliasGestion
         ?string $reason = null
     ): array {
         $db = $auth['db'];
-        $saved = transaction($db, static function () use ($db, $auth, $id, $active, $date, $reason): array {
+        $effectiveDate = $date ?: date('Y-m-d');
+        if ($effectiveDate > date('Y-m-d')) {
+            api_error('La fecha indicada no puede ser futura.', 'VALIDATION_ERROR', 422);
+        }
+
+        $saved = transaction($db, static function () use (
+            $db,
+            $auth,
+            $id,
+            $active,
+            $effectiveDate,
+            $reason
+        ): array {
             $statement = $db->prepare('SELECT * FROM familias WHERE id_familia = ? FOR UPDATE');
             $statement->execute([$id]);
             $locked = $statement->fetch();
@@ -249,44 +268,55 @@ trait FamiliasGestion
             }
 
             $before = self::familyDetail($db, $id, true) ?? $locked;
+
             if (!$active) {
-                $effectiveDate = $date ?: date('Y-m-d');
-                $effectiveReason = $reason ?: 'BAJA DE FAMILIA';
                 $links = $db->prepare(
-                    'SELECT fecha_incorporacion FROM familias_socios
-                     WHERE id_familia = ? AND fecha_desvinculacion IS NULL FOR UPDATE'
+                    'SELECT id_familia_socio, desde
+                     FROM familias_socios
+                     WHERE id_familia = ?
+                       AND activo = 1
+                       AND hasta IS NULL
+                     FOR UPDATE'
                 );
                 $links->execute([$id]);
                 foreach ($links->fetchAll() as $link) {
-                    if ($effectiveDate < (string)$link['fecha_incorporacion']) {
-                        api_error('La fecha de baja no puede ser anterior a la incorporación de un integrante.', 'FECHA_INVALIDA');
+                    if ($link['desde'] !== null && $effectiveDate < (string)$link['desde']) {
+                        api_error(
+                            'La fecha de baja no puede ser anterior a la incorporación de un integrante.',
+                            'FECHA_INVALIDA',
+                            422
+                        );
                     }
                 }
+
                 $db->prepare(
                     'UPDATE familias_socios
-                     SET fecha_desvinculacion = ?, motivo_desvinculacion = ?
-                     WHERE id_familia = ? AND fecha_desvinculacion IS NULL'
-                )->execute([$effectiveDate, $effectiveReason, $id]);
+                     SET activo = 0,
+                         hasta = ?,
+                         actualizado_en = CURRENT_TIMESTAMP
+                     WHERE id_familia = ?
+                       AND activo = 1
+                       AND hasta IS NULL'
+                )->execute([$effectiveDate, $id]);
             }
 
-            $db->prepare('UPDATE familias SET activo = ? WHERE id_familia = ?')
-                ->execute([$active ? 1 : 0, $id]);
+            $db->prepare(
+                'UPDATE familias SET activo = ?, actualizado_en = CURDATE() WHERE id_familia = ?'
+            )->execute([$active ? 1 : 0, $id]);
+
             $after = self::familyDetail($db, $id, true);
-            audit_change(
-                $db,
-                $auth,
-                'FAMILIAS',
-                $active ? 'REACTIVAR' : 'DAR_BAJA',
-                'familias',
-                $id,
-                $active
-                    ? 'Se reactivó la familia. Sus integrantes anteriores permanecen en el historial.'
-                    : 'Se dio de baja la familia y se cerraron sus vínculos activos.',
-                $before,
-                $after
-            );
-            return $after ?? [];
+            if (!$after) throw new RuntimeException('No se pudo recuperar la familia después del cambio de estado.');
+
+            $auditAfter = $after;
+            if (!$active && $reason) {
+                $auditAfter['motivo_baja'] = $reason;
+                $auditAfter['fecha_baja'] = $effectiveDate;
+            }
+
+            self::auditarFamilia($db, $auth, 'familias', $id, 'UPDATE', $before, $auditAfter);
+            return $after;
         });
+
         return ['item' => $saved];
     }
 
@@ -304,7 +334,7 @@ trait FamiliasGestion
                 $before = self::familyDetail($db, $id, true) ?? $locked;
                 $links = $db->prepare(
                     'SELECT COUNT(*) AS vinculos_totales,
-                            COUNT(DISTINCT CASE WHEN fecha_desvinculacion IS NULL THEN id_socio END) AS socios_sin_familia
+                            COUNT(DISTINCT CASE WHEN activo = 1 AND hasta IS NULL THEN id_socio END) AS socios_sin_familia
                      FROM familias_socios
                      WHERE id_familia = ?'
                 );
@@ -314,21 +344,19 @@ trait FamiliasGestion
                     'socios_sin_familia' => (int)($impactRow['socios_sin_familia'] ?? 0),
                     'vinculos_eliminados' => (int)($impactRow['vinculos_totales'] ?? 0),
                 ];
-                $name = trim((string)($locked['nombre'] ?? '')) ?: "ID {$id}";
 
-                // Se eliminan únicamente los vínculos familiares. Los socios y
-                // todos sus pagos, estados y datos personales permanecen intactos.
+                // La eliminación definitiva de una familia jamás elimina socios,
+                // pagos ni datos personales: únicamente borra los vínculos del
+                // grupo y luego la cabecera de la familia.
                 $db->prepare('DELETE FROM familias_socios WHERE id_familia = ?')->execute([$id]);
                 $db->prepare('DELETE FROM familias WHERE id_familia = ?')->execute([$id]);
 
-                audit_change(
+                self::auditarFamilia(
                     $db,
                     $auth,
-                    'FAMILIAS',
-                    'ELIMINAR_DEFINITIVO',
                     'familias',
                     $id,
-                    "Se eliminó definitivamente la familia {$name}. Sus socios quedaron sin familia y conservaron toda su información.",
+                    'DELETE',
                     [
                         'familia' => $before,
                         'impacto_eliminacion' => $impact,
@@ -342,14 +370,7 @@ trait FamiliasGestion
                 ];
             });
         } catch (PDOException $error) {
-            if ((string)$error->getCode() === '23000') {
-                api_error(
-                    'No se pudo eliminar la familia porque existe otra relación protegida en la base.',
-                    'FAMILIA_CON_RELACIONES_PROTEGIDAS',
-                    409
-                );
-            }
-            throw $error;
+            self::resolverErrorPersistenciaFamilia($error);
         }
     }
 
@@ -366,23 +387,85 @@ trait FamiliasGestion
         $members = [];
         foreach ($raw as $item) {
             if (!is_array($item)) $item = ['id_socio' => $item];
-            $id = filter_var($item['id_socio'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            $id = filter_var(
+                $item['id_socio'] ?? null,
+                FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1]]
+            );
             if ($id === false) continue;
-            $date = valid_date($item['fecha_incorporacion'] ?? date('Y-m-d'), 'incorporación');
+
+            $date = valid_date(
+                $item['desde'] ?? $item['fecha_incorporacion'] ?? date('Y-m-d'),
+                'incorporación'
+            );
+            if ($date > date('Y-m-d')) {
+                api_error('La fecha de incorporación no puede ser futura.', 'VALIDATION_ERROR', 422);
+            }
+
             $members[(int)$id] = [
                 'id_socio' => (int)$id,
-                'parentesco' => optional_text($item['parentesco'] ?? null, 50),
-                'es_titular' => self::familyBoolean($item['es_titular'] ?? false),
-                'observaciones' => optional_text($item['observaciones'] ?? null, 500),
-                'fecha_incorporacion' => $date,
+                'desde' => $date,
             ];
         }
+
         return $members;
     }
 
-    private static function familyBoolean(mixed $value): bool
+    /** Escribe auditoría según el esquema real de RH Negativo V2. */
+    private static function auditarFamilia(
+        PDO $db,
+        array $auth,
+        string $table,
+        int $recordId,
+        string $action,
+        mixed $before,
+        mixed $after
+    ): void {
+        if (!in_array($action, ['INSERT', 'UPDATE', 'DELETE', 'MIGRACION', 'FUSION'], true)) {
+            throw new LogicException('Acción de auditoría no permitida.');
+        }
+
+        $encode = static function (mixed $value): ?string {
+            if ($value === null) return null;
+            $json = json_encode(
+                $value,
+                JSON_UNESCAPED_UNICODE
+                    | JSON_UNESCAPED_SLASHES
+                    | JSON_INVALID_UTF8_SUBSTITUTE
+                    | JSON_PARTIAL_OUTPUT_ON_ERROR
+                    | JSON_PRESERVE_ZERO_FRACTION
+            );
+            return is_string($json) ? $json : '{"error":"No se pudo serializar la auditoría."}';
+        };
+
+        $statement = $db->prepare(
+            "INSERT INTO auditoria
+             (tabla, id_registro, accion, datos_anteriores, datos_nuevos, id_usuario, origen)
+             VALUES (?, ?, ?, ?, ?, ?, 'SISTEMA')"
+        );
+        $statement->execute([
+            clean_text($table, 64, false),
+            $recordId,
+            $action,
+            $encode($before),
+            $encode($after),
+            $auth['id_usuario'],
+        ]);
+    }
+
+    private static function resolverErrorPersistenciaFamilia(PDOException $error): never
     {
-        if (is_bool($value)) return $value;
-        return in_array(strtolower(trim((string)$value)), ['1', 'true', 'si', 'sí', 'on'], true);
+        $driverCode = (int)($error->errorInfo[1] ?? 0);
+        if ($driverCode === 1062) {
+            api_error('Ya existe otra familia con ese nombre.', 'FAMILIA_DUPLICADA', 409);
+        }
+        if ($driverCode === 1451 || $driverCode === 1452) {
+            api_error(
+                'No se pudo completar la operación por una relación de datos inválida.',
+                'RELACION_INVALIDA',
+                409
+            );
+        }
+        throw $error;
     }
 }

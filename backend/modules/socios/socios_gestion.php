@@ -3,526 +3,571 @@ declare(strict_types=1);
 
 trait SociosGestion
 {
-    abstract private static function detalle(PDO $db, int $id): ?array;
-
-    abstract private static function impactoEliminacion(PDO $db, int $id): array;
-
     private static function guardarDatos(array $auth, array $body): array
     {
         $db = $auth['db'];
-        $id = isset($body['id_socio']) && $body['id_socio'] !== ''
-            ? positive_id($body['id_socio'], 'socio')
-            : null;
+        $id = null;
+        if (($body['id_socio'] ?? '') !== '' && ($body['id_socio'] ?? null) !== null) {
+            $id = positive_id($body['id_socio'], 'socio');
+        }
 
-        $type = 'PERSONA';
-
-        $current = $id === null ? null : self::detalle($db, $id);
-        if ($id !== null && !$current) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
-
-        $date = valid_date($body['fecha_alta'] ?? ($current['fecha_alta'] ?? date('Y-m-d')), 'alta');
-        $observations = optional_text($body['observaciones'] ?? null, 5000);
-        $categoryId = self::optionalForeignId(
-            $db,
-            $body['id_categoria'] ?? null,
-            'categorias',
-            'id_categoria',
-            'categoría',
-            $current['id_categoria'] ?? null
-        );
-        $paymentMethodId = self::optionalForeignId(
-            $db,
-            $body['id_medio_pago'] ?? null,
-            'medios_pago',
-            'id_medio_pago',
-            'medio de pago',
-            $current['id_medio_pago'] ?? null
-        );
-        $reminder = self::booleanValue($body['enviar_recordatorio'] ?? false) ? 1 : 0;
-
-        $specific = self::validatePerson($body, $reminder === 1);
+        $data = self::validarSocio($db, $body, $id);
 
         try {
-            $saved = transaction($db, static function () use (
-                $db,
-                $auth,
-                $body,
-                $id,
-                $type,
-                $date,
-                $observations,
-                $categoryId,
-                $paymentMethodId,
-                $reminder,
-                $specific
-            ): array {
+            $result = transaction($db, function () use ($db, $auth, $data, $id): array {
                 if ($id === null) {
-                    self::setHistoryVariables($db, $auth['id_usuario'], $date, null, 'Alta inicial del socio.');
-                    $insert = $db->prepare(
+                    $statement = $db->prepare(
                         'INSERT INTO socios
-                         (tipo_socio, observaciones, fecha_alta, estado, id_categoria, id_medio_pago, enviar_recordatorio)
-                         VALUES (?, ?, ?, \'ACTIVO\', ?, ?, ?)'
+                         (nombre, id_cobrador, id_grupo_sanguineo, id_categoria, domicilio, numero,
+                          telefono_movil, telefono_fijo, observaciones, fecha_nacimiento, id_estado,
+                          domicilio_cobro, dni, fecha_ingreso, vigente)
+                         VALUES
+                         (:nombre, :id_cobrador, :id_grupo_sanguineo, :id_categoria, :domicilio, :numero,
+                          :telefono_movil, :telefono_fijo, :observaciones, :fecha_nacimiento, :id_estado,
+                          :domicilio_cobro, :dni, :fecha_ingreso, 1)'
                     );
-                    $insert->execute([$type, $observations, $date, $categoryId, $paymentMethodId, $reminder]);
-                    $partnerId = (int)$db->lastInsertId();
+                    $statement->execute($data);
+                    $newId = (int)$db->lastInsertId();
+                    $after = self::detalle($db, $newId);
+                    if (!$after) {
+                        throw new RuntimeException('No se pudo recuperar el socio recién creado.');
+                    }
 
-                    $db->prepare(
-                        'INSERT INTO socios_personas
-                         (id_socio, apellido, nombre, dni, domicilio, numero_domicilio, localidad, telefono, email, domicilio_alternativo)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                    )->execute([
-                        $partnerId,
-                        $specific['apellido'],
-                        $specific['nombre'],
-                        $specific['dni'],
-                        $specific['domicilio'],
-                        $specific['numero_domicilio'],
-                        $specific['localidad'],
-                        $specific['telefono'],
-                        $specific['email'],
-                        $specific['domicilio_alternativo'],
-                    ]);
-
-                    self::ensureStateHistory(
+                    self::insertarHistorialEstado(
                         $db,
-                        $partnerId,
+                        $newId,
                         'ALTA',
                         null,
-                        'ACTIVO',
-                        $date,
+                        $after['id_estado'],
                         null,
-                        'Alta inicial del socio.',
+                        true,
+                        ($after['fecha_ingreso'] ?: date('Y-m-d')) . ' 00:00:00',
+                        'ALTA DE SOCIO',
+                        null,
                         $auth['id_usuario']
                     );
-                    self::clearHistoryVariables($db);
+                    self::auditarSocio($db, $auth, 'socios', $newId, 'INSERT', null, $after);
 
-                    $after = self::detalle($db, $partnerId);
-                    audit_change(
-                        $db,
-                        $auth,
-                        'SOCIOS',
-                        'CREAR',
-                        'socios',
-                        $partnerId,
-                        "Se creó el socio {$specific['apellido']}, {$specific['nombre']}.",
-                        null,
-                        $after
-                    );
-                    return $after ?? [];
+                    return ['item' => $after, 'creado' => true];
                 }
 
                 $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
                 $lock->execute([$id]);
-                $locked = $lock->fetch();
-                if (!$locked) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
-                $before = self::detalle($db, $id) ?? $locked;
+                $rawBefore = $lock->fetch();
+                if (!$rawBefore) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
 
-                $db->prepare(
-                    'UPDATE socios
-                     SET observaciones = ?, fecha_alta = ?, id_categoria = ?, id_medio_pago = ?, enviar_recordatorio = ?
-                     WHERE id_socio = ?'
-                )->execute([$observations, $date, $categoryId, $paymentMethodId, $reminder, $id]);
-
-                $detailUpdate = $db->prepare(
-                    'UPDATE socios_personas
-                     SET apellido = ?, nombre = ?, dni = ?, domicilio = ?, numero_domicilio = ?, localidad = ?,
-                         telefono = ?, email = ?, domicilio_alternativo = ?
-                     WHERE id_socio = ?'
+                $before = self::detalle($db, $id);
+                $statement = $db->prepare(
+                    'UPDATE socios SET
+                        nombre = :nombre,
+                        id_cobrador = :id_cobrador,
+                        id_grupo_sanguineo = :id_grupo_sanguineo,
+                        id_categoria = :id_categoria,
+                        domicilio = :domicilio,
+                        numero = :numero,
+                        telefono_movil = :telefono_movil,
+                        telefono_fijo = :telefono_fijo,
+                        observaciones = :observaciones,
+                        fecha_nacimiento = :fecha_nacimiento,
+                        id_estado = :id_estado,
+                        domicilio_cobro = :domicilio_cobro,
+                        dni = :dni,
+                        fecha_ingreso = :fecha_ingreso
+                     WHERE id_socio = :id_socio'
                 );
-                $detailUpdate->execute([
-                    $specific['apellido'],
-                    $specific['nombre'],
-                    $specific['dni'],
-                    $specific['domicilio'],
-                    $specific['numero_domicilio'],
-                    $specific['localidad'],
-                    $specific['telefono'],
-                    $specific['email'],
-                    $specific['domicilio_alternativo'],
-                    $id,
-                ]);
-
-                if ($detailUpdate->rowCount() === 0) {
-                    $exists = $db->prepare(
-                        'SELECT 1 FROM socios_personas WHERE id_socio = ?'
-                    );
-                    $exists->execute([$id]);
-                    if (!$exists->fetchColumn()) {
-                        api_error(
-                            'El registro central no posee su detalle especializado. Revisá la integridad de la migración.',
-                            'SOCIO_SIN_DETALLE',
-                            409
-                        );
-                    }
-                }
+                $statement->execute($data + ['id_socio' => $id]);
 
                 $after = self::detalle($db, $id);
-                audit_change(
-                    $db,
-                    $auth,
-                    'SOCIOS',
-                    'EDITAR',
-                    'socios',
-                    $id,
-                    "Se modificó el socio {$specific['apellido']}, {$specific['nombre']}.",
-                    $before,
-                    $after
-                );
-                return $after ?? [];
+                if (!$after) throw new RuntimeException('No se pudo recuperar el socio actualizado.');
+
+                $previousState = $rawBefore['id_estado'] === null ? null : (int)$rawBefore['id_estado'];
+                $newState = $after['id_estado'];
+                if ($previousState !== $newState) {
+                    self::insertarHistorialEstado(
+                        $db,
+                        $id,
+                        'CAMBIO_ESTADO',
+                        $previousState,
+                        $newState,
+                        (bool)$rawBefore['vigente'],
+                        (bool)$rawBefore['vigente'],
+                        date('Y-m-d H:i:s'),
+                        'CAMBIO DE ESTADO',
+                        null,
+                        $auth['id_usuario']
+                    );
+                }
+
+                self::auditarSocio($db, $auth, 'socios', $id, 'UPDATE', $before, $after);
+                return ['item' => $after, 'creado' => false];
             });
-        } catch (Throwable $error) {
-            self::clearHistoryVariablesSilently($db);
-            if (duplicate_key($error)) self::throwDuplicateSocioError($error);
-            throw $error;
+        } catch (PDOException $error) {
+            self::resolverErrorPersistenciaSocio($error);
         }
 
-        return ['item' => $saved, 'creado' => $id === null];
+        return $result;
     }
 
     private static function darBajaDatos(array $auth, int $id, string $date, string $reason): array
     {
-        return self::changeStatus($auth, $id, 'INACTIVO', $date, $reason, 'BAJA');
+        $db = $auth['db'];
+        $saved = transaction($db, function () use ($db, $auth, $id, $date, $reason): array {
+            $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
+            $lock->execute([$id]);
+            $raw = $lock->fetch();
+            if (!$raw) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!(bool)$raw['vigente']) api_error('El socio ya está dado de baja.', 'SOCIO_YA_BAJA', 409);
+
+            if ($raw['fecha_ingreso'] && $date < (string)$raw['fecha_ingreso']) {
+                api_error('La fecha de baja no puede ser anterior a la fecha de ingreso.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_baja']);
+            }
+
+            $before = self::detalle($db, $id);
+            $db->prepare('UPDATE socios SET vigente = 0 WHERE id_socio = ?')->execute([$id]);
+            $after = self::detalle($db, $id);
+            if (!$after) throw new RuntimeException('No se pudo recuperar el socio después de la baja.');
+
+            self::insertarHistorialEstado(
+                $db,
+                $id,
+                'BAJA',
+                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
+                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
+                true,
+                false,
+                $date . ' 00:00:00',
+                $reason,
+                null,
+                $auth['id_usuario']
+            );
+            self::auditarSocio($db, $auth, 'socios', $id, 'UPDATE', $before, $after);
+            return $after;
+        });
+
+        return ['item' => $saved];
     }
 
-    private static function reactivarDatos(array $auth, int $id, ?string $date = null, ?string $reason = null): array
+    private static function reactivarDatos(array $auth, int $id, string $date, ?string $reason): array
     {
-        return self::changeStatus(
-            $auth,
-            $id,
-            'ACTIVO',
-            $date ?: date('Y-m-d'),
-            $reason,
-            'REACTIVACION'
-        );
+        $db = $auth['db'];
+        $saved = transaction($db, function () use ($db, $auth, $id, $date, $reason): array {
+            $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
+            $lock->execute([$id]);
+            $raw = $lock->fetch();
+            if (!$raw) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if ((bool)$raw['vigente']) api_error('El socio ya está vigente.', 'SOCIO_YA_VIGENTE', 409);
+
+            $lastLow = $db->prepare(
+                "SELECT MAX(DATE(fecha_evento)) FROM socios_historial_estados WHERE id_socio = ? AND tipo_evento = 'BAJA'"
+            );
+            $lastLow->execute([$id]);
+            $lastLowDate = $lastLow->fetchColumn();
+            if ($lastLowDate && $date < (string)$lastLowDate) {
+                api_error('La fecha de reactivación no puede ser anterior a la última baja.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_reactivacion']);
+            }
+
+            $before = self::detalle($db, $id);
+            $db->prepare('UPDATE socios SET vigente = 1 WHERE id_socio = ?')->execute([$id]);
+            $after = self::detalle($db, $id);
+            if (!$after) throw new RuntimeException('No se pudo recuperar el socio después de la reactivación.');
+
+            self::insertarHistorialEstado(
+                $db,
+                $id,
+                'REACTIVACION',
+                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
+                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
+                false,
+                true,
+                $date . ' 00:00:00',
+                $reason ?: 'REACTIVACIÓN DE SOCIO',
+                null,
+                $auth['id_usuario']
+            );
+            self::auditarSocio($db, $auth, 'socios', $id, 'UPDATE', $before, $after);
+            return $after;
+        });
+
+        return ['item' => $saved];
+    }
+
+    private static function registrarContactoDatos(array $auth, array $body): array
+    {
+        $db = $auth['db'];
+        $id = positive_id($body['id_socio'] ?? $body['id'] ?? null, 'socio');
+        $date = valid_date($body['fecha_contacto'] ?? date('Y-m-d'), 'contacto');
+        if ($date > date('Y-m-d')) {
+            api_error('La fecha del contacto no puede ser futura.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_contacto']);
+        }
+
+        $status = strtoupper(trim((string)($body['estado_contacto'] ?? '')));
+        if (!in_array($status, ['CONTACTADO', 'PENDIENTE', 'NO_CONTACTADO'], true)) {
+            api_error('Seleccioná un estado de gestión válido.', 'VALIDATION_ERROR', 422, ['campo' => 'estado_contacto']);
+        }
+        $detail = optional_text($body['detalle_contacto'] ?? null, 4000);
+
+        return transaction($db, function () use ($db, $auth, $id, $date, $status, $detail): array {
+            $lock = $db->prepare('SELECT id_socio, nombre, fecha_nacimiento, vigente FROM socios WHERE id_socio = ? FOR UPDATE');
+            $lock->execute([$id]);
+            $socio = $lock->fetch();
+            if (!$socio) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+
+            $statement = $db->prepare(
+                'INSERT INTO socios_contactos
+                 (id_socio, fecha_contacto, estado_contacto, detalle_contacto, id_usuario)
+                 VALUES (?, ?, ?, ?, ?)'
+            );
+            $statement->execute([$id, $date, $status, $detail, $auth['id_usuario']]);
+            $contactId = (int)$db->lastInsertId();
+
+            $contact = [
+                'id_contacto' => $contactId,
+                'id_socio' => $id,
+                'fecha_contacto' => $date,
+                'estado_contacto' => $status,
+                'detalle_contacto' => $detail,
+                'id_usuario' => $auth['id_usuario'],
+                'usuario' => $auth['usuario'],
+            ];
+            self::auditarSocio($db, $auth, 'socios_contactos', $contactId, 'INSERT', null, $contact);
+
+            // Solo una gestión efectivamente CONTACTADA cierra automáticamente
+            // el aviso anual. PENDIENTE / NO_CONTACTADO conservan la tarjeta
+            // para que el equipo pueda volver a intentar el seguimiento.
+            if ($status === 'CONTACTADO') {
+                self::cerrarAvisoCumpleaniosInterno($db, $auth, $socio, 'CONTACTO');
+            }
+
+            return [
+                'contacto' => $contact,
+                'item' => self::detalle($db, $id),
+            ];
+        });
+    }
+
+    private static function cerrarCumpleaniosDatos(array $auth, int $id): array
+    {
+        $db = $auth['db'];
+        return transaction($db, function () use ($db, $auth, $id): array {
+            $lock = $db->prepare('SELECT id_socio, nombre, fecha_nacimiento, vigente FROM socios WHERE id_socio = ? FOR UPDATE');
+            $lock->execute([$id]);
+            $socio = $lock->fetch();
+            if (!$socio) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!(bool)$socio['vigente']) api_error('El socio ya no está vigente.', 'SOCIO_NO_VIGENTE', 409);
+            if (!$socio['fecha_nacimiento']) api_error('El socio no tiene fecha de nacimiento registrada.', 'SIN_FECHA_NACIMIENTO', 409);
+
+            $age = self::edadActual((string)$socio['fecha_nacimiento']);
+            if ($age < 18 || $age > 23) {
+                api_error('El socio ya no pertenece al rango de avisos de 18 a 23 años.', 'FUERA_RANGO_CUMPLEANIOS', 409);
+            }
+
+            $closure = self::cerrarAvisoCumpleaniosInterno($db, $auth, $socio, 'MANUAL');
+            return ['cierre' => $closure, 'id_socio' => $id];
+        });
     }
 
     private static function eliminarDefinitivoDatos(array $auth, int $id): array
     {
         $db = $auth['db'];
+        return transaction($db, function () use ($db, $auth, $id): array {
+            $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
+            $lock->execute([$id]);
+            if (!$lock->fetch()) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
 
-        try {
-            return transaction($db, static function () use ($db, $auth, $id): array {
-                $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
-                $lock->execute([$id]);
-                $locked = $lock->fetch();
-                if (!$locked) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            $before = self::detalle($db, $id);
+            $impact = self::impactoEliminacion($db, $id);
 
-                $before = self::detalle($db, $id) ?? $locked;
-                $impact = self::impactoEliminacion($db, $id);
-                $module = 'SOCIOS';
-                $name = trim((string)($before['denominacion'] ?? '')) ?: "ID {$id}";
+            // El orden respeta todas las FK RESTRICT del esquema RH V2.
+            $db->prepare('DELETE FROM familias_socios WHERE id_socio = ?')->execute([$id]);
+            $db->prepare('DELETE FROM pagos_inscripcion WHERE id_socio = ?')->execute([$id]);
+            $db->prepare('DELETE FROM pagos WHERE id_socio = ?')->execute([$id]);
+            $db->prepare('DELETE FROM socios_contactos WHERE id_socio = ?')->execute([$id]);
+            $db->prepare('DELETE FROM socios_cumpleanios_cierres WHERE id_socio = ?')->execute([$id]);
+            $db->prepare('DELETE FROM socios_historial_estados WHERE id_socio = ?')->execute([$id]);
+            $db->prepare('DELETE FROM socios_fusiones WHERE id_socio_origen = ? OR id_socio_destino = ?')->execute([$id, $id]);
+            $db->prepare('DELETE FROM socios WHERE id_socio = ?')->execute([$id]);
 
-                // Las FK del modelo son RESTRICT para evitar borrados accidentales.
-                // La eliminación definitiva solo existe detrás de una doble confirmación
-                // y limpia primero todas las relaciones conocidas, dentro de la misma transacción.
-                $db->prepare('DELETE FROM familias_socios WHERE id_socio = ?')->execute([$id]);
-                $db->prepare('DELETE FROM pagos WHERE id_socio = ?')->execute([$id]);
-                $db->prepare('DELETE FROM socios_historial_estados WHERE id_socio = ?')->execute([$id]);
-                $db->prepare('DELETE FROM socios WHERE id_socio = ?')->execute([$id]);
-
-                audit_change(
-                    $db,
-                    $auth,
-                    $module,
-                    'ELIMINAR_DEFINITIVO',
-                    'socios',
-                    $id,
-                    "Se eliminó definitivamente {$name}, junto con sus pagos, vínculos familiares e historial de estados.",
-                    [
-                        'socio' => $before,
-                        'impacto_eliminacion' => $impact,
-                    ],
-                    null
-                );
-
-                return [
-                    'id_socio' => $id,
-                    'impacto_eliminacion' => $impact,
-                ];
-            });
-        } catch (PDOException $error) {
-            if ((string)$error->getCode() === '23000') {
-                api_error(
-                    'No se pudo eliminar el socio porque existe otra relación protegida en la base. Revisá los datos vinculados.',
-                    'SOCIO_CON_RELACIONES_PROTEGIDAS',
-                    409
-                );
-            }
-            throw $error;
-        }
-    }
-
-    private static function changeStatus(
-        array $auth,
-        int $id,
-        string $newStatus,
-        string $effectiveDate,
-        ?string $reason,
-        string $event
-    ): array {
-        $db = $auth['db'];
-        try {
-            $saved = transaction($db, static function () use (
+            self::auditarSocio(
                 $db,
                 $auth,
+                'socios',
                 $id,
-                $newStatus,
-                $effectiveDate,
-                $reason,
-                $event
-            ): array {
-                $statement = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
-                $statement->execute([$id]);
-                $locked = $statement->fetch();
-                if (!$locked) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
-                $previous = (string)$locked['estado'];
-                if ($previous === $newStatus) {
-                    api_error(
-                        $newStatus === 'ACTIVO' ? 'El socio ya se encuentra activo.' : 'El socio ya se encuentra dado de baja.',
-                        'ESTADO_SIN_CAMBIOS',
-                        409
-                    );
-                }
+                'DELETE',
+                ['socio' => $before, 'impacto' => $impact],
+                null
+            );
 
-                $before = self::detalle($db, $id) ?? $locked;
-                $historyBefore = (int)$db->query(
-                    'SELECT COALESCE(MAX(id_historial_estado), 0) FROM socios_historial_estados'
-                )->fetchColumn();
-
-                self::setHistoryVariables($db, $auth['id_usuario'], $effectiveDate, $reason, null);
-                if ($newStatus === 'INACTIVO') {
-                    $db->prepare(
-                        'UPDATE socios
-                         SET estado = \'INACTIVO\', fecha_baja = ?, motivo_baja = ?
-                         WHERE id_socio = ?'
-                    )->execute([$effectiveDate, $reason, $id]);
-                } else {
-                    $db->prepare(
-                        'UPDATE socios
-                         SET estado = \'ACTIVO\', fecha_baja = NULL, motivo_baja = NULL
-                         WHERE id_socio = ?'
-                    )->execute([$id]);
-                }
-
-                self::ensureStateHistory(
-                    $db,
-                    $id,
-                    $event,
-                    $previous,
-                    $newStatus,
-                    $effectiveDate,
-                    $reason,
-                    null,
-                    $auth['id_usuario'],
-                    $historyBefore
-                );
-                self::clearHistoryVariables($db);
-
-                $after = self::detalle($db, $id);
-                $module = 'SOCIOS';
-                audit_change(
-                    $db,
-                    $auth,
-                    $module,
-                    $newStatus === 'ACTIVO' ? 'REACTIVAR' : 'DAR_BAJA',
-                    'socios',
-                    $id,
-                    $newStatus === 'ACTIVO' ? 'Se reactivó el socio.' : 'Se dio de baja el socio.',
-                    $before,
-                    $after
-                );
-                return $after ?? [];
-            });
-        } catch (Throwable $error) {
-            self::clearHistoryVariablesSilently($db);
-            throw $error;
-        }
-
-        return ['item' => $saved];
+            return ['id_socio' => $id, 'impacto' => $impact];
+        });
     }
 
-    private static function validatePerson(array $body, bool $reminderEnabled): array
+    private static function validarSocio(PDO $db, array $body, ?int $editingId): array
     {
-        $dni = preg_replace('/\D+/', '', (string)($body['dni'] ?? '')) ?? '';
-        if ($dni !== '' && !preg_match('/^[0-9]{7,8}$/', $dni)) {
-            api_error('El DNI debe tener 7 u 8 dígitos.', 'VALIDATION_ERROR', 422, ['campo' => 'dni']);
+        $current = null;
+        if ($editingId !== null) {
+            $currentStatement = $db->prepare(
+                'SELECT id_cobrador, id_categoria, id_grupo_sanguineo, id_estado FROM socios WHERE id_socio = ? LIMIT 1'
+            );
+            $currentStatement->execute([$editingId]);
+            $current = $currentStatement->fetch();
+            if (!$current) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
         }
 
-        return [
-            'apellido' => required_text($body, 'apellido', 'apellido', 100),
-            'nombre' => required_text($body, 'nombre', 'nombre', 100),
-            'dni' => $dni === '' ? null : $dni,
-            'domicilio' => optional_text($body['domicilio'] ?? null, 150),
-            'numero_domicilio' => optional_text($body['numero_domicilio'] ?? null, 20),
-            'localidad' => optional_text($body['localidad'] ?? null, 100),
-            'telefono' => self::normalizePhone($body['telefono'] ?? null, $reminderEnabled),
-            'email' => self::optionalEmail($body['email'] ?? null),
-            'domicilio_alternativo' => optional_text($body['domicilio_alternativo'] ?? null, 255),
-        ];
-    }
+        $name = required_text($body, 'nombre', 'nombre', 100);
+        $collectorId = positive_id($body['id_cobrador'] ?? null, 'cobrador');
+        $categoryId = positive_id($body['id_categoria'] ?? null, 'categoría');
+        $bloodId = self::optionalPositiveId($body['id_grupo_sanguineo'] ?? null, 'grupo sanguíneo');
+        $stateId = self::optionalPositiveId($body['id_estado'] ?? null, 'estado');
 
-    private static function normalizePhone(mixed $value, bool $requiredForReminder): ?string
-    {
-        $raw = trim((string)$value);
-        if ($raw === '') {
-            if ($requiredForReminder) {
-                api_error(
-                    'Para activar los recordatorios, ingresá primero un teléfono.',
-                    'VALIDATION_ERROR',
-                    422,
-                    ['campo' => 'telefono']
-                );
-            }
-            return null;
+        self::validarCatalogo($db, 'cobrador', 'id_cobrador', $collectorId, 'cobrador', $current && (int)$current['id_cobrador'] === $collectorId);
+        self::validarCatalogo($db, 'categoria', 'id_categoria', $categoryId, 'categoría', $current && (int)$current['id_categoria'] === $categoryId);
+        if ($bloodId !== null) {
+            self::validarCatalogo(
+                $db,
+                'grupo_sanguineo',
+                'id_grupo_sanguineo',
+                $bloodId,
+                'grupo sanguíneo',
+                $current && $current['id_grupo_sanguineo'] !== null && (int)$current['id_grupo_sanguineo'] === $bloodId
+            );
         }
-
-        $digits = preg_replace('/\D+/', '', $raw) ?? '';
-        if (str_starts_with($digits, '00')) {
-            $digits = substr($digits, 2);
-        }
-
-        if (str_starts_with($digits, '549')) {
-            $digits = substr($digits, 3);
-        } elseif (str_starts_with($digits, '54')) {
-            $digits = substr($digits, 2);
-        }
-
-        // Quita el 0 de larga distancia nacional.
-        $digits = preg_replace('/^0+/', '', $digits) ?? '';
-
-        // Compatibilidad con el formato celular argentino antiguo:
-        // característica + 15 + número local.
-        if (strlen($digits) > 10 && preg_match('/^(\d{2,4})15(\d{6,8})$/', $digits, $matches)) {
-            $without15 = $matches[1] . $matches[2];
-            if (strlen($without15) === 10) {
-                $digits = $without15;
-            }
-        }
-
-        if (!preg_match('/^\d{10}$/', $digits)) {
-            api_error(
-                'El teléfono debe tener 10 dígitos (característica + número). Podés ingresarlo con guiones, espacios, 0, 15 o +54; el sistema lo normaliza al guardar.',
-                'VALIDATION_ERROR',
-                422,
-                ['campo' => 'telefono']
+        if ($stateId !== null) {
+            self::validarCatalogo(
+                $db,
+                'estado',
+                'id_estado',
+                $stateId,
+                'estado',
+                $current && $current['id_estado'] !== null && (int)$current['id_estado'] === $stateId
             );
         }
 
+        $dni = preg_replace('/\D+/', '', (string)($body['dni'] ?? '')) ?? '';
+        if ($dni !== '' && !preg_match('/^[0-9]{6,15}$/', $dni)) {
+            api_error('El DNI debe contener entre 6 y 15 dígitos.', 'VALIDATION_ERROR', 422, ['campo' => 'dni']);
+        }
+        if ($dni !== '') {
+            $sql = 'SELECT id_socio FROM socios WHERE dni = ?' . ($editingId !== null ? ' AND id_socio <> ?' : '') . ' LIMIT 1';
+            $statement = $db->prepare($sql);
+            $statement->execute($editingId !== null ? [$dni, $editingId] : [$dni]);
+            if ($statement->fetchColumn()) api_error('Ya existe un socio con ese DNI.', 'DNI_DUPLICADO', 409, ['campo' => 'dni']);
+        }
+
+        $birth = valid_date($body['fecha_nacimiento'] ?? '', 'nacimiento', false);
+        if ($birth !== null && $birth > date('Y-m-d')) {
+            api_error('La fecha de nacimiento no puede ser futura.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_nacimiento']);
+        }
+        $joined = valid_date($body['fecha_ingreso'] ?? '', 'ingreso', false);
+        if ($joined !== null && $joined > date('Y-m-d')) {
+            api_error('La fecha de ingreso no puede ser futura.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_ingreso']);
+        }
+        if ($birth !== null && $joined !== null && $joined < $birth) {
+            api_error('La fecha de ingreso no puede ser anterior a la fecha de nacimiento.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_ingreso']);
+        }
+
+        return [
+            'nombre' => $name,
+            'id_cobrador' => $collectorId,
+            'id_grupo_sanguineo' => $bloodId,
+            'id_categoria' => $categoryId,
+            'domicilio' => optional_text($body['domicilio'] ?? null, 100),
+            'numero' => optional_text($body['numero'] ?? null, 20),
+            'telefono_movil' => self::normalizarTelefono($body['telefono_movil'] ?? null),
+            'telefono_fijo' => self::normalizarTelefono($body['telefono_fijo'] ?? null),
+            'observaciones' => optional_text($body['observaciones'] ?? null, 8000),
+            'fecha_nacimiento' => $birth,
+            'id_estado' => $stateId,
+            'domicilio_cobro' => optional_text($body['domicilio_cobro'] ?? null, 150),
+            'dni' => $dni === '' ? null : $dni,
+            'fecha_ingreso' => $joined,
+        ];
+    }
+
+    private static function optionalPositiveId(mixed $value, string $label): ?int
+    {
+        if ($value === null || trim((string)$value) === '') return null;
+        return positive_id($value, $label);
+    }
+
+    private static function validarCatalogo(PDO $db, string $table, string $idColumn, int $id, string $label, bool $allowInactive = false): void
+    {
+        $allowed = [
+            'cobrador' => 'id_cobrador',
+            'categoria' => 'id_categoria',
+            'grupo_sanguineo' => 'id_grupo_sanguineo',
+            'estado' => 'id_estado',
+        ];
+        if (($allowed[$table] ?? null) !== $idColumn) {
+            throw new LogicException('Catálogo de socio no permitido.');
+        }
+        $statement = $db->prepare("SELECT activo FROM {$table} WHERE {$idColumn} = ? LIMIT 1");
+        $statement->execute([$id]);
+        $active = $statement->fetchColumn();
+        if ($active === false) api_error("El {$label} seleccionado no existe.", 'VALIDATION_ERROR', 422);
+        if (!(bool)$active && !$allowInactive) api_error("El {$label} seleccionado está inactivo.", 'VALIDATION_ERROR', 422);
+    }
+
+    private static function normalizarTelefono(mixed $value): ?string
+    {
+        $text = trim((string)$value);
+        if ($text === '') return null;
+        $digits = preg_replace('/\D+/', '', $text) ?? '';
+        if ($digits === '' || strlen($digits) < 6 || strlen($digits) > 20) {
+            api_error('El teléfono debe contener entre 6 y 20 dígitos.', 'VALIDATION_ERROR', 422);
+        }
         return $digits;
     }
 
-    private static function optionalEmail(mixed $value): ?string
-    {
-        $email = trim((string)$value);
-        if ($email === '') return null;
-        if (strlen($email) > 190 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
-            api_error('El correo electrónico no es válido.', 'VALIDATION_ERROR', 422, ['campo' => 'email']);
-        }
-        return strtolower($email);
-    }
-
-    private static function optionalForeignId(
+    private static function insertarHistorialEstado(
         PDO $db,
-        mixed $value,
-        string $table,
-        string $column,
-        string $label,
-        ?int $currentId = null
-    ): ?int {
-        if ($value === null || $value === '' || (string)$value === '0') return null;
-        $id = positive_id($value, $label);
-        $statement = $db->prepare("SELECT activo FROM {$table} WHERE {$column} = ? LIMIT 1");
-        $statement->execute([$id]);
-        $row = $statement->fetch();
-        if (!$row) api_error("La {$label} seleccionada no existe.", 'VALIDATION_ERROR');
-        if (!(bool)$row['activo'] && $id !== $currentId) {
-            api_error("La {$label} seleccionada está inactiva.", 'VALIDATION_ERROR');
-        }
-        return $id;
-    }
-
-    private static function booleanValue(mixed $value): bool
-    {
-        if (is_bool($value)) return $value;
-        return in_array(strtolower(trim((string)$value)), ['1', 'true', 'si', 'sí', 'on'], true);
-    }
-
-    private static function setHistoryVariables(
-        PDO $db,
-        int $userId,
-        ?string $date,
+        int $id,
+        string $event,
+        ?int $previousState,
+        ?int $newState,
+        ?bool $previousActive,
+        ?bool $newActive,
+        string $eventDate,
         ?string $reason,
-        ?string $observations
+        ?string $observation,
+        int $userId
     ): void {
         $statement = $db->prepare(
-            'SET @lalcec_id_usuario = ?, @lalcec_fecha_estado = ?, @lalcec_motivo_estado = ?, @lalcec_observaciones_estado = ?'
-        );
-        $statement->execute([$userId, $date, $reason, $observations]);
-    }
-
-    private static function clearHistoryVariables(PDO $db): void
-    {
-        $db->exec(
-            'SET @lalcec_id_usuario = NULL, @lalcec_fecha_estado = NULL, @lalcec_motivo_estado = NULL, @lalcec_observaciones_estado = NULL'
-        );
-    }
-
-    private static function clearHistoryVariablesSilently(PDO $db): void
-    {
-        try {
-            self::clearHistoryVariables($db);
-        } catch (Throwable) {
-            // No oculta el error principal.
-        }
-    }
-
-    private static function ensureStateHistory(
-        PDO $db,
-        int $partnerId,
-        string $event,
-        ?string $previousStatus,
-        string $newStatus,
-        ?string $date,
-        ?string $reason,
-        ?string $observations,
-        int $userId,
-        int $minimumHistoryId = 0
-    ): void {
-        $check = $db->prepare(
-            'SELECT id_historial_estado
-             FROM socios_historial_estados
-             WHERE id_socio = ? AND tipo_evento = ? AND id_historial_estado > ?
-             ORDER BY id_historial_estado DESC
-             LIMIT 1'
-        );
-        $check->execute([$partnerId, $event, $minimumHistoryId]);
-        if ($check->fetch()) return;
-
-        $db->prepare(
             'INSERT INTO socios_historial_estados
-             (id_socio, tipo_evento, estado_anterior, estado_nuevo, fecha_efectiva, motivo, observaciones, id_usuario)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([
-            $partnerId,
+             (id_socio, tipo_evento, id_estado_anterior, id_estado_nuevo,
+              vigente_anterior, vigente_nuevo, fecha_evento, motivo, observacion,
+              id_usuario, origen)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \'SISTEMA\')'
+        );
+        $statement->execute([
+            $id,
             $event,
-            $previousStatus,
-            $newStatus,
-            $date,
+            $previousState,
+            $newState,
+            $previousActive === null ? null : (int)$previousActive,
+            $newActive === null ? null : (int)$newActive,
+            $eventDate,
             $reason,
-            $observations,
+            $observation,
             $userId,
         ]);
     }
 
-    private static function throwDuplicateSocioError(Throwable $error): never
+    private static function cerrarAvisoCumpleaniosInterno(PDO $db, array $auth, array $socio, string $origin): ?array
     {
-        $message = $error->getMessage();
-        if (str_contains($message, 'uq_socios_personas_dni')) {
-            api_error('Ya existe otro socio con ese DNI.', 'DNI_DUPLICADO', 409);
-        }
-        api_error(
-            'No se pudo guardar el socio porque existe un dato único repetido.',
-            'REGISTRO_DUPLICADO',
-            409
+        $birth = trim((string)($socio['fecha_nacimiento'] ?? ''));
+        if ($birth === '' || !(bool)($socio['vigente'] ?? false)) return null;
+        $age = self::edadActual($birth);
+        if ($age < 18 || $age > 23) return null;
+
+        $year = (int)date('Y');
+        $existing = $db->prepare(
+            "SELECT id_cierre, cerrado_en FROM socios_cumpleanios_cierres
+             WHERE id_socio = ? AND anio = ? AND rango = '18-23' LIMIT 1"
         );
+        $existing->execute([(int)$socio['id_socio'], $year]);
+        $row = $existing->fetch();
+        if ($row) {
+            return [
+                'id_cierre' => (int)$row['id_cierre'],
+                'id_socio' => (int)$socio['id_socio'],
+                'anio' => $year,
+                'rango' => '18-23',
+                'edad_al_cierre' => $age,
+                'ya_cerrado' => true,
+            ];
+        }
+
+        $statement = $db->prepare(
+            "INSERT INTO socios_cumpleanios_cierres
+             (id_socio, anio, rango, edad_al_cierre, fecha_nacimiento,
+              cerrado_por_usuario_id, cerrado_por_nombre, origen)
+             VALUES (?, ?, '18-23', ?, ?, ?, ?, ?)"
+        );
+        $statement->execute([
+            (int)$socio['id_socio'],
+            $year,
+            $age,
+            $birth,
+            $auth['id_usuario'],
+            clean_text($auth['usuario'] ?? 'USUARIO', 100),
+            clean_text($origin, 30),
+        ]);
+        $closureId = (int)$db->lastInsertId();
+        $closure = [
+            'id_cierre' => $closureId,
+            'id_socio' => (int)$socio['id_socio'],
+            'anio' => $year,
+            'rango' => '18-23',
+            'edad_al_cierre' => $age,
+            'fecha_nacimiento' => $birth,
+            'origen' => $origin,
+            'ya_cerrado' => false,
+        ];
+        self::auditarSocio($db, $auth, 'socios_cumpleanios_cierres', $closureId, 'INSERT', null, $closure);
+        return $closure;
+    }
+
+    private static function edadActual(string $birth): int
+    {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $birth);
+        if (!$date) return -1;
+        return (int)$date->diff(new DateTimeImmutable('today'))->y;
+    }
+
+    /**
+     * La estructura de `auditoria` en RH Negativo V2 es distinta al helper
+     * global heredado. Esta escritura local evita romper las operaciones del
+     * módulo y respeta exactamente el esquema actual.
+     */
+    private static function auditarSocio(
+        PDO $db,
+        array $auth,
+        string $table,
+        int $recordId,
+        string $action,
+        mixed $before,
+        mixed $after
+    ): void {
+        if (!in_array($action, ['INSERT', 'UPDATE', 'DELETE', 'MIGRACION', 'FUSION'], true)) {
+            throw new LogicException('Acción de auditoría no permitida.');
+        }
+        $encode = static function (mixed $value): ?string {
+            if ($value === null) return null;
+            $json = json_encode(
+                $value,
+                JSON_UNESCAPED_UNICODE
+                    | JSON_UNESCAPED_SLASHES
+                    | JSON_INVALID_UTF8_SUBSTITUTE
+                    | JSON_PARTIAL_OUTPUT_ON_ERROR
+                    | JSON_PRESERVE_ZERO_FRACTION
+            );
+            return is_string($json) ? $json : '{"error":"No se pudo serializar la auditoría."}';
+        };
+
+        $statement = $db->prepare(
+            'INSERT INTO auditoria
+             (tabla, id_registro, accion, datos_anteriores, datos_nuevos, id_usuario, origen)
+             VALUES (?, ?, ?, ?, ?, ?, \'SISTEMA\')'
+        );
+        $statement->execute([
+            clean_text($table, 64, false),
+            $recordId,
+            $action,
+            $encode($before),
+            $encode($after),
+            $auth['id_usuario'],
+        ]);
+    }
+
+    private static function resolverErrorPersistenciaSocio(PDOException $error): never
+    {
+        $driverCode = (int)($error->errorInfo[1] ?? 0);
+        if ($driverCode === 1062) {
+            api_error('Ya existe un socio con ese DNI.', 'DNI_DUPLICADO', 409, ['campo' => 'dni']);
+        }
+        if ($driverCode === 1451 || $driverCode === 1452) {
+            api_error('La operación no pudo completarse por una relación de datos inválida.', 'RELACION_INVALIDA', 409);
+        }
+        throw $error;
     }
 }

@@ -2,13 +2,17 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faAddressBook,
-  faBell,
   faCalendarDays,
+  faCakeCandles,
   faCheck,
+  faChevronDown,
+  faChevronLeft,
+  faChevronRight,
   faCircleInfo,
   faClockRotateLeft,
-  faEnvelope,
-  faHouse,
+  faEye,
+  faFilter,
+  faDroplet,
   faIdCard,
   faPen,
   faReceipt,
@@ -18,6 +22,7 @@ import {
   faUser,
   faUserSlash,
   faWallet,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../Global/ModulePage";
 import GlobalDivTable from "../Global/GlobalDivTable";
@@ -37,276 +42,526 @@ import {
   EntityTabs,
   FloatingField,
 } from "../Global/Formularios/TabbedForm";
-import {
-  onlyDigits,
-  upperWithoutDigits,
-} from "../Global/Formularios/inputSanitizers";
-import {
-  getPrimarySearchTerm,
-  matchesEverySearchTerm,
-  normalizeSearchQuery,
-} from "../Global/Formularios/searchUtils";
+import { onlyDigits } from "../Global/Formularios/inputSanitizers";
+import { normalizeSearchQuery } from "../Global/Formularios/searchUtils";
 import { canWrite } from "../_shared/auth/session";
 import { sociosApi } from "./api/sociosApi";
 import { useSocios } from "./hooks/useSocios";
 import "./Socios.css";
-import "./modales/SociosModal.css";
 
-const PERSON = "PERSONA";
-const FORM_TAB_MAIN = "principal";
-const FORM_TAB_CONFIG = "configuracion";
-const INFO_TAB_SUMMARY = "general";
-const INFO_TAB_CONTACT = "contacto";
-const INFO_TAB_HISTORY = "historial";
-const INFO_TAB_PAYMENTS = "pagos";
 const PAGE_SIZE = 100;
-const PARTNER_STATUS_STORAGE_KEY = "lalcec_socios_estado_seleccionado";
+const STATUS_STORAGE_KEY = "rh_v2_socios_vigencia";
+const FORM_TAB_PERSONAL = "personal";
+const FORM_TAB_MANAGEMENT = "gestion";
+const INFO_TAB_GENERAL = "general";
+const INFO_TAB_CONTACTS = "contactos";
+const INFO_TAB_PAYMENTS = "pagos";
+const INFO_TAB_HISTORY = "historial";
 
-function readSharedPartnerStatus() {
-  if (typeof window === "undefined") return "ACTIVO";
-  try {
-    return window.sessionStorage.getItem(PARTNER_STATUS_STORAGE_KEY) ===
-      "INACTIVO"
-      ? "INACTIVO"
-      : "ACTIVO";
-  } catch (_error) {
-    return "ACTIVO";
-  }
-}
+const CONTACT_OPTIONS = [
+  { value: "CONTACTADO", label: "Contactados" },
+  { value: "PENDIENTE", label: "Pendientes" },
+  { value: "NO_CONTACTADO", label: "No contactados" },
+  { value: "SIN_GESTION", label: "Sin gestión" },
+];
+const DEBT_OPTIONS = [
+  { value: "AL_DIA", label: "Al día" },
+  { value: "DEBE_1_2", label: "Debe 1 o 2 meses" },
+  { value: "DEBE_3_MAS", label: "Debe 3 meses o más" },
+];
+const LETTERS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
-function saveSharedPartnerStatus(value) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(
-      PARTNER_STATUS_STORAGE_KEY,
-      value === "INACTIVO" ? "INACTIVO" : "ACTIVO",
-    );
-  } catch (_error) {
-    // La navegación sigue funcionando aunque el almacenamiento esté bloqueado.
-  }
-}
-
-const today = () => {
+function localToday() {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 10);
-};
-const upper = (value) => String(value || "").toLocaleUpperCase("es-AR");
-
-function normalizeArgentinePhone(value) {
-  let digits = String(value || "").replace(/\D/g, "");
-  if (!digits) return "";
-
-  if (digits.startsWith("00")) digits = digits.slice(2);
-
-  if (digits.startsWith("549")) {
-    digits = digits.slice(3);
-  } else if (digits.startsWith("54")) {
-    digits = digits.slice(2);
-  }
-
-  digits = digits.replace(/^0+/, "");
-
-  // Formato celular argentino antiguo: característica + 15 + número local.
-  if (digits.length > 10) {
-    const withLocal15 = digits.match(/^(\d{2,4})15(\d{6,8})$/);
-    if (withLocal15) {
-      const without15 = `${withLocal15[1]}${withLocal15[2]}`;
-      if (without15.length === 10) digits = without15;
-    }
-  }
-
-  return digits;
 }
 
-const hasValidReminderPhone = (value) =>
-  normalizeArgentinePhone(value).length === 10;
-const formatDate = (value) =>
-  value
-    ? new Intl.DateTimeFormat("es-AR", { timeZone: "UTC" }).format(
-        new Date(`${value}T00:00:00Z`),
-      )
-    : "—";
-const formatMoney = (value) =>
-  value === null || value === undefined
-    ? "—"
-    : new Intl.NumberFormat("es-AR", {
-        style: "currency",
-        currency: "ARS",
-        minimumFractionDigits: 2,
-      }).format(Number(value || 0));
-
-const PERSON_EXPORT_COLUMNS = [
-  { label: "N.º", value: (_item, index) => index + 1 },
-  { label: "Socio", key: "denominacion" },
-  { label: "DNI", value: (item) => item.dni || "—" },
-  { label: "Categoría", value: (item) => item.categoria || "SIN CATEGORÍA" },
-  { label: "Fecha de alta", value: (item) => formatDate(item.fecha_alta) },
-  { label: "Localidad", value: (item) => item.localidad || "—" },
-  { label: "Teléfono", value: (item) => item.telefono || "—" },
-  { label: "Correo", value: (item) => item.email || "—" },
-  {
-    label: "Estado",
-    value: (item) => item.estado || (item.activo ? "ACTIVO" : "BAJA"),
-  },
-  {
-    label: "Recordatorio",
-    value: (item) =>
-      item.enviar_recordatorio ? "WHATSAPP" : "SIN AVISO",
-  },
-];
-
-
-function matchesSocioSearch(item, query) {
-  return matchesEverySearchTerm(
-    [
-      item.denominacion,
-      item.apellido,
-      item.nombre,
-      item.dni,
-      item.categoria,
-      item.localidad,
-      item.domicilio,
-      item.numero_domicilio,
-      item.telefono,
-      item.email,
-    ]
-      .filter((value) => value !== undefined && value !== null && value !== "")
-      .join(" "),
-    query,
-  );
+function formatDate(value) {
+  if (!value) return "—";
+  const source = String(value).slice(0, 10);
+  const [year, month, day] = source.split("-");
+  return year && month && day ? `${day}/${month}/${year}` : String(value);
 }
 
-const MONTHS = [
-  "ENERO",
-  "FEBRERO",
-  "MARZO",
-  "ABRIL",
-  "MAYO",
-  "JUNIO",
-  "JULIO",
-  "AGOSTO",
-  "SEPTIEMBRE",
-  "OCTUBRE",
-  "NOVIEMBRE",
-  "DICIEMBRE",
-];
+function formatDateTime(value) {
+  if (!value) return "—";
+  const text = String(value).replace("T", " ");
+  const [date, time = ""] = text.split(" ");
+  return `${formatDate(date)}${time ? ` · ${time.slice(0, 5)}` : ""}`;
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function readStatus() {
+  if (typeof window === "undefined") return "VIGENTE";
+  try {
+    return window.sessionStorage.getItem(STATUS_STORAGE_KEY) === "BAJA"
+      ? "BAJA"
+      : "VIGENTE";
+  } catch {
+    return "VIGENTE";
+  }
+}
+
+function saveStatus(value) {
+  try {
+    window.sessionStorage.setItem(
+      STATUS_STORAGE_KEY,
+      value === "BAJA" ? "BAJA" : "VIGENTE",
+    );
+  } catch {
+    // La pantalla sigue funcionando aunque el storage esté bloqueado.
+  }
+}
 
 function paginationItems(currentPage, totalPages) {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, index) => index + 1);
   }
-
   const items = [1];
   if (currentPage > 4) items.push("ellipsis-left");
-
   const from = Math.max(2, currentPage - 1);
   const to = Math.min(totalPages - 1, currentPage + 1);
   for (let page = from; page <= to; page += 1) items.push(page);
-
   if (currentPage < totalPages - 3) items.push("ellipsis-right");
   items.push(totalPages);
   return items;
 }
 
-const SociosRows = memo(function SociosRows({
-  items,
-  categoryAmounts,
-  writable,
-  onHistory,
-  onEdit,
-  onState,
-  onDelete,
-}) {
+function emptyAdvancedFilters() {
+  return {
+    letra: "",
+    grupo_sanguineo: "",
+    estado: "",
+    deuda: "",
+    ultimo_contacto: "",
+    ingreso_desde: "",
+    ingreso_hasta: "",
+  };
+}
+
+function countAdvanced(filters) {
+  return Object.values(filters).filter((value) => String(value || "").trim()).length;
+}
+
+function selectFirstActive(items, key, preferredName = "") {
+  const preferred = preferredName
+    ? items?.find(
+        (item) =>
+          item.activo &&
+          String(item.nombre || "").toUpperCase() === preferredName.toUpperCase(),
+      )
+    : null;
+  return String((preferred || items?.find((item) => item.activo))?.[key] || "");
+}
+
+function emptyForm(catalogs = {}) {
+  return {
+    id_socio: "",
+    nombre: "",
+    dni: "",
+    fecha_nacimiento: "",
+    id_grupo_sanguineo: "",
+    domicilio: "",
+    numero: "",
+    telefono_movil: "",
+    telefono_fijo: "",
+    domicilio_cobro: "",
+    fecha_ingreso: localToday(),
+    id_estado: selectFirstActive(catalogs.estados, "id_estado", "ACTIVO"),
+    id_categoria: selectFirstActive(catalogs.categorias, "id_categoria"),
+    id_cobrador: selectFirstActive(catalogs.cobradores, "id_cobrador"),
+    observaciones: "",
+  };
+}
+
+function formFromItem(item) {
+  return {
+    id_socio: item.id_socio,
+    nombre: item.nombre || "",
+    dni: item.dni || "",
+    fecha_nacimiento: item.fecha_nacimiento || "",
+    id_grupo_sanguineo: item.id_grupo_sanguineo
+      ? String(item.id_grupo_sanguineo)
+      : "",
+    domicilio: item.domicilio || "",
+    numero: item.numero || "",
+    telefono_movil: item.telefono_movil || "",
+    telefono_fijo: item.telefono_fijo || "",
+    domicilio_cobro: item.domicilio_cobro || "",
+    fecha_ingreso: item.fecha_ingreso || "",
+    id_estado: item.id_estado ? String(item.id_estado) : "",
+    id_categoria: item.id_categoria ? String(item.id_categoria) : "",
+    id_cobrador: item.id_cobrador ? String(item.id_cobrador) : "",
+    observaciones: item.observaciones || "",
+  };
+}
+
+function contactLabel(value) {
+  const key = String(value || "").toUpperCase();
+  if (key === "CONTACTADO") return "CONTACTADO";
+  if (key === "PENDIENTE") return "PENDIENTE";
+  if (key === "NO_CONTACTADO") return "NO CONTACTADO";
+  return "SIN GESTIÓN";
+}
+
+function debtLabel(months) {
+  const count = Number(months || 0);
+  if (count <= 0) return "AL DÍA";
+  return `DEBE ${count} ${count === 1 ? "MES" : "MESES"}`;
+}
+
+const EXPORT_COLUMNS = [
+  { label: "ID", key: "id_socio" },
+  { label: "Socio", key: "nombre" },
+  { label: "DNI", value: (item) => item.dni || "—" },
+  { label: "Grupo sanguíneo", value: (item) => item.grupo_sanguineo || "—" },
+  { label: "Estado", value: (item) => item.estado || "—" },
+  { label: "Categoría", value: (item) => item.categoria || "—" },
+  { label: "Cobrador", value: (item) => item.cobrador || "—" },
+  { label: "Fecha ingreso", value: (item) => formatDate(item.fecha_ingreso) },
+  { label: "Teléfono móvil", value: (item) => item.telefono_movil || "—" },
+  { label: "Deuda actual", value: (item) => debtLabel(item.meses_adeudados) },
+  {
+    label: "Último contacto",
+    value: (item) =>
+      item.ultimo_contacto_fecha
+        ? `${formatDate(item.ultimo_contacto_fecha)} · ${contactLabel(item.ultimo_contacto_estado)}`
+        : "SIN GESTIÓN",
+  },
+  { label: "Vigencia", value: (item) => (item.vigente ? "VIGENTE" : "BAJA") },
+];
+
+function AccordionSection({ title, active, children, onToggle }) {
+  return (
+    <section className={`socios-filterSection ${active ? "is-open" : ""}`.trim()}>
+      <button type="button" className="socios-filterSection__head" onClick={onToggle}>
+        <span>{title}</span>
+        <FontAwesomeIcon icon={faChevronDown} />
+      </button>
+      {active ? <div className="socios-filterSection__body">{children}</div> : null}
+    </section>
+  );
+}
+
+function ChoiceList({ options, value, onChange }) {
+  return (
+    <div className="socios-filterChoices">
+      {options.map((option) => (
+        <button
+          type="button"
+          key={option.value}
+          className={String(value) === String(option.value) ? "is-selected" : ""}
+          onClick={() => onChange(String(value) === String(option.value) ? "" : String(option.value))}
+        >
+          <span>{option.label}</span>
+          {String(value) === String(option.value) ? <FontAwesomeIcon icon={faCheck} /> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AdvancedFilters({ filters, catalogs, onChange, onReset }) {
+  const [open, setOpen] = useState(false);
+  const [section, setSection] = useState("");
+  const rootRef = useRef(null);
+  const activeCount = countAdvanced(filters);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const update = (key, value) => onChange({ ...filters, [key]: value });
+  const toggle = (key) => setSection((current) => (current === key ? "" : key));
+
+  return (
+    <div className="socios-filterRoot" ref={rootRef}>
+      <button
+        type="button"
+        className={`socios-filterTrigger ${open ? "is-open" : ""}`.trim()}
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+      >
+        <FontAwesomeIcon icon={faFilter} />
+        <span>Aplicar Filtros</span>
+        {activeCount ? <strong>{activeCount}</strong> : null}
+        <FontAwesomeIcon icon={faChevronDown} className="socios-filterTrigger__arrow" />
+      </button>
+
+      {open ? (
+        <div className="socios-filterMenu">
+          <AccordionSection
+            title="Filtrar de la A a la Z"
+            active={section === "letter"}
+            onToggle={() => toggle("letter")}
+          >
+            <div className="socios-letterGrid">
+              {LETTERS.map((letter) => (
+                <button
+                  type="button"
+                  key={letter}
+                  className={filters.letra === letter ? "is-selected" : ""}
+                  onClick={() => update("letra", filters.letra === letter ? "" : letter)}
+                >
+                  {letter}
+                </button>
+              ))}
+            </div>
+          </AccordionSection>
+
+          <AccordionSection
+            title="Tipo de sangre"
+            active={section === "blood"}
+            onToggle={() => toggle("blood")}
+          >
+            <ChoiceList
+              options={(catalogs.grupos_sanguineos || []).map((item) => ({
+                value: item.id_grupo_sanguineo,
+                label: item.nombre,
+              }))}
+              value={filters.grupo_sanguineo}
+              onChange={(value) => update("grupo_sanguineo", value)}
+            />
+          </AccordionSection>
+
+          <AccordionSection
+            title="Estado"
+            active={section === "state"}
+            onToggle={() => toggle("state")}
+          >
+            <ChoiceList
+              options={(catalogs.estados || []).map((item) => ({
+                value: item.id_estado,
+                label: item.nombre,
+              }))}
+              value={filters.estado}
+              onChange={(value) => update("estado", value)}
+            />
+          </AccordionSection>
+
+          <AccordionSection
+            title="Deudas / pagos"
+            active={section === "debt"}
+            onToggle={() => toggle("debt")}
+          >
+            <ChoiceList
+              options={DEBT_OPTIONS}
+              value={filters.deuda}
+              onChange={(value) => update("deuda", value)}
+            />
+          </AccordionSection>
+
+          <AccordionSection
+            title="Último contacto"
+            active={section === "contact"}
+            onToggle={() => toggle("contact")}
+          >
+            <ChoiceList
+              options={CONTACT_OPTIONS}
+              value={filters.ultimo_contacto}
+              onChange={(value) => update("ultimo_contacto", value)}
+            />
+          </AccordionSection>
+
+          <AccordionSection
+            title="Fecha de ingreso"
+            active={section === "joined"}
+            onToggle={() => toggle("joined")}
+          >
+            <div className="socios-dateFilter">
+              <label>
+                <span><FontAwesomeIcon icon={faCalendarDays} /> Desde</span>
+                <input
+                  type="date"
+                  value={filters.ingreso_desde}
+                  max={filters.ingreso_hasta || localToday()}
+                  onChange={(event) => update("ingreso_desde", event.target.value)}
+                />
+              </label>
+              <label>
+                <span><FontAwesomeIcon icon={faCalendarDays} /> Hasta</span>
+                <input
+                  type="date"
+                  value={filters.ingreso_hasta}
+                  min={filters.ingreso_desde || undefined}
+                  max={localToday()}
+                  onChange={(event) => update("ingreso_hasta", event.target.value)}
+                />
+              </label>
+              <div className="socios-dateFilter__actions">
+                <button
+                  type="button"
+                  className="is-clear"
+                  onClick={() => onChange({ ...filters, ingreso_desde: "", ingreso_hasta: "" })}
+                >
+                  Limpiar
+                </button>
+                <button type="button" className="is-apply" onClick={() => setOpen(false)}>
+                  Aplicar
+                </button>
+              </div>
+            </div>
+          </AccordionSection>
+
+          <button
+            type="button"
+            className="socios-filterReset"
+            onClick={() => {
+              onReset();
+              setSection("");
+              setOpen(false);
+            }}
+          >
+            Mostrar Todos
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BirthdayContactCard({ items, onView, onClose, writable }) {
+  const [index, setIndex] = useState(0);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    if (!items.length) setIndex(0);
+    else if (index >= items.length) setIndex(Math.max(0, items.length - 1));
+  }, [items.length, index]);
+
+  if (!items.length) return null;
+  const item = items[index];
+  const move = (direction) => {
+    setIndex((current) => (current + direction + items.length) % items.length);
+  };
+
+  const close = async () => {
+    if (!writable || closing) return;
+    setClosing(true);
+    try {
+      await onClose(item);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  return (
+    <aside className="socios-birthdayCard" aria-label="Socios para contactar de 18 a 23 años">
+      <header>
+        <span className="socios-birthdayCard__icon" aria-hidden="true"><FontAwesomeIcon icon={faCakeCandles} /></span>
+        <div>
+          <small>SOCIOS PARA CONTACTAR</small>
+          <strong>18 a 23 años</strong>
+        </div>
+        <span className="socios-birthdayCard__counter">{index + 1}/{items.length}</span>
+        {writable ? (
+          <button
+            type="button"
+            className="socios-birthdayCard__close"
+            onClick={close}
+            disabled={closing}
+            title="Marcar aviso como gestionado este año"
+          >
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
+        ) : null}
+      </header>
+      <div className="socios-birthdayCard__body">
+        <strong className="socios-birthdayCard__name">{item.nombre}</strong>
+        <p>Tiene <b>{item.edad} años</b>. Podés contactarlo para actualizar sus datos o hacer seguimiento.</p>
+        <div className="socios-birthdayCard__meta">
+          <span>ID <b>{item.id_socio}</b></span>
+          <span>NAC. <b>{formatDate(item.fecha_nacimiento)}</b></span>
+        </div>
+      </div>
+      <footer>
+        <button type="button" className="socios-birthdayCard__nav" onClick={() => move(-1)} disabled={items.length < 2}>
+          <FontAwesomeIcon icon={faChevronLeft} />
+        </button>
+        <button type="button" className="socios-birthdayCard__view" onClick={() => onView(item)}>
+          <FontAwesomeIcon icon={faEye} /> Ver socio
+        </button>
+        <button type="button" className="socios-birthdayCard__nav" onClick={() => move(1)} disabled={items.length < 2}>
+          <FontAwesomeIcon icon={faChevronRight} />
+        </button>
+      </footer>
+    </aside>
+  );
+}
+
+const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState, onDelete }) {
   return items.map((item) => (
     <div
-      className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid socios-grid--persona"
+      className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid"
       role="row"
       key={item.id_socio}
     >
       <div className="mov-gridCell entity-main-cell">
-        <strong>{item.denominacion}</strong>
+        <strong>{item.nombre}</strong>
         <small>
-          {[item.localidad, item.domicilio, item.numero_domicilio]
-            .filter(Boolean)
-            .join(" · ") || "SIN DOMICILIO"}
+          {[item.domicilio, item.numero].filter(Boolean).join(" ") || `ID ${item.id_socio}`}
         </small>
       </div>
-      <div className="mov-gridCell is-strong">
-        {item.dni || "—"}
+      <div className="mov-gridCell is-strong">{item.dni || "—"}</div>
+      <div className="mov-gridCell">
+        <span className="socios-bloodChip">{item.grupo_sanguineo || "SIN DATO"}</span>
       </div>
-      <div className="mov-gridCell socios-category-cell socios-category-cell--inline">
-        {item.categoria ? (
-          <>
-            <span className="mov-categoryChip">{item.categoria}</span>
-            <small className="socios-category-amount">
-              {formatMoney(
-                item.monto_cuota ??
-                  categoryAmounts?.[String(item.id_categoria)],
-              )}
-            </small>
-          </>
-        ) : (
-          "—"
-        )}
-      </div>
-      <div className="mov-gridCell entity-main-cell">
-        <span>{item.telefono || "—"}</span>
-        <small>{item.email || ""}</small>
+      <div className="mov-gridCell socios-statusCell">
+        <span className={`socios-statusChip ${item.vigente ? "is-active" : "is-inactive"}`}>
+          {item.vigente ? (item.estado || "ACTIVO") : "BAJA"}
+        </span>
+        <small>{item.categoria || "SIN CATEGORÍA"}</small>
       </div>
       <div className="mov-gridCell">
-        <span
-          className={`socios-reminder-chip ${item.enviar_recordatorio ? "is-enabled" : "is-disabled"}`}
-          title={
-            item.enviar_recordatorio
-              ? "Incluido en los recordatorios de pago del bot de WhatsApp"
-              : "No recibe recordatorios de pago por WhatsApp"
-          }
-        >
-          <FontAwesomeIcon icon={faBell} />
-          <span>{item.enviar_recordatorio ? "WHATSAPP" : "SIN AVISO"}</span>
+        <span className={`socios-debtChip ${Number(item.meses_adeudados) ? "is-due" : "is-ok"}`}>
+          {debtLabel(item.meses_adeudados)}
         </span>
+      </div>
+      <div className="mov-gridCell entity-main-cell socios-contactCell">
+        <strong>{contactLabel(item.ultimo_contacto_estado)}</strong>
+        <small>{item.ultimo_contacto_fecha ? formatDate(item.ultimo_contacto_fecha) : "SIN FECHA"}</small>
       </div>
       <div className="mov-gridCell mov-gridCell--actions">
         <div className="mov-actionsInline">
-          <button
-            className="mov-iconBtn"
-            type="button"
-            title="Ver ficha e historial"
-            onClick={() => onHistory(item)}
-          >
+          <button className="mov-iconBtn" type="button" title="Ver ficha, contactos, pagos e historial" onClick={() => onHistory(item)}>
             <FontAwesomeIcon icon={faCircleInfo} />
           </button>
           {writable ? (
             <>
-              <button
-                className="mov-iconBtn"
-                type="button"
-                title="Editar"
-                onClick={() => onEdit(item)}
-              >
+              <button className="mov-iconBtn" type="button" title="Editar socio" onClick={() => onEdit(item)}>
                 <FontAwesomeIcon icon={faPen} />
               </button>
               <button
-                className={`mov-iconBtn socios-state-action ${
-                  item.activo ? "is-deactivation" : "is-reactivation"
-                }`}
+                className={`mov-iconBtn socios-state-action ${item.vigente ? "is-deactivation" : "is-reactivation"}`}
                 type="button"
-                title={item.activo ? "Dar de baja" : "Reactivar"}
+                title={item.vigente ? "Dar de baja" : "Reactivar"}
                 onClick={() => onState(item)}
               >
-                <FontAwesomeIcon
-                  icon={item.activo ? faUserSlash : faRotateLeft}
-                />
+                <FontAwesomeIcon icon={item.vigente ? faUserSlash : faRotateLeft} />
               </button>
-              <button
-                className="mov-iconBtn mov-iconBtn--danger socios-delete-action"
-                type="button"
-                title="Eliminar definitivamente al socio"
-                aria-label={`Eliminar definitivamente ${item.denominacion}`}
-                onClick={() => onDelete(item)}
-              >
+              <button className="mov-iconBtn mov-iconBtn--danger" type="button" title="Eliminar definitivamente" onClick={() => onDelete(item)}>
                 <FontAwesomeIcon icon={faTrash} />
               </button>
             </>
@@ -317,539 +572,84 @@ const SociosRows = memo(function SociosRows({
   ));
 });
 
-function PaymentYearSelector({ value, options, onChange }) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const closeOnOutsideClick = (event) => {
-      if (!containerRef.current?.contains(event.target)) setOpen(false);
-    };
-
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, []);
+function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const tabs = [
+    { value: FORM_TAB_PERSONAL, label: "Datos personales", icon: faIdCard },
+    { value: FORM_TAB_MANAGEMENT, label: "Gestión", icon: faTags },
+  ];
+  const activeValue = (key) => String(form[key] || "").trim() !== "";
 
   return (
-    <div className="socios-payment-year-chip" ref={containerRef}>
-      <button
-        type="button"
-        className={open ? "is-open" : ""}
-        onClick={() => setOpen((current) => !current)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={`Año ${value}`}
-      >
-        <FontAwesomeIcon icon={faCalendarDays} />
-        <span>{value}</span>
-        <i aria-hidden="true" />
-      </button>
+    <div className="socios-form">
+      <EntityTabs tabs={tabs} value={activeTab} onChange={onTabChange} idPrefix="socios-form" ariaLabel="Datos del socio" />
 
-      {open ? (
-        <div className="socios-payment-year-chip__menu" role="listbox">
-          {options.map((year) => {
-            const selected = Number(year) === Number(value);
-            return (
-              <button
-                type="button"
-                role="option"
-                aria-selected={selected}
-                className={selected ? "is-selected" : ""}
-                key={year}
-                onClick={() => {
-                  onChange(year);
-                  setOpen(false);
-                }}
-              >
-                {year}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function PaymentCalendar({ payments = [], item }) {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
-  const admissionDate = item?.fecha_alta
-    ? new Date(`${item.fecha_alta}T00:00:00`)
-    : null;
-  const admissionYear = admissionDate?.getFullYear() || currentYear - 1;
-  const admissionMonth = admissionDate?.getMonth() + 1 || 1;
-  const years = Array.from(
-    new Set([
-      currentYear,
-      currentYear - 1,
-      ...payments.map((payment) => Number(payment.anio)),
-    ]),
-  )
-    .filter((year) => Number.isFinite(year) && year >= admissionYear)
-    .sort((left, right) => right - left);
-  const [selectedYear, setSelectedYear] = useState(
-    years.includes(currentYear) ? currentYear : years[0] || currentYear,
-  );
-
-  const paymentMap = new Map(
-    payments
-      .filter((payment) => Number(payment.anio) === selectedYear)
-      .map((payment) => [Number(payment.mes), payment]),
-  );
-  const dueStart = selectedYear === admissionYear ? admissionMonth : 1;
-  const dueEnd =
-    selectedYear < currentYear
-      ? 12
-      : selectedYear === currentYear
-        ? currentMonth
-        : 0;
-  const dueMonths = Math.max(0, dueEnd - dueStart + 1);
-  let paidDue = 0;
-  for (let month = dueStart; month <= dueEnd; month += 1) {
-    if (paymentMap.has(month)) paidDue += 1;
-  }
-  const pendingDue = Math.max(0, dueMonths - paidDue);
-  const paidTotal = Array.from(paymentMap.values()).filter(
-    (payment) => String(payment.estado || "PAGADO").toUpperCase() === "PAGADO",
-  ).length;
-  const condonedTotal = Array.from(paymentMap.values()).filter(
-    (payment) => String(payment.estado || "PAGADO").toUpperCase() === "CONDONADO",
-  ).length;
-  const statusLabel =
-    selectedYear > currentYear
-      ? "Año futuro"
-      : pendingDue === 0
-        ? selectedYear < currentYear
-          ? "Año completo"
-          : "Al día"
-        : selectedYear < currentYear
-          ? `${pendingDue} ${pendingDue === 1 ? "mes pendiente" : "meses pendientes"}`
-          : `Atrasado ${pendingDue} ${pendingDue === 1 ? "mes" : "meses"}`;
-
-  return (
-    <div className="socios-payments-card">
-      <div className="socios-payments-toolbar">
-        <div className="socios-payments-control">
-          <strong>Año</strong>
-          <PaymentYearSelector
-            value={selectedYear}
-            options={years}
-            onChange={setSelectedYear}
-          />
-        </div>
-        <div className="socios-payments-control">
-          <strong>Estado</strong>
-          <span
-            className={`socios-payment-status ${pendingDue ? "is-danger" : "is-success"}`}
-          >
-            {statusLabel}
-          </span>
-        </div>
-        <div className="socios-payments-legend">
-          <span>
-            <i className="is-paid" /> Pagado
-          </span>
-          <span>
-            <i className="is-condoned" /> Condonado
-          </span>
-          <span>
-            <i className="is-pending" /> Pendiente
-          </span>
-        </div>
-      </div>
-
-      <div className="socios-payments-heading">
-        <strong>Meses — {selectedYear}</strong>
-        <div>
-          <span className="is-success">
-            <FontAwesomeIcon icon={faCheck} /> {paidTotal} pagados
-          </span>
-          {condonedTotal > 0 ? (
-            <span className="is-condoned">{condonedTotal} condonados</span>
-          ) : null}
-          <span className="is-danger">× {pendingDue} pendientes</span>
-        </div>
-      </div>
-
-      <div className="socios-payments-grid">
-        {MONTHS.map((monthName, index) => {
-          const month = index + 1;
-          const payment = paymentMap.get(month);
-          const beforeAdmission =
-            selectedYear === admissionYear && month < admissionMonth;
-          const future =
-            selectedYear > currentYear ||
-            (selectedYear === currentYear && month > currentMonth);
-          const isCondoned =
-            String(payment?.estado || "PAGADO").toUpperCase() === "CONDONADO";
-          const stateClass = payment
-            ? isCondoned
-              ? "is-condoned"
-              : "is-paid"
-            : beforeAdmission
-              ? "is-not-applicable"
-              : future
-                ? "is-future"
-                : "is-pending";
-          const title = payment
-            ? isCondoned
-              ? `Condonado el ${formatDate(payment.fecha_pago)} · Sin ingreso contable`
-              : `${formatDate(payment.fecha_pago)} · ${formatMoney(payment.monto)} · ${payment.medio_pago || "Medio sin informar"}`
-            : beforeAdmission
-              ? "Período anterior al alta"
-              : future
-                ? "Período todavía no vencido"
-                : "Período pendiente";
-          return (
-            <article
-              className={`socios-payment-month ${stateClass}`}
-              key={monthName}
-              title={title}
-            >
-              <strong>{monthName}</strong>
-              <span aria-hidden="true" />
-              {payment ? <small>{formatDate(payment.fecha_pago)}</small> : null}
-            </article>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function StateHistory({ events = [] }) {
-  if (!events.length) {
-    return <InfoEmpty>Sin eventos de estado registrados.</InfoEmpty>;
-  }
-
-  return (
-    <div className="socios-state-timeline">
-      {events.map((event) => {
-        const active = event.estado_nuevo === "ACTIVO";
-        return (
-          <article
-            className={`socios-state-event ${active ? "is-active" : "is-inactive"}`}
-            key={event.id_historial_estado}
-          >
-            <span className="socios-state-event__dot" aria-hidden="true" />
-            <div className="socios-state-event__content">
-              <div>
-                <strong>{event.tipo_evento}</strong>
-                <time>{formatDate(event.fecha_efectiva)}</time>
-              </div>
-              <p>
-                {event.estado_anterior
-                  ? `${event.estado_anterior} → ${event.estado_nuevo}`
-                  : `Estado inicial: ${event.estado_nuevo}`}
-              </p>
-              {event.motivo ? <small>Motivo: {event.motivo}</small> : null}
-              {event.observaciones ? (
-                <small>{event.observaciones}</small>
-              ) : null}
-              {event.usuario ? <em>Registrado por {event.usuario}</em> : null}
-            </div>
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function emptyForm(catalogs = {}) {
-  return {
-    id_socio: "",
-    tipo_socio: PERSON,
-    apellido: "",
-    nombre: "",
-    dni: "",
-    domicilio: "",
-    numero_domicilio: "",
-    localidad: "",
-    telefono: "",
-    email: "",
-    domicilio_alternativo: "",
-    fecha_alta: today(),
-    id_categoria: catalogs.categorias?.find((item) => item.activo)?.id_categoria
-      ? String(catalogs.categorias.find((item) => item.activo).id_categoria)
-      : "",
-    id_medio_pago: catalogs.medios_pago?.find((item) => item.activo)
-      ?.id_medio_pago
-      ? String(catalogs.medios_pago.find((item) => item.activo).id_medio_pago)
-      : "",
-    enviar_recordatorio: false,
-    observaciones: "",
-  };
-}
-
-function activeOrCurrent(items, idKey, currentId) {
-  return (items || []).filter(
-    (item) => item.activo || String(item[idKey]) === String(currentId || ""),
-  );
-}
-
-function PartnerForm({
-  form,
-  setForm,
-  catalogs,
-  activeTab,
-  onTabChange,
-}) {
-  const update = (key, value) =>
-    setForm((current) => ({ ...current, [key]: value }));
-  const reminderPhoneReady = hasValidReminderPhone(form.telefono);
-  const reminderDisabled = !reminderPhoneReady && !form.enviar_recordatorio;
-
-  return (
-    <div className="entity-form socios-modal__form">
-      <EntityTabs
-        tabs={[
-          {
-            value: FORM_TAB_MAIN,
-            label: "Datos personales",
-            icon: faUser,
-          },
-          {
-            value: FORM_TAB_CONFIG,
-            label: "Contacto y membresía",
-            icon: faAddressBook,
-          },
-        ]}
-        value={activeTab}
-        onChange={onTabChange}
-        idPrefix="socio-persona-form-tab"
-        ariaLabel="Secciones de la ficha"
-      />
-
-      {activeTab === FORM_TAB_MAIN ? (
-        <EntityFormPanel
-          tabValue={FORM_TAB_MAIN}
-          idPrefix="socio-persona-form-tab"
-          eyebrow="Ficha principal"
-          title="Identificación personal"
-          icon={faIdCard}
-          tag="Datos obligatorios"
-          bodyClassName="entity-form__grid"
-        >
-          <>
-            <FloatingField label="Apellido *" active={Boolean(form.apellido)}>
-              <input
-                value={form.apellido}
-                onChange={(event) =>
-                  update("apellido", upperWithoutDigits(event.target.value))
-                }
-                maxLength={100}
-                placeholder=" "
-                autoFocus
-              />
-            </FloatingField>
-            <FloatingField label="Nombre *" active={Boolean(form.nombre)}>
-              <input
-                value={form.nombre}
-                onChange={(event) =>
-                  update("nombre", upperWithoutDigits(event.target.value))
-                }
-                maxLength={100}
-                placeholder=" "
-              />
-            </FloatingField>
-            <FloatingField label="DNI" active={Boolean(form.dni)}>
-              <input
-                value={form.dni}
-                onChange={(event) => update("dni", onlyDigits(event.target.value, 8))}
-                maxLength={8}
-                inputMode="numeric"
-                placeholder=" "
-              />
-            </FloatingField>
-          </>
-
-          <FloatingField label="Fecha de alta *" active>
-            <input
-              type="date"
-              value={form.fecha_alta}
-              onChange={(event) => update("fecha_alta", event.target.value)}
-              max={today()}
-            />
+      {activeTab === FORM_TAB_PERSONAL ? (
+        <EntityFormPanel tabValue={FORM_TAB_PERSONAL} idPrefix="socios-form" title="Identificación y contacto" icon={faUser}>
+          <FloatingField label="Nombre completo *" wide active={activeValue("nombre")}>
+            <input value={form.nombre} maxLength={100} onChange={(event) => set("nombre", event.target.value)} required placeholder=" " />
+          </FloatingField>
+          <FloatingField label="DNI" active={activeValue("dni")}>
+            <input value={form.dni} inputMode="numeric" maxLength={15} onChange={(event) => set("dni", onlyDigits(event.target.value).slice(0, 15))} placeholder=" " />
+          </FloatingField>
+          <FloatingField label="Fecha de nacimiento" active={activeValue("fecha_nacimiento")}>
+            <input type="date" value={form.fecha_nacimiento} max={localToday()} onChange={(event) => set("fecha_nacimiento", event.target.value)} />
+          </FloatingField>
+          <FloatingField label="Grupo sanguíneo" active={activeValue("id_grupo_sanguineo")}>
+            <select value={form.id_grupo_sanguineo} onChange={(event) => set("id_grupo_sanguineo", event.target.value)}>
+              <option value="">SIN INFORMAR</option>
+              {(catalogs.grupos_sanguineos || []).map((item) => (
+                <option key={item.id_grupo_sanguineo} value={item.id_grupo_sanguineo}>{item.nombre}</option>
+              ))}
+            </select>
+          </FloatingField>
+          <FloatingField label="Domicilio" active={activeValue("domicilio")}>
+            <input value={form.domicilio} maxLength={100} onChange={(event) => set("domicilio", event.target.value)} placeholder=" " />
+          </FloatingField>
+          <FloatingField label="Número" active={activeValue("numero")}>
+            <input value={form.numero} maxLength={20} onChange={(event) => set("numero", event.target.value)} placeholder=" " />
+          </FloatingField>
+          <FloatingField label="Teléfono móvil" active={activeValue("telefono_movil")}>
+            <input value={form.telefono_movil} inputMode="tel" maxLength={20} onChange={(event) => set("telefono_movil", onlyDigits(event.target.value).slice(0, 20))} placeholder=" " />
+          </FloatingField>
+          <FloatingField label="Teléfono fijo" active={activeValue("telefono_fijo")}>
+            <input value={form.telefono_fijo} inputMode="tel" maxLength={20} onChange={(event) => set("telefono_fijo", onlyDigits(event.target.value).slice(0, 20))} placeholder=" " />
+          </FloatingField>
+          <FloatingField label="Domicilio de cobro" wide active={activeValue("domicilio_cobro")}>
+            <input value={form.domicilio_cobro} maxLength={150} onChange={(event) => set("domicilio_cobro", event.target.value)} placeholder=" " />
           </FloatingField>
         </EntityFormPanel>
       ) : (
-        <EntityFormPanel
-          tabValue={FORM_TAB_CONFIG}
-          idPrefix="socio-persona-form-tab"
-          eyebrow="Información complementaria"
-          title="Contacto, cuota y recordatorios"
-          icon={faAddressBook}
-          tag="Socio persona"
-          bodyClassName="socios-form-panel__body--membership"
-        >
-          <div className="entity-form__grid socios-contact-grid">
-            <FloatingField
-              label="Domicilio"
-              active={Boolean(form.domicilio)}
-              wide
-            >
-              <input
-                value={form.domicilio}
-                onChange={(event) =>
-                  update("domicilio", upper(event.target.value))
-                }
-                maxLength={150}
-                placeholder=" "
-              />
-            </FloatingField>
-                          <FloatingField
-                label="Número"
-                active={Boolean(form.numero_domicilio)}
-              >
-                <input
-                  value={form.numero_domicilio}
-                  onChange={(event) =>
-                    update("numero_domicilio", onlyDigits(event.target.value, 20))
-                  }
-                  maxLength={20}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder=" "
-                />
-              </FloatingField>
-            <FloatingField label="Localidad" active={Boolean(form.localidad)}>
-                <input
-                  value={form.localidad}
-                  onChange={(event) =>
-                    update("localidad", upperWithoutDigits(event.target.value))
-                  }
-                  maxLength={100}
-                  placeholder=" "
-                />
-              </FloatingField>
-            <FloatingField
-              label="Teléfono"
-              active={Boolean(form.telefono)}
-              placeholderOnFloat
-            >
-              <input
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={form.telefono}
-                onChange={(event) =>
-                  update("telefono", onlyDigits(event.target.value, 15))
-                }
-                onBlur={(event) => {
-                  const normalized = normalizeArgentinePhone(event.target.value);
-                  if (normalized.length === 10) update("telefono", normalized);
-                }}
-                maxLength={15}
-                placeholder="Ej: 3564672304"
-              />
-            </FloatingField>
-            <FloatingField label="Correo" active={Boolean(form.email)}>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(event) => update("email", event.target.value)}
-                maxLength={190}
-                placeholder=" "
-              />
-            </FloatingField>
-            <FloatingField
-              label="Domicilio alternativo"
-              active={Boolean(form.domicilio_alternativo)}
-              wide
-            >
-              <input
-                value={form.domicilio_alternativo}
-                onChange={(event) =>
-                  update("domicilio_alternativo", upper(event.target.value))
-                }
-                maxLength={255}
-                placeholder=" "
-              />
-            </FloatingField>
-            <FloatingField label="Categoría" active>
-              <select
-                value={form.id_categoria}
-                onChange={(event) => update("id_categoria", event.target.value)}
-              >
-                <option value="">SIN CATEGORÍA</option>
-                {activeOrCurrent(
-                  catalogs.categorias,
-                  "id_categoria",
-                  form.id_categoria,
-                ).map((item) => (
-                  <option value={item.id_categoria} key={item.id_categoria}>
-                    {item.nombre} · {formatMoney(item.monto_cuota)}
-                    {item.activo ? "" : " (BAJA)"}
-                  </option>
-                ))}
-              </select>
-            </FloatingField>
-            <FloatingField label="Medio de pago habitual" active>
-              <select
-                value={form.id_medio_pago}
-                onChange={(event) =>
-                  update("id_medio_pago", event.target.value)
-                }
-              >
-                <option value="">SIN INFORMAR</option>
-                {activeOrCurrent(
-                  catalogs.medios_pago,
-                  "id_medio_pago",
-                  form.id_medio_pago,
-                ).map((item) => (
-                  <option value={item.id_medio_pago} key={item.id_medio_pago}>
-                    {item.nombre}
-                    {item.activo ? "" : " (BAJA)"}
-                  </option>
-                ))}
-              </select>
-            </FloatingField>
-          </div>
-
-          <label
-            className={`socios-reminder-option ${form.enviar_recordatorio ? "is-selected" : ""} ${reminderDisabled ? "is-disabled" : ""}`.trim()}
-            aria-disabled={reminderDisabled}
-            title={
-              reminderDisabled
-                ? "Ingresá primero un teléfono válido para habilitar los recordatorios."
-                : undefined
-            }
-          >
-            <input
-              type="checkbox"
-              checked={Boolean(form.enviar_recordatorio)}
-              disabled={reminderDisabled}
-              onChange={(event) => {
-                if (event.target.checked && !reminderPhoneReady) return;
-                update("enviar_recordatorio", event.target.checked);
-              }}
-            />
-            <span>
-              <strong>Enviar recordatorios</strong>
-              <small>
-                {reminderPhoneReady
-                  ? "Permite incluir este socio en futuros avisos de cuota."
-                  : "Ingresá un teléfono válido para habilitar los recordatorios."}
-              </small>
-            </span>
-          </label>
-
-          <FloatingField
-            label="Observaciones"
-            active={Boolean(form.observaciones)}
-            textarea
-          >
-            <textarea
-              value={form.observaciones}
-              onChange={(event) =>
-                update("observaciones", upper(event.target.value))
-              }
-              maxLength={5000}
-              rows={3}
-              placeholder=" "
-            />
+        <EntityFormPanel tabValue={FORM_TAB_MANAGEMENT} idPrefix="socios-form" title="Configuración del socio" icon={faTags}>
+          <FloatingField label="Fecha de ingreso" active={activeValue("fecha_ingreso")}>
+            <input type="date" value={form.fecha_ingreso} max={localToday()} onChange={(event) => set("fecha_ingreso", event.target.value)} />
+          </FloatingField>
+          <FloatingField label="Estado" active={activeValue("id_estado")}>
+            <select value={form.id_estado} onChange={(event) => set("id_estado", event.target.value)}>
+              <option value="">SIN INFORMAR</option>
+              {(catalogs.estados || []).map((item) => (
+                <option key={item.id_estado} value={item.id_estado}>{item.nombre}{item.activo ? "" : " (INACTIVO)"}</option>
+              ))}
+            </select>
+          </FloatingField>
+          <FloatingField label="Categoría *" active={activeValue("id_categoria")}>
+            <select value={form.id_categoria} onChange={(event) => set("id_categoria", event.target.value)} required>
+              <option value="">SELECCIONAR</option>
+              {(catalogs.categorias || []).map((item) => (
+                <option key={item.id_categoria} value={item.id_categoria}>{item.nombre}{item.activo ? "" : " (INACTIVA)"}</option>
+              ))}
+            </select>
+          </FloatingField>
+          <FloatingField label="Cobrador *" active={activeValue("id_cobrador")}>
+            <select value={form.id_cobrador} onChange={(event) => set("id_cobrador", event.target.value)} required>
+              <option value="">SELECCIONAR</option>
+              {(catalogs.cobradores || []).map((item) => (
+                <option key={item.id_cobrador} value={item.id_cobrador}>{item.nombre}{item.activo ? "" : " (INACTIVO)"}</option>
+              ))}
+            </select>
+          </FloatingField>
+          <FloatingField label="Observaciones" wide textarea active={activeValue("observaciones")}>
+            <textarea value={form.observaciones} maxLength={8000} rows={5} onChange={(event) => set("observaciones", event.target.value)} placeholder=" " />
           </FloatingField>
         </EntityFormPanel>
       )}
@@ -857,336 +657,380 @@ function PartnerForm({
   );
 }
 
-function formFromItem(item) {
-  return {
-    id_socio: item.id_socio,
-    tipo_socio: PERSON,
-    apellido: item.apellido || "",
-    nombre: item.nombre || "",
-    dni: item.dni || "",
-    domicilio: item.domicilio || "",
-    numero_domicilio: item.numero_domicilio || "",
-    localidad: item.localidad || "",
-    telefono: item.telefono || "",
-    email: item.email || "",
-    domicilio_alternativo: item.domicilio_alternativo || "",
-    fecha_alta: item.fecha_alta || today(),
-    id_categoria: item.id_categoria ? String(item.id_categoria) : "",
-    id_medio_pago: item.id_medio_pago ? String(item.id_medio_pago) : "",
-    enviar_recordatorio: Boolean(item.enviar_recordatorio),
-    observaciones: item.observaciones || "",
+function StateHistory({ events = [] }) {
+  if (!events.length) return <InfoEmpty>No hay movimientos de estado registrados.</InfoEmpty>;
+  return events.map((event) => {
+    const label = String(event.tipo_evento || "MOVIMIENTO").replaceAll("_", " ");
+    const states = [event.estado_anterior, event.estado_nuevo].filter(Boolean).join(" → ");
+    const vigence =
+      event.vigente_anterior === null || event.vigente_nuevo === null
+        ? ""
+        : `${event.vigente_anterior ? "VIGENTE" : "BAJA"} → ${event.vigente_nuevo ? "VIGENTE" : "BAJA"}`;
+    return (
+      <InfoRow
+        key={event.id_historial}
+        title={label}
+        detail={[states, vigence, event.motivo].filter(Boolean).join(" · ")}
+        meta={`${formatDateTime(event.fecha_evento || event.creado_en)}${event.usuario ? ` · ${event.usuario}` : ""}`}
+        tone={event.tipo_evento === "BAJA" ? "warning" : event.tipo_evento === "REACTIVACION" || event.tipo_evento === "ALTA" ? "success" : ""}
+      />
+    );
+  });
+}
+
+function ContactsPanel({ contacts, writable, saving, onSave }) {
+  const [form, setForm] = useState({
+    fecha_contacto: localToday(),
+    estado_contacto: "CONTACTADO",
+    detalle_contacto: "",
+  });
+
+  const submit = async () => {
+    if (!form.fecha_contacto || !form.estado_contacto) return;
+    const ok = await onSave(form);
+    if (ok) {
+      setForm({ fecha_contacto: localToday(), estado_contacto: "CONTACTADO", detalle_contacto: "" });
+    }
   };
+
+  return (
+    <div className="socios-contactPanel">
+      {writable ? (
+        <div className="socios-contactForm">
+          <div className="socios-contactForm__head">
+            <div>
+              <small>NUEVA GESTIÓN</small>
+              <strong>Registrar último contacto</strong>
+            </div>
+            <button className="mov-btn mov-btn--primary" type="button" onClick={submit} disabled={saving || !form.fecha_contacto || !form.estado_contacto}>
+              {saving ? "Guardando..." : "Registrar gestión"}
+            </button>
+          </div>
+          <div className="socios-contactForm__grid">
+            <label>
+              <span>Fecha *</span>
+              <input type="date" value={form.fecha_contacto} max={localToday()} onChange={(event) => setForm((current) => ({ ...current, fecha_contacto: event.target.value }))} required />
+            </label>
+            <label>
+              <span>Resultado *</span>
+              <select value={form.estado_contacto} onChange={(event) => setForm((current) => ({ ...current, estado_contacto: event.target.value }))} required>
+                <option value="CONTACTADO">CONTACTADO</option>
+                <option value="PENDIENTE">PENDIENTE</option>
+                <option value="NO_CONTACTADO">NO CONTACTADO</option>
+              </select>
+            </label>
+            <label className="is-wide">
+              <span>Detalle</span>
+              <textarea value={form.detalle_contacto} maxLength={4000} rows={3} onChange={(event) => setForm((current) => ({ ...current, detalle_contacto: event.target.value }))} placeholder="OBSERVACIÓN DE LA LLAMADA, MENSAJE O GESTIÓN..." />
+            </label>
+          </div>
+        </div>
+      ) : null}
+
+      <InfoSection title="Historial de contactos" icon={faAddressBook} badge={contacts.length}>
+        {contacts.length ? (
+          contacts.map((contact) => (
+            <InfoRow
+              key={contact.id_contacto}
+              title={contactLabel(contact.estado_contacto)}
+              detail={contact.detalle_contacto || "Sin detalle adicional."}
+              meta={`${formatDate(contact.fecha_contacto)}${contact.usuario ? ` · ${contact.usuario}` : ""}`}
+              tone={contact.estado_contacto === "CONTACTADO" ? "success" : contact.estado_contacto === "PENDIENTE" ? "warning" : ""}
+            />
+          ))
+        ) : (
+          <InfoEmpty>Este socio todavía no tiene gestiones de contacto.</InfoEmpty>
+        )}
+      </InfoSection>
+    </div>
+  );
+}
+
+function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
+  return (
+    <div className="socios-paymentsPanel">
+      <InfoSummary
+        items={[
+          {
+            label: "Situación actual",
+            value: debtLabel(item?.meses_adeudados),
+            icon: faWallet,
+            tone: Number(item?.meses_adeudados) ? "warning" : "success",
+          },
+          { label: "Pagos de cuota", value: payments.length, icon: faReceipt },
+          { label: "Pagos de inscripción", value: registrationPayments.length, icon: faIdCard },
+          { label: "Cuota mensual", value: formatMoney(item?.categoria_monto_mensual), icon: faTags },
+        ]}
+      />
+      <div className="entity-info-grid">
+        <InfoSection title="Pagos de cuotas" icon={faReceipt} badge={payments.length}>
+          {payments.length ? payments.map((payment) => (
+            <InfoRow
+              key={payment.id_pago}
+              title={`${payment.periodo} · ${payment.anio_aplicado}`}
+              detail={`${payment.estado}${payment.monto !== null ? ` · ${formatMoney(payment.monto)}` : ""}${payment.medio_pago ? ` · ${payment.medio_pago}` : ""}`}
+              meta={formatDate(payment.fecha_pago)}
+              tone={payment.estado === "CONDONADO" ? "warning" : "success"}
+            />
+          )) : <InfoEmpty>No hay pagos de cuotas registrados.</InfoEmpty>}
+        </InfoSection>
+        <InfoSection title="Inscripción" icon={faIdCard} badge={registrationPayments.length}>
+          {registrationPayments.length ? registrationPayments.map((payment) => (
+            <InfoRow
+              key={payment.id_inscripcion}
+              title={formatMoney(payment.monto)}
+              detail={payment.medio_pago || "MEDIO SIN INFORMAR"}
+              meta={formatDate(payment.fecha_pago)}
+              tone="success"
+            />
+          )) : <InfoEmpty>No hay pagos de inscripción registrados.</InfoEmpty>}
+        </InfoSection>
+      </div>
+    </div>
+  );
 }
 
 export default function Socios() {
-  const type = PERSON;
   const writable = canWrite();
   const tableBodyRef = useRef(null);
-  const pendingTableScrollRef = useRef(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [status, setStatus] = useState(readSharedPartnerStatus);
+  const [status, setStatus] = useState(readStatus);
   const [category, setCategory] = useState("");
+  const [advanced, setAdvanced] = useState(emptyAdvancedFilters);
   const [page, setPage] = useState(1);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedSearch(normalizeSearchQuery(search));
       setPage(1);
-    }, 300);
+    }, 280);
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [type]);
-
-  const serverSearch = useMemo(
-    () => getPrimarySearchTerm(debouncedSearch),
-    [debouncedSearch],
-  );
-
   const filters = useMemo(
     () => ({
-      tipo: type,
-      buscar: serverSearch,
-      estado: status,
+      vigente: status,
+      buscar: debouncedSearch,
       categoria: category,
+      letra: advanced.letra,
+      grupo_sanguineo: advanced.grupo_sanguineo,
+      estado: advanced.estado,
+      deuda: advanced.deuda,
+      ultimo_contacto: advanced.ultimo_contacto,
+      ingreso_desde: advanced.ingreso_desde,
+      ingreso_hasta: advanced.ingreso_hasta,
       pagina: page,
-      por_pagina: PAGE_SIZE,
     }),
-    [type, serverSearch, status, category, page],
-  );
-  const { items, catalogos, paginacion, loading, error, cargar } =
-    useSocios(filters);
-  const visibleItems = useMemo(
-    () => items.filter((item) => matchesSocioSearch(item, debouncedSearch)),
-    [items, debouncedSearch],
-  );
-  const categoryAmounts = useMemo(
-    () =>
-      Object.fromEntries(
-        (catalogos.categorias || []).map((item) => [
-          String(item.id_categoria),
-          item.monto_cuota,
-        ]),
-      ),
-    [catalogos.categorias],
+    [status, debouncedSearch, category, advanced, page],
   );
 
-  const refreshKeepingTableScroll = useCallback(async () => {
-    pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
-    return cargar();
-  }, [cargar]);
+  const {
+    items,
+    catalogos,
+    resumen,
+    paginacion,
+    avisos_cumpleanios: birthdayItems,
+    loading,
+    error,
+    cargar,
+  } = useSocios(filters);
 
   const totalPages = Number(paginacion?.total_paginas || 0);
-  const pageOptions = useMemo(
-    () => paginationItems(page, totalPages),
-    [page, totalPages],
-  );
+  const pages = useMemo(() => paginationItems(page, totalPages), [page, totalPages]);
 
   useEffect(() => {
-    if (loading || page <= 1) return;
-    if (totalPages === 0 || page > totalPages) {
-      setPage(Math.max(1, totalPages));
-    }
-  }, [loading, page, totalPages]);
-
-  useEffect(() => {
-    if (loading || pendingTableScrollRef.current == null) return undefined;
-
-    const scrollTop = pendingTableScrollRef.current;
-    let frame = window.requestAnimationFrame(() => {
-      frame = window.requestAnimationFrame(() => {
-        const body = tableBodyRef.current;
-        if (body) {
-          const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
-          body.scrollTop = Math.min(scrollTop, maxScrollTop);
-        }
-        pendingTableScrollRef.current = null;
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [loading, items.length]);
+    if (!loading && totalPages > 0 && page > totalPages) setPage(totalPages);
+  }, [loading, totalPages, page]);
 
   const [form, setForm] = useState(() => emptyForm());
-  const [formTab, setFormTab] = useState(FORM_TAB_MAIN);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [formTab, setFormTab] = useState(FORM_TAB_PERSONAL);
+  const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [stateModal, setStateModal] = useState(null);
-  const [stateDate, setStateDate] = useState(today());
-  const [historyModal, setHistoryModal] = useState(null);
-  const [historyTab, setHistoryTab] = useState(INFO_TAB_SUMMARY);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [stateDate, setStateDate] = useState(localToday());
+  const [infoModal, setInfoModal] = useState(null);
+  const [infoTab, setInfoTab] = useState(INFO_TAB_GENERAL);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
   const [deleteModal, setDeleteModal] = useState(null);
-  const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
-  const title = "Socios";
-  const singular = "socio";
-  const createTitle = "Nuevo socio";
-  const exportColumns = PERSON_EXPORT_COLUMNS;
-  const exportFilterDescription = useMemo(() => {
-    const selectedCategory = (catalogos.categorias || []).find(
-      (item) => String(item.id_categoria) === String(category),
-    );
-    return [
-      status === "INACTIVO" ? "Bajas" : "Activos",
-      selectedCategory ? `Categoría: ${selectedCategory.nombre}` : "Todas las categorías",
-      debouncedSearch ? `Búsqueda: ${debouncedSearch}` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }, [catalogos.categorias, category, debouncedSearch, status]);
+  const resetAdvanced = useCallback(() => {
+    setAdvanced(emptyAdvancedFilters());
+    setCategory("");
+    setPage(1);
+  }, []);
 
-  const obtenerTodosParaExportar = useCallback(async () => {
-    const primeraRespuesta = await sociosApi.listar({
-      ...filters,
-      pagina: 1,
-      por_pagina: PAGE_SIZE,
+  const setAdvancedFilters = useCallback((value) => {
+    setAdvanced(value);
+    setPage(1);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const scrollTop = tableBodyRef.current?.scrollTop || 0;
+    const result = await cargar();
+    window.requestAnimationFrame(() => {
+      if (tableBodyRef.current) tableBodyRef.current.scrollTop = scrollTop;
     });
-    const registros = [...(primeraRespuesta.items || [])];
-    const totalRegistros = Number(
-      primeraRespuesta.paginacion?.total || registros.length,
-    );
-    const totalPaginas = Number(
-      primeraRespuesta.paginacion?.total_paginas ||
-        Math.max(1, Math.ceil(totalRegistros / PAGE_SIZE)),
-    );
-
-    for (let paginaActual = 2; paginaActual <= totalPaginas; paginaActual += 1) {
-      const respuesta = await sociosApi.listar({
-        ...filters,
-        pagina: paginaActual,
-        por_pagina: PAGE_SIZE,
-      });
-      registros.push(...(respuesta.items || []));
-    }
-
-    return registros.filter((item) =>
-      matchesSocioSearch(item, debouncedSearch),
-    );
-  }, [debouncedSearch, filters]);
+    return result;
+  }, [cargar]);
 
   const openNew = () => {
     setForm(emptyForm(catalogos));
-    setFormTab(FORM_TAB_MAIN);
-    setModalOpen(true);
+    setFormTab(FORM_TAB_PERSONAL);
+    setFormOpen(true);
   };
-  const openEdit = useCallback((item) => {
-    // La fila ya contiene los datos de edición: abrir primero evita una espera
-    // de red perceptible entre el click y la aparición del modal.
-    setForm(formFromItem(item));
-    setFormTab(FORM_TAB_MAIN);
-    setModalOpen(true);
-  }, []);
+
+  const openEdit = async (item) => {
+    try {
+      const result = await sociosApi.obtener(item.id_socio);
+      setForm(formFromItem(result.item || item));
+      setFormTab(FORM_TAB_PERSONAL);
+      setFormOpen(true);
+    } catch (requestError) {
+      setFeedback({ type: "error", message: requestError.message || "No se pudo cargar el socio." });
+    }
+  };
+
   const save = async (event) => {
     event.preventDefault();
-    const missingMain = !form.apellido.trim() || !form.nombre.trim();
-    if (missingMain || !form.fecha_alta) {
-      setFormTab(FORM_TAB_MAIN);
-      setFeedback({
-        type: "error",
-        message: "Completá apellido, nombre y fecha de alta.",
-      });
+    if (!form.nombre.trim() || !form.id_categoria || !form.id_cobrador) {
+      setFeedback({ type: "error", message: "Completá nombre, categoría y cobrador." });
       return;
     }
-
-    const normalizedPhone = normalizeArgentinePhone(form.telefono);
-    const hasPhone = Boolean(String(form.telefono || "").trim());
-    if (hasPhone && normalizedPhone.length !== 10) {
-      setFormTab(FORM_TAB_CONFIG);
-      setFeedback({
-        type: "error",
-        message:
-          "Ingresá un teléfono válido de 10 dígitos (característica + número). El campo acepta sólo números y normaliza prefijos como 54, 0 o 15 al guardar.",
-      });
-      return;
-    }
-    if (form.enviar_recordatorio && normalizedPhone.length !== 10) {
-      setFormTab(FORM_TAB_CONFIG);
-      setFeedback({
-        type: "error",
-        message: "Para activar los recordatorios, ingresá primero un teléfono válido.",
-      });
-      return;
-    }
-
     setSaving(true);
     try {
-      const response = await sociosApi.guardar({
-        ...form,
-        apellido: upperWithoutDigits(form.apellido),
-        nombre: upperWithoutDigits(form.nombre),
-        dni: onlyDigits(form.dni, 8),
-        numero_domicilio: onlyDigits(form.numero_domicilio, 20),
-        localidad: upperWithoutDigits(form.localidad),
-        telefono: normalizedPhone || "",
-        tipo_socio: PERSON,
-        id_categoria: form.id_categoria || null,
-        id_medio_pago: form.id_medio_pago || null,
-      });
-      setModalOpen(false);
-      setFeedback({ type: "success", message: response.mensaje });
-      void refreshKeepingTableScroll();
+      const response = await sociosApi.guardar({ ...form });
+      setFeedback({ type: "success", message: response.mensaje || "Socio guardado correctamente." });
+      setFormOpen(false);
+      await refresh();
     } catch (requestError) {
-      setFeedback({ type: "error", message: requestError.message });
+      setFeedback({ type: "error", message: requestError.message || "No se pudo guardar el socio." });
     } finally {
       setSaving(false);
     }
   };
-  const openHistory = useCallback(async (item) => {
-    setHistoryModal({ item, data: null, error: "" });
-    setHistoryTab(INFO_TAB_SUMMARY);
-    setHistoryLoading(true);
+
+  const openHistory = async (item, preferredTab = INFO_TAB_GENERAL) => {
+    setInfoModal({ item, data: null });
+    setInfoTab(preferredTab);
+    setInfoLoading(true);
     try {
       const response = await sociosApi.historial(item.id_socio);
-      setHistoryModal({ item, data: response, error: "" });
+      setInfoModal({ item: response.item || item, data: response });
     } catch (requestError) {
-      setHistoryModal({ item, data: null, error: requestError.message });
+      setFeedback({ type: "error", message: requestError.message || "No se pudo cargar la ficha del socio." });
+      setInfoModal(null);
     } finally {
-      setHistoryLoading(false);
+      setInfoLoading(false);
     }
-  }, []);
-  const changeState = async ({ motivo }) => {
-    if (!stateModal) return null;
-    const response = stateModal.activo
-      ? await sociosApi.darBaja({
-          id: stateModal.id_socio,
-          fecha_baja: stateDate,
-          motivo_baja: motivo,
-        })
-      : await sociosApi.reactivar({
-          id: stateModal.id_socio,
-          fecha_reactivacion: today(),
-        });
-    void refreshKeepingTableScroll();
+  };
+
+  const reloadInfo = async (id) => {
+    const response = await sociosApi.historial(id);
+    setInfoModal((current) => (current ? { item: response.item || current.item, data: response } : current));
     return response;
   };
 
-  const openPermanentDelete = useCallback(async (item) => {
-    if (!item) return;
-    setDeleteModal({ item, data: null, loading: true, error: "" });
+  const saveContact = async (contactForm) => {
+    const id = infoModal?.data?.item?.id_socio || infoModal?.item?.id_socio;
+    if (!id) return false;
+    setContactSaving(true);
+    try {
+      const response = await sociosApi.guardarContacto({ id_socio: id, ...contactForm });
+      setFeedback({ type: "success", message: response.mensaje || "Gestión registrada correctamente." });
+      await Promise.all([reloadInfo(id), refresh()]);
+      return true;
+    } catch (requestError) {
+      setFeedback({ type: "error", message: requestError.message || "No se pudo registrar la gestión." });
+      return false;
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
+  const closeBirthday = async (item) => {
+    try {
+      const response = await sociosApi.cerrarCumpleanios({ id_socio: item.id_socio });
+      setFeedback({ type: "success", message: response.mensaje || "Aviso marcado como gestionado." });
+      await refresh();
+    } catch (requestError) {
+      setFeedback({ type: "error", message: requestError.message || "No se pudo cerrar el aviso." });
+    }
+  };
+
+  const openState = (item) => {
+    setStateDate(localToday());
+    setStateModal(item);
+  };
+
+  const changeState = async ({ motivo }) => {
+    if (!stateModal) return { ok: false, mensaje: "No hay socio seleccionado." };
+    const response = stateModal.vigente
+      ? await sociosApi.darBaja({ id: stateModal.id_socio, fecha_baja: stateDate, motivo_baja: motivo })
+      : await sociosApi.reactivar({ id: stateModal.id_socio, fecha_reactivacion: stateDate, motivo_reactivacion: motivo || "REACTIVACIÓN" });
+    await refresh();
+    return response;
+  };
+
+  const openPermanentDelete = async (item) => {
+    setDeleteModal({ item, loading: true, data: null, error: "" });
     try {
       const response = await sociosApi.historial(item.id_socio);
-      setDeleteModal({ item, data: response, loading: false, error: "" });
+      setDeleteModal({ item: response.item || item, loading: false, data: response, error: "" });
     } catch (requestError) {
-      setDeleteModal({
-        item,
-        data: null,
-        loading: false,
-        error:
-          requestError.message ||
-          "No se pudo calcular el impacto de la eliminación.",
-      });
+      setDeleteModal({ item, loading: false, data: null, error: requestError.message || "No se pudo calcular el impacto de la eliminación." });
     }
-  }, []);
-
-  const openStateModal = useCallback((item) => {
-    setStateDate(today());
-    setStateModal(item);
-  }, []);
+  };
 
   const deletePermanently = async () => {
-    if (!deleteModal?.item) return null;
-    const response = await sociosApi.eliminarDefinitivo({
-      id: deleteModal.item.id_socio,
-      confirmacion: "ELIMINAR",
-    });
-    void refreshKeepingTableScroll();
+    if (!deleteModal?.item) return { ok: false, mensaje: "No hay socio seleccionado." };
+    const response = await sociosApi.eliminarDefinitivo({ id: deleteModal.item.id_socio, confirmacion: "ELIMINAR" });
+    await refresh();
     return response;
   };
+
+  const obtainAllForExport = useCallback(async () => {
+    const first = await sociosApi.listar({ ...filters, pagina: 1 });
+    const total = Number(first.paginacion?.total_paginas || 1);
+    const all = [...(first.items || [])];
+    for (let current = 2; current <= total; current += 1) {
+      const response = await sociosApi.listar({ ...filters, pagina: current });
+      all.push(...(response.items || []));
+    }
+    return all;
+  }, [filters]);
 
   const pageFilters = [
     {
-      key: "estado",
-      label: "Estado",
       type: "tabs",
-      ariaLabel: `Estado de ${title.toLowerCase()}`,
+      key: "vigencia",
+      label: "Vigencia",
       value: status,
       onChange: (value) => {
-        saveSharedPartnerStatus(value);
+        saveStatus(value);
         setStatus(value);
         setPage(1);
       },
       options: [
-        { value: "ACTIVO", label: "Activos" },
-        { value: "INACTIVO", label: "Bajas" },
+        { value: "VIGENTE", label: "Vigentes", count: resumen.vigentes ?? null },
+        { value: "BAJA", label: "Bajas", count: resumen.bajas ?? null },
       ],
     },
     {
-      key: "buscar",
-      label: "Búsqueda",
       type: "search",
-      placeholder: " ",
+      key: "buscar",
+      label: "Buscar socio",
+      placeholder: "Nombre, DNI, domicilio...",
       value: search,
       onChange: setSearch,
     },
     {
+      type: "select",
       key: "categoria",
       label: "Categoría",
-      type: "select",
       placeholder: "Todas",
       value: category,
       onChange: (value) => {
@@ -1195,39 +1039,38 @@ export default function Socios() {
       },
       options: (catalogos.categorias || []).map((item) => ({
         value: item.id_categoria,
-        label: `${item.nombre}${item.activo ? "" : " (BAJA)"}`,
+        label: `${item.nombre}${item.activo ? "" : " (INACTIVA)"}`,
       })),
     },
   ];
 
-  const info = historyModal?.data;
-  const itemInfo = info?.item;
+  const info = infoModal?.data;
+  const itemInfo = info?.item || infoModal?.item;
   const deleteImpact = deleteModal?.data?.impacto_eliminacion || {};
+  const filterDescription = [
+    status === "BAJA" ? "Bajas" : "Vigentes",
+    category ? `Categoría ${catalogos.categorias?.find((item) => String(item.id_categoria) === String(category))?.nombre || category}` : null,
+    debouncedSearch ? `Búsqueda ${debouncedSearch}` : null,
+    countAdvanced(advanced) ? `${countAdvanced(advanced)} filtros avanzados` : null,
+  ].filter(Boolean).join(" · ");
 
   return (
     <>
       <ModulePage
-        title={title}
+        title="Socios"
         filters={pageFilters}
         tabsInTitle
         headFiltersClassName="socios-headFilters"
         primaryActionLabel="Nuevo socio"
         onPrimaryAction={openNew}
-        headerActions={
-          <BotonExportarGlobal
-            label="Exportar"
-            onClick={() => setExportModalOpen(true)}
-            disabled={loading || visibleItems.length === 0}
-            title={`Exportar ${title.toLowerCase()} en Excel o PDF`}
-          />
-        }
         canCreate={writable}
-        stats={[]}
-        notice={
-          !writable
-            ? "Tu usuario tiene permiso de consulta. Las modificaciones están deshabilitadas."
-            : null
-        }
+        headerActions={(
+          <>
+            <AdvancedFilters filters={advanced} catalogs={catalogos} onChange={setAdvancedFilters} onReset={resetAdvanced} />
+            <BotonExportarGlobal label="Exportar" onClick={() => setExportOpen(true)} disabled={loading || !items.length} title="Exportar socios en Excel o PDF" />
+          </>
+        )}
+        notice={!writable ? "Tu usuario tiene permiso de consulta. Las modificaciones están deshabilitadas." : null}
       >
         <ModuleFeedback
           type={feedback?.type || "error"}
@@ -1235,462 +1078,196 @@ export default function Socios() {
           duration={feedback?.duration}
           onClose={() => setFeedback(null)}
         />
+
         <GlobalDivTable
           className={`socios-table ${Number(paginacion?.total || 0) > 0 ? "has-bottom-pagination" : ""}`.trim()}
           bodyClassName="entity-table-wrap"
           bodyRef={tableBodyRef}
-          gridClassName="socios-grid socios-grid--persona"
-          ariaLabel={`Listado de ${title.toLowerCase()}`}
+          gridClassName="socios-grid"
+          ariaLabel="Listado de socios"
           loading={loading}
-          loadingLabel={`Cargando ${title.toLowerCase()}...`}
+          loadingLabel="Cargando socios..."
           skeletonRows={7}
-          columns={["Socio", "DNI", "Categoría", "Contacto", "Recordatorio", "Acciones"]}
+          columns={["Socio", "DNI", "Sangre", "Estado", "Deudas / pagos", "Último contacto", "Acciones"]}
         >
-          {!loading && !error && !visibleItems.length ? (
+          {!loading && !error && !items.length ? (
             <div className="module-empty">
               <FontAwesomeIcon icon={faUser} />
-              <strong>Sin {title.toLowerCase()} para mostrar</strong>
-              <span>Creá el primer registro o cambiá los filtros.</span>
+              <strong>Sin socios para mostrar</strong>
+              <span>Cambiá los filtros o creá un nuevo registro.</span>
             </div>
           ) : null}
-          <SociosRows
-            items={visibleItems}
-            categoryAmounts={categoryAmounts}
-            writable={writable}
-            onHistory={openHistory}
-            onEdit={openEdit}
-            onState={openStateModal}
-            onDelete={openPermanentDelete}
-          />
+          <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openPermanentDelete} />
         </GlobalDivTable>
 
         {Number(paginacion?.total || 0) > 0 ? (
-          <nav
-            className="socios-pagination"
-            aria-label={`Paginación de ${title.toLowerCase()}`}
-          >
+          <nav className="socios-pagination" aria-label="Paginación de socios">
             <p className="socios-pagination__summary">
-              Mostrando <strong>{paginacion.desde}</strong>–
-              <strong>{paginacion.hasta}</strong> de{" "}
-              <strong>{paginacion.total}</strong> {title.toLowerCase()}
-              {loading ? <span>Cargando página...</span> : null}
+              Mostrando <strong>{paginacion.desde}</strong>–<strong>{paginacion.hasta}</strong> de <strong>{paginacion.total}</strong> socios
             </p>
-
             <div className="socios-pagination__controls">
-              <button
-                type="button"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                disabled={loading || page <= 1}
-              >
-                Anterior
-              </button>
-
-              {pageOptions.map((item) =>
-                typeof item === "number" ? (
-                  <button
-                    type="button"
-                    key={item}
-                    className={item === page ? "is-active" : ""}
-                    aria-current={item === page ? "page" : undefined}
-                    onClick={() => setPage(item)}
-                    disabled={loading}
-                  >
-                    {item}
-                  </button>
-                ) : (
-                  <span
-                    className="socios-pagination__ellipsis"
-                    key={item}
-                    aria-hidden="true"
-                  >
-                    …
-                  </span>
-                ),
-              )}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setPage((current) => Math.min(totalPages, current + 1))
-                }
-                disabled={loading || totalPages === 0 || page >= totalPages}
-              >
-                Siguiente
-              </button>
+              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1}>Anterior</button>
+              {pages.map((value) => typeof value === "number" ? (
+                <button type="button" key={value} className={value === page ? "is-active" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)} disabled={loading}>{value}</button>
+              ) : <span className="socios-pagination__ellipsis" key={value}>…</span>)}
+              <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={loading || totalPages === 0 || page >= totalPages}>Siguiente</button>
             </div>
           </nav>
         ) : null}
       </ModulePage>
 
+      <BirthdayContactCard
+        items={birthdayItems || []}
+        writable={writable}
+        onView={(item) => openHistory(item, INFO_TAB_CONTACTS)}
+        onClose={closeBirthday}
+      />
+
       <ModalExportarGlobal
-        open={exportModalOpen}
-        title={`Exportar ${title.toLowerCase()}`}
+        open={exportOpen}
+        title="Exportar socios"
         subtitle="Elegí el alcance y descargá la información en Excel o PDF."
-        tituloArchivo={title}
-        subtituloArchivoActual={`${exportFilterDescription} · Página ${page} de ${Math.max(1, totalPages)}`}
-        subtituloArchivoTodos={exportFilterDescription}
+        tituloArchivo="Socios"
+        subtituloArchivoActual={`${filterDescription} · Página ${page} de ${Math.max(1, totalPages)}`}
+        subtituloArchivoTodos={filterDescription}
         nombreArchivo="socios"
-        columnas={exportColumns}
-        registrosActuales={visibleItems}
-        obtenerRegistrosTodos={obtenerTodosParaExportar}
-        cantidadActual={visibleItems.length}
-        cantidadTodos={Number(paginacion?.total || visibleItems.length)}
-        mostrarAlcanceTodos={Number(paginacion?.total || 0) > visibleItems.length}
+        columnas={EXPORT_COLUMNS}
+        registrosActuales={items}
+        obtenerRegistrosTodos={obtainAllForExport}
+        cantidadActual={items.length}
+        cantidadTodos={Number(paginacion?.total || items.length)}
+        mostrarAlcanceTodos={Number(paginacion?.total || 0) > items.length}
         alcanceActualLabel={totalPages > 1 ? "Exportar esta página" : "Exportar registros visibles"}
-        alcanceActualDescription="Descarga los registros visibles con los filtros actuales."
-        alcanceTodosLabel={`Exportar todos los ${title.toLowerCase()}`}
+        alcanceActualDescription="Descarga los socios visibles con los filtros actuales."
+        alcanceTodosLabel="Exportar todos los socios filtrados"
         alcanceTodosDescription="Descarga todas las páginas que coinciden con los filtros actuales."
         totalLabelSingular="socio disponible"
         totalLabelPlural="socios disponibles"
-        onClose={() => setExportModalOpen(false)}
-        onSuccess={(message) =>
-          setFeedback({ type: "success", message, duration: 4200 })
-        }
-        onError={(message) =>
-          setFeedback({ type: "error", message, duration: 5200 })
-        }
+        onClose={() => setExportOpen(false)}
+        onSuccess={(message) => setFeedback({ type: "success", message, duration: 4200 })}
+        onError={(message) => setFeedback({ type: "error", message, duration: 5200 })}
       />
 
       <CrudModal
-        open={modalOpen}
-        title={form.id_socio ? `Editar ${singular}` : createTitle}
-        subtitle={
-          form.id_socio
-            ? "Actualizá la ficha sin cambiar el tipo ni perder su historial."
-            : "La información común y el detalle se guardan en una sola transacción."
-        }
-        onClose={() => setModalOpen(false)}
+        open={formOpen}
+        title={form.id_socio ? "Editar socio" : "Nuevo socio"}
+        subtitle={form.id_socio ? "Actualizá la ficha conservando pagos, contactos e historial." : "Cargá los datos principales y de gestión del socio."}
+        onClose={() => setFormOpen(false)}
         onSubmit={save}
         saving={saving}
-        submitLabel={form.id_socio ? "Guardar cambios" : `Crear ${singular}`}
+        submitLabel={form.id_socio ? "Guardar cambios" : "Crear socio"}
         modalClassName="socios-modal socios-modal--form"
         closeOnBackdrop={false}
         wide
       >
-        <PartnerForm
-          form={form}
-          setForm={setForm}
-          catalogs={catalogos}
-          activeTab={formTab}
-          onTabChange={setFormTab}
-        />
+        <PartnerForm form={form} setForm={setForm} catalogs={catalogos} activeTab={formTab} onTabChange={setFormTab} />
       </CrudModal>
 
       <InfoModal
-        open={Boolean(historyModal)}
-        title="Información del Socio"
-        subtitle={
-          itemInfo
-            ? `DNI: ${itemInfo.dni || "—"} · ${itemInfo.denominacion}`
-            : historyModal?.item?.denominacion || ""
-        }
-        onClose={() => setHistoryModal(null)}
+        open={Boolean(infoModal)}
+        title="Información del socio"
+        subtitle={itemInfo ? `ID ${itemInfo.id_socio} · ${itemInfo.nombre}` : ""}
+        onClose={() => setInfoModal(null)}
+        loading={infoLoading}
         tabs={[
-          { value: INFO_TAB_SUMMARY, label: "General", icon: faCircleInfo },
-          { value: INFO_TAB_CONTACT, label: "Contacto", icon: faEnvelope },
-          {
-            value: INFO_TAB_HISTORY,
-            label: "Estados",
-            icon: faClockRotateLeft,
-            badge: info?.historial_estados?.length || null,
-          },
-          {
-            value: INFO_TAB_PAYMENTS,
-            label: "Estado de pagos",
-            icon: faReceipt,
-          },
+          { value: INFO_TAB_GENERAL, label: "General", icon: faUser },
+          { value: INFO_TAB_CONTACTS, label: "Contactos", icon: faAddressBook, badge: info?.contactos?.length || 0 },
+          { value: INFO_TAB_PAYMENTS, label: "Pagos", icon: faWallet, badge: info?.pagos?.length || 0 },
+          { value: INFO_TAB_HISTORY, label: "Historial", icon: faClockRotateLeft, badge: info?.historial_estados?.length || 0 },
         ]}
-        activeTab={historyTab}
-        onTabChange={setHistoryTab}
-        loading={historyLoading}
-        loadingTitle="Cargando ficha..."
-        loadingText="Consultando datos, estados, familias y pagos."
+        activeTab={infoTab}
+        onTabChange={setInfoTab}
+        tabIdPrefix="socios-info"
         modalClassName="socios-info-modal"
-        closeOnBackdrop={false}
       >
-        {historyModal?.error ? (
-          <ModuleFeedback type="error" message={historyModal.error} />
-        ) : itemInfo ? (
-          historyTab === INFO_TAB_SUMMARY ? (
+        {info && itemInfo ? (
+          infoTab === INFO_TAB_GENERAL ? (
             <div className="socios-info-content">
-              <InfoSummary
-                items={[
-                  {
-                    label: "Estado actual",
-                    value: itemInfo.estado,
-                    icon: itemInfo.activo ? faUser : faUserSlash,
-                    tone: itemInfo.activo ? "success" : "danger",
-                  },
-                  {
-                    label: "Categoría",
-                    value: itemInfo.categoria || "SIN CATEGORÍA",
-                    icon: faTags,
-                  },
-                  {
-                    label: "Cuota vigente",
-                    value: formatMoney(itemInfo.monto_cuota),
-                    icon: faWallet,
-                  },
-                  {
-                    label: "Recordatorio WhatsApp",
-                    value: itemInfo.enviar_recordatorio
-                      ? "HABILITADO"
-                      : "DESHABILITADO",
-                    icon: faBell,
-                    tone: itemInfo.enviar_recordatorio ? "success" : "",
-                  },
-                ]}
-              />
-
+              <InfoSummary items={[
+                { label: "DNI", value: itemInfo.dni || "SIN INFORMAR", icon: faIdCard },
+                { label: "Grupo sanguíneo", value: itemInfo.grupo_sanguineo || "SIN INFORMAR", icon: faDroplet },
+                { label: "Estado", value: itemInfo.vigente ? (itemInfo.estado || "VIGENTE") : "BAJA", icon: itemInfo.vigente ? faCheck : faUserSlash, tone: itemInfo.vigente ? "success" : "warning" },
+                { label: "Situación de cuota", value: debtLabel(itemInfo.meses_adeudados), icon: faWallet, tone: Number(itemInfo.meses_adeudados) ? "warning" : "success" },
+              ]} />
               <div className="entity-info-grid">
-                <InfoSection
-                  title="Datos personales"
-                  icon={faIdCard}
-                >
-                  <InfoRow
-                    title={itemInfo.denominacion}
-                    detail={`DNI ${itemInfo.dni || "—"}`}
-                  />
-                  <InfoRow
-                    title="Fecha de alta"
-                    detail={formatDate(itemInfo.fecha_alta)}
-                  />
-                  <InfoRow
-                      title="Familia activa"
-                      detail={itemInfo.familia || "SIN FAMILIA"}
-                      meta={itemInfo.parentesco || ""}
-                    />
+                <InfoSection title="Datos personales" icon={faIdCard}>
+                  <InfoRow title={itemInfo.nombre} detail={`Nacimiento: ${formatDate(itemInfo.fecha_nacimiento)}${itemInfo.edad !== null ? ` · ${itemInfo.edad} años` : ""}`} />
+                  <InfoRow title="Domicilio" detail={[itemInfo.domicilio, itemInfo.numero].filter(Boolean).join(" ") || "—"} />
+                  <InfoRow title="Domicilio de cobro" detail={itemInfo.domicilio_cobro || "—"} />
+                  <InfoRow title="Teléfonos" detail={[itemInfo.telefono_movil, itemInfo.telefono_fijo].filter(Boolean).join(" · ") || "—"} />
                 </InfoSection>
-
-                <InfoSection title="Configuración de cuota" icon={faWallet}>
-                  <InfoRow
-                    title="Medio habitual"
-                    detail={itemInfo.medio_pago || "SIN INFORMAR"}
-                  />
-                  <InfoRow
-                    title="Bot de WhatsApp"
-                    detail={
-                      itemInfo.enviar_recordatorio
-                        ? "RECIBE RECORDATORIOS DE PAGO"
-                        : "NO RECIBE RECORDATORIOS"
-                    }
-                    tone={itemInfo.enviar_recordatorio ? "success" : ""}
-                  />
-                  {itemInfo.observaciones ? (
-                    <InfoRow
-                      title="Observaciones"
-                      detail={itemInfo.observaciones}
-                    />
-                  ) : null}
+                <InfoSection title="Gestión" icon={faTags}>
+                  <InfoRow title="Fecha de ingreso" detail={formatDate(itemInfo.fecha_ingreso)} />
+                  <InfoRow title="Categoría" detail={`${itemInfo.categoria || "—"} · ${formatMoney(itemInfo.categoria_monto_mensual)} mensual`} />
+                  <InfoRow title="Cobrador" detail={itemInfo.cobrador || "—"} />
+                  <InfoRow title="Último contacto" detail={itemInfo.ultimo_contacto_fecha ? `${formatDate(itemInfo.ultimo_contacto_fecha)} · ${contactLabel(itemInfo.ultimo_contacto_estado)}` : "SIN GESTIÓN"} />
+                  {itemInfo.observaciones ? <InfoRow title="Observaciones" detail={itemInfo.observaciones} /> : null}
                 </InfoSection>
               </div>
-
-              {info.familias?.length ? (
-                <InfoSection
-                  title="Historial familiar"
-                  icon={faHouse}
-                  badge={info.familias.length}
-                >
-                  {info.familias.map((family) => (
-                    <InfoRow
-                      key={family.id_familia_socio}
-                      title={family.familia}
-                      detail={`${formatDate(family.fecha_incorporacion)} → ${family.fecha_desvinculacion ? formatDate(family.fecha_desvinculacion) : "ACTUALIDAD"}`}
-                      meta={
-                        family.parentesco ||
-                        (family.es_titular ? "TITULAR" : "")
-                      }
-                      tone={family.activo ? "success" : ""}
-                    />
-                  ))}
-                </InfoSection>
-              ) : null}
             </div>
-          ) : historyTab === INFO_TAB_CONTACT ? (
-            <div className="socios-info-content">
-              <InfoSummary
-                items={[
-                  {
-                    label: "Teléfono",
-                    value: itemInfo.telefono || "SIN INFORMAR",
-                    icon: faAddressBook,
-                  },
-                  {
-                    label: "Correo",
-                    value: itemInfo.email || "SIN INFORMAR",
-                    icon: faEnvelope,
-                  },
-                  {
-                    label: "Localidad",
-                    value: itemInfo.localidad || "SIN INFORMAR",
-                    icon: faHouse,
-                  },
-                  {
-                    label: "Medio habitual",
-                    value: itemInfo.medio_pago || "SIN INFORMAR",
-                    icon: faWallet,
-                  },
-                ]}
-              />
-              <InfoSection title="Datos de contacto" icon={faAddressBook}>
-                <InfoRow title="Teléfono" detail={itemInfo.telefono || "—"} />
-                <InfoRow
-                  title="Correo electrónico"
-                  detail={itemInfo.email || "—"}
-                />
-                <InfoRow
-                  title="Domicilio principal"
-                  detail={
-                    [
-                      itemInfo.domicilio,
-                      itemInfo.numero_domicilio,
-                      itemInfo.localidad,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "—"
-                  }
-                />
-                <InfoRow
-                  title="Domicilio alternativo"
-                  detail={itemInfo.domicilio_alternativo || "—"}
-                />
-              </InfoSection>
-            </div>
-          ) : historyTab === INFO_TAB_HISTORY ? (
-            <InfoSection
-              title="Historial de altas, bajas y reingresos"
-              icon={faClockRotateLeft}
-              badge={info.historial_estados?.length || 0}
-              className="socios-state-section"
-            >
+          ) : infoTab === INFO_TAB_CONTACTS ? (
+            <ContactsPanel contacts={info.contactos || []} writable={writable} saving={contactSaving} onSave={saveContact} />
+          ) : infoTab === INFO_TAB_PAYMENTS ? (
+            <PaymentsPanel item={itemInfo} payments={info.pagos || []} registrationPayments={info.pagos_inscripcion || []} />
+          ) : (
+            <InfoSection title="Altas, bajas y cambios de estado" icon={faClockRotateLeft} badge={info.historial_estados?.length || 0}>
               <StateHistory events={info.historial_estados || []} />
             </InfoSection>
-          ) : (
-            <PaymentCalendar payments={info.pagos || []} item={itemInfo} />
           )
         ) : null}
       </InfoModal>
 
       <ModalEliminarGlobal
         open={Boolean(stateModal)}
-        operacion={stateModal?.activo ? "baja" : "alta"}
+        operacion={stateModal?.vigente ? "baja" : "alta"}
         row={stateModal}
-        title={
-          stateModal?.activo
-            ? "Dar de baja al socio"
-            : "Reactivar socio"
-        }
-        message={
-          stateModal?.activo
-            ? "El registro dejará de estar activo, pero conservará sus pagos, vínculos familiares e historial para permitir un reingreso futuro."
-            : "El registro volverá a estar disponible para operaciones nuevas y el reingreso quedará asentado en el historial."
-        }
-        warning=""
-        details={
-          stateModal
-            ? [
-                {
-                  label: "Socio",
-                  value: stateModal.denominacion,
-                },
-                {
-                  label: "DNI",
-                  value: stateModal.dni,
-                },
-                { label: "Estado actual", value: stateModal.estado },
-              ]
-            : []
-        }
-        showReason={Boolean(stateModal?.activo)}
-        reasonRequired={Boolean(stateModal?.activo)}
+        title={stateModal?.vigente ? "Dar de baja al socio" : "Reactivar socio"}
+        message={stateModal?.vigente ? "El socio dejará de figurar como vigente, pero conservará pagos, contactos, familia e historial." : "El socio volverá a figurar como vigente y el reingreso quedará registrado."}
+        details={stateModal ? [
+          { label: "Socio", value: stateModal.nombre },
+          { label: "DNI", value: stateModal.dni },
+          { label: "Estado", value: stateModal.estado || (stateModal.vigente ? "VIGENTE" : "BAJA") },
+        ] : []}
+        showReason={Boolean(stateModal?.vigente)}
+        reasonRequired={Boolean(stateModal?.vigente)}
         reasonLabel="Motivo de baja *"
         reasonPlaceholder="Indicá el motivo de la baja..."
-        extraContent={
-          stateModal?.activo ? (
-            <label className="entity-field gdel-date-field">
-              <span>Fecha de baja *</span>
-              <input
-                type="date"
-                value={stateDate}
-                min={stateModal.fecha_alta || undefined}
-                max={today()}
-                onChange={(event) => setStateDate(event.target.value)}
-                required
-              />
-            </label>
-          ) : null
-        }
-        confirmDisabled={Boolean(stateModal?.activo && !stateDate)}
+        extraContent={stateModal ? (
+          <label className="entity-field socios-stateDate">
+            <span>{stateModal.vigente ? "Fecha de baja *" : "Fecha de reactivación *"}</span>
+            <input type="date" value={stateDate} min={stateModal.vigente ? (stateModal.fecha_ingreso || undefined) : undefined} max={localToday()} onChange={(event) => setStateDate(event.target.value)} required />
+          </label>
+        ) : null}
+        confirmDisabled={!stateDate}
         onClose={() => setStateModal(null)}
         onConfirm={changeState}
-        onToast={(typeFeedback, message, duration) =>
-          setFeedback({ type: typeFeedback, message, duration })
-        }
-        confirmLabel={stateModal?.activo ? "Dar de baja" : "Reactivar"}
-        successMessage={
-          stateModal?.activo
-            ? "Registro dado de baja correctamente."
-            : "Registro reactivado correctamente."
-        }
-        modalClassName={
-          stateModal?.activo
-            ? "socios-deactivation-modal"
-            : "socios-reactivation-modal"
-        }
+        onToast={(type, message, duration) => setFeedback({ type: type === "exito" ? "success" : type, message, duration })}
+        confirmLabel={stateModal?.vigente ? "Dar de baja" : "Reactivar"}
+        successMessage={stateModal?.vigente ? "Socio dado de baja correctamente." : "Socio reactivado correctamente."}
       />
 
-      {/* Eliminacion unificada: usa exclusivamente la variante global. */}
       <ModalEliminarGlobal
         open={Boolean(deleteModal)}
         operacion="eliminar"
         row={deleteModal?.item}
-        modalClassName="socios-delete-modal"
         title="Eliminar definitivamente al socio"
-        message="Confirmá la eliminación definitiva del registro. Esta operación es irreversible."
-        details={
-          deleteModal?.item
-            ? [
-                {
-                  label: "Socio",
-                  value: deleteModal.item.denominacion,
-                },
-                {
-                  label: "DNI",
-                  value: deleteModal.item.dni,
-                },
-                {
-                  label: "Pagos / condonaciones que se borrarán",
-                  value: deleteImpact.pagos ?? "Calculando...",
-                },
-                {
-                  label: "Estados que se borrarán",
-                  value: deleteImpact.historial_estados ?? "Calculando...",
-                },
-                {
-                  label: "Vínculos familiares",
-                  value: deleteImpact.vinculos_familiares ?? "Calculando...",
-                },
-              ]
-            : []
-        }
-        extraContent={
-          deleteModal?.error ? (
-            <p className="socios-delete-confirmation__error">
-              {deleteModal.error}
-            </p>
-          ) : null
-        }
-        confirmDisabled={
-          Boolean(deleteModal?.loading) || Boolean(deleteModal?.error)
-        }
+        message="Esta operación borra el socio y todos sus datos relacionados del sistema. Es irreversible."
+        details={deleteModal?.item ? [
+          { label: "Socio", value: deleteModal.item.nombre },
+          { label: "DNI", value: deleteModal.item.dni },
+          { label: "Pagos", value: deleteImpact.pagos ?? "Calculando..." },
+          { label: "Inscripciones", value: deleteImpact.pagos_inscripcion ?? "Calculando..." },
+          { label: "Contactos", value: deleteImpact.contactos ?? "Calculando..." },
+          { label: "Historial", value: deleteImpact.historial_estados ?? "Calculando..." },
+          { label: "Vínculos familiares", value: deleteImpact.vinculos_familiares ?? "Calculando..." },
+        ] : []}
+        extraContent={deleteModal?.error ? <p className="socios-deleteError">{deleteModal.error}</p> : null}
+        confirmDisabled={Boolean(deleteModal?.loading) || Boolean(deleteModal?.error)}
         onClose={() => setDeleteModal(null)}
         onConfirm={deletePermanently}
-        onToast={(typeFeedback, message, duration) =>
-          setFeedback({ type: typeFeedback, message, duration })
-        }
+        onToast={(type, message, duration) => setFeedback({ type: type === "exito" ? "success" : type, message, duration })}
         confirmLabel="Eliminar definitivamente"
-        loadingLabel="Eliminando..."
-        successMessage="El socio y toda su información relacionada fueron eliminados definitivamente."
+        successMessage="El socio fue eliminado definitivamente."
         errorMessage="No se pudo eliminar definitivamente el socio."
       />
     </>

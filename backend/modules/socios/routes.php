@@ -13,6 +13,8 @@ function register_socios_routes(Router $router): void
     $router->register('socios_eliminar', 'POST', [Socios::class, 'darBaja'], true);
     $router->register('socios_eliminar_definitivo', 'POST', [Socios::class, 'eliminarDefinitivo'], true);
     $router->register('socios_reactivar', 'POST', [Socios::class, 'reactivar'], true);
+    $router->register('socios_contacto_guardar', 'POST', [Socios::class, 'registrarContacto'], true);
+    $router->register('socios_cumpleanios_cerrar', 'POST', [Socios::class, 'cerrarCumpleanios'], true);
 
     $router->register('familias_listar', 'GET', [Familias::class, 'listar'], true);
     $router->register('familias_obtener', 'GET', [Familias::class, 'obtener'], true);

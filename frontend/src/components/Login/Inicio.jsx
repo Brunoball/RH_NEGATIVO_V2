@@ -17,17 +17,21 @@ function loadRememberedAccount() {
       return null;
     }
 
-    return { usuario: account.usuario };
+    // Compatibilidad con la versión anterior, que recordaba solamente el usuario.
+    return {
+      usuario: account.usuario,
+      contrasena: typeof account.contrasena === "string" ? account.contrasena : "",
+    };
   } catch {
     return null;
   }
 }
 
-function saveRememberedAccount(usuario) {
+function saveRememberedAccount(usuario, contrasena) {
   try {
     localStorage.setItem(
       REMEMBERED_ACCOUNT_KEY,
-      JSON.stringify({ usuario }),
+      JSON.stringify({ usuario, contrasena }),
     );
   } catch {
     // El login continúa aunque el navegador bloquee el almacenamiento local.
@@ -46,7 +50,7 @@ export default function Inicio() {
   const navigate = useNavigate();
   const [rememberedAccount] = useState(loadRememberedAccount);
   const [usuario, setUsuario] = useState(rememberedAccount?.usuario || "");
-  const [contrasena, setContrasena] = useState("");
+  const [contrasena, setContrasena] = useState(rememberedAccount?.contrasena || "");
   const [recordarCuenta, setRecordarCuenta] = useState(Boolean(rememberedAccount));
   const [visible, setVisible] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -71,7 +75,7 @@ export default function Inicio() {
       });
 
       if (recordarCuenta) {
-        saveRememberedAccount(usuario.trim());
+        saveRememberedAccount(usuario.trim(), contrasena);
       } else {
         clearRememberedAccount();
       }

@@ -575,7 +575,7 @@
 .familias-selected-member__top {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
 }
@@ -583,8 +583,16 @@
 .familias-selected-member__fields {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(100px, 0.8fr) minmax(132px, 0.9fr) minmax(150px, 1.2fr);
+  grid-template-columns: minmax(160px, 220px);
   gap: 7px;
+}
+
+.familias-member-date {
+  display: grid;
+  gap: 5px;
+  color: var(--entity-modal-text);
+  font-size: 10px;
+  font-weight: 650;
 }
 
 .familias-member-remove {
@@ -648,7 +656,7 @@
 }
 
 .familias-selected-member__top {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 /* CrudModal ubica footerStart antes de Cancelar; con auto queda pegado al grupo de acciones. */

@@ -37,7 +37,7 @@ final class Socios
         unset($result['creado']);
         api_success(
             $result,
-            $created ? 'Registro creado correctamente.' : 'Registro actualizado correctamente.'
+            $created ? 'Socio creado correctamente.' : 'Socio actualizado correctamente.'
         );
     }
 
@@ -45,27 +45,49 @@ final class Socios
     {
         $auth = require_admin();
         $body = request_body();
-        $id = positive_id($body['id'] ?? null, 'socio');
+        $id = positive_id($body['id'] ?? $body['id_socio'] ?? null, 'socio');
         $date = valid_date($body['fecha_baja'] ?? date('Y-m-d'), 'baja');
+        if ($date > date('Y-m-d')) api_error('La fecha de baja no puede ser futura.', 'VALIDATION_ERROR');
         $reason = required_text($body, 'motivo_baja', 'motivo de baja', 500);
-        api_success(self::darBajaDatos($auth, $id, $date, $reason), 'Registro dado de baja correctamente.');
+        api_success(self::darBajaDatos($auth, $id, $date, $reason), 'Socio dado de baja correctamente.');
     }
 
     public static function reactivar(): never
     {
         $auth = require_admin();
         $body = request_body();
-        $id = positive_id($body['id'] ?? null, 'socio');
+        $id = positive_id($body['id'] ?? $body['id_socio'] ?? null, 'socio');
         $date = valid_date($body['fecha_reactivacion'] ?? date('Y-m-d'), 'reactivación');
+        if ($date > date('Y-m-d')) api_error('La fecha de reactivación no puede ser futura.', 'VALIDATION_ERROR');
         $reason = optional_text($body['motivo_reactivacion'] ?? null, 500);
-        api_success(self::reactivarDatos($auth, $id, $date, $reason), 'Registro reactivado correctamente.');
+        api_success(self::reactivarDatos($auth, $id, $date, $reason), 'Socio reactivado correctamente.');
+    }
+
+    public static function registrarContacto(): never
+    {
+        $auth = require_admin();
+        api_success(
+            self::registrarContactoDatos($auth, request_body()),
+            'Gestión de contacto registrada correctamente.'
+        );
+    }
+
+    public static function cerrarCumpleanios(): never
+    {
+        $auth = require_admin();
+        $body = request_body();
+        $id = positive_id($body['id'] ?? $body['id_socio'] ?? null, 'socio');
+        api_success(
+            self::cerrarCumpleaniosDatos($auth, $id),
+            'Aviso marcado como gestionado para este año.'
+        );
     }
 
     public static function eliminarDefinitivo(): never
     {
         $auth = require_admin();
         $body = request_body();
-        $id = positive_id($body['id'] ?? null, 'socio');
+        $id = positive_id($body['id'] ?? $body['id_socio'] ?? null, 'socio');
         $confirmation = strtoupper(trim((string)($body['confirmacion'] ?? '')));
         if ($confirmation !== 'ELIMINAR') {
             api_error(

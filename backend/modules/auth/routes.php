@@ -122,9 +122,11 @@ function auth_password_matches(string $password, string $stored): bool
     $info = password_get_info($normalized);
     $isPasswordHash = ($info['algoName'] ?? 'unknown') !== 'unknown';
 
-    return $isPasswordHash
-        ? password_verify($password, $normalized)
-        : hash_equals($stored, $password);
+    // En esta versión todas las contraseñas deben estar hasheadas. Un valor
+    // plano o un hash inválido se rechaza en lugar de tratarse como contraseña.
+    if (!$isPasswordHash) return false;
+
+    return password_verify($password, $normalized);
 }
 
 function auth_upgrade_password_if_needed(PDO $db, array $user, string $password): void
@@ -135,7 +137,9 @@ function auth_upgrade_password_if_needed(PDO $db, array $user, string $password)
     $isPasswordHash = ($info['algoName'] ?? 'unknown') !== 'unknown';
     $legacyPrefix = $normalized !== $stored;
 
-    if (!$isPasswordHash || $legacyPrefix || password_needs_rehash($normalized, PASSWORD_DEFAULT)) {
+    // Un valor inválido nunca llega hasta acá porque auth_password_matches lo
+    // rechaza. Los hashes bcrypt heredados y los costos viejos sí se actualizan.
+    if ($isPasswordHash && ($legacyPrefix || password_needs_rehash($normalized, PASSWORD_DEFAULT))) {
         $db->prepare('UPDATE sis_usuarios SET hash_contrasena = ? WHERE idUsuario = ?')
             ->execute([password_hash($password, PASSWORD_DEFAULT), (int)$user['idUsuario']]);
     }
@@ -194,6 +198,10 @@ function auth_login(): never
     // Se utiliza el token Bearer por pestaña; se elimina cualquier cookie vieja.
     auth_cookie('', time() - 3600);
     auth_login_audit($db, $user, $usuario, true);
+
+    // La respuesta contiene el token de sesión y no debe quedar cacheada.
+    header('Cache-Control: no-store, private, max-age=0');
+    header('Pragma: no-cache');
 
     api_success([
         'token' => $token,

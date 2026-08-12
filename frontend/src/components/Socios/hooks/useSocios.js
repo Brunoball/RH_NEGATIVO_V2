@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sociosApi } from "../api/sociosApi";
 
+const EMPTY_PAGINATION = {
+  pagina: 1,
+  por_pagina: 100,
+  total: 0,
+  total_paginas: 0,
+  desde: 0,
+  hasta: 0,
+  tiene_anterior: false,
+  tiene_siguiente: false,
+};
+
 export function useSocios(filtros = {}) {
   const query = useMemo(() => JSON.stringify(filtros), [filtros]);
   const [response, setResponse] = useState({
     items: [],
     resumen: {},
     catalogos: {},
-    paginacion: {
-      pagina: 1,
-      por_pagina: 100,
-      total: 0,
-      total_paginas: 0,
-      desde: 0,
-      hasta: 0,
-      tiene_anterior: false,
-      tiene_siguiente: false,
-    },
+    avisos_cumpleanios: [],
+    paginacion: EMPTY_PAGINATION,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -33,16 +36,8 @@ export function useSocios(filtros = {}) {
         items: result.items || [],
         resumen: result.resumen || {},
         catalogos: result.catalogos || {},
-        paginacion: result.paginacion || {
-          pagina: 1,
-          por_pagina: 100,
-          total: 0,
-          total_paginas: 0,
-          desde: 0,
-          hasta: 0,
-          tiene_anterior: false,
-          tiene_siguiente: false,
-        },
+        avisos_cumpleanios: result.avisos_cumpleanios || [],
+        paginacion: result.paginacion || EMPTY_PAGINATION,
       });
       return result;
     } catch (err) {
@@ -56,7 +51,10 @@ export function useSocios(filtros = {}) {
 
   useEffect(() => {
     cargar();
-    return () => { requestId.current += 1; };
+    return () => {
+      requestId.current += 1;
+    };
   }, [cargar]);
+
   return { ...response, loading, error, cargar };
 }

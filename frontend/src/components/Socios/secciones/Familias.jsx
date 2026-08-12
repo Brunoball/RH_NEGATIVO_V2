@@ -9,7 +9,6 @@ import {
   faPen,
   faPlus,
   faRotateLeft,
-  faUser,
   faUserSlash,
   faUsers,
   faTrash,
@@ -32,7 +31,6 @@ import {
   EntityTabs,
   FloatingField,
 } from "../../Global/Formularios/TabbedForm";
-import { upperWithoutDigits } from "../../Global/Formularios/inputSanitizers";
 import {
   matchesEverySearchTerm,
   normalizeSearchQuery,
@@ -47,7 +45,7 @@ const FORM_TAB_DETAILS = "datos";
 const FORM_TAB_MEMBERS = "integrantes";
 const INFO_TAB_CURRENT = "actual";
 const INFO_TAB_HISTORY = "historial";
-const PARTNER_STATUS_STORAGE_KEY = "lalcec_socios_estado_seleccionado";
+const PARTNER_STATUS_STORAGE_KEY = "rh_v2_familias_estado_seleccionado";
 
 function readSharedFamilyStatus() {
   if (typeof window === "undefined") return "activo";
@@ -90,8 +88,7 @@ const formatDate = (value) =>
 const FAMILY_EXPORT_COLUMNS = [
   { label: "N.º", value: (_item, index) => index + 1 },
   { label: "Familia", key: "nombre" },
-  { label: "Descripción", value: (item) => item.descripcion || "—" },
-  { label: "Titular", value: (item) => item.titular || "SIN TITULAR" },
+  { label: "Observaciones", value: (item) => item.descripcion || "—" },
   { label: "Integrantes", value: (item) => Number(item.cantidad_integrantes || 0) },
   { label: "Estado", value: (item) => item.activo ? "ACTIVA" : "BAJA" },
 ];
@@ -104,7 +101,6 @@ function emptyForm() {
     integrantes: [],
     integrantes_originales: [],
     fecha_desvinculacion: today(),
-    motivo_desvinculacion: "",
   };
 }
 
@@ -159,15 +155,12 @@ function belongsToAnotherFamily(person, form) {
 function memberFromCatalog(person) {
   return {
     id_socio: Number(person.id_socio),
-    apellido: person.apellido || "",
     nombre: person.nombre || "",
     dni: person.dni || "",
     categoria: person.categoria || "",
-    parentesco: person.parentesco || "",
-    es_titular: Boolean(person.es_titular),
-    observaciones: person.observaciones || "",
-    fecha_incorporacion: person.fecha_incorporacion || today(),
+    desde: person.desde || person.fecha_incorporacion || today(),
     activo: person.activo !== false,
+    vigente: person.vigente !== false,
   };
 }
 
@@ -181,7 +174,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
     return (catalog || []).filter((person) => {
       if (selectedIds.has(Number(person.id_socio))) return false;
       return matchesEverySearchTerm(
-        [person.apellido, person.nombre, person.dni, person.categoria]
+        [person.nombre, person.dni, person.categoria]
           .filter(Boolean)
           .join(" "),
         memberSearch,
@@ -205,9 +198,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
       integrantes: current.integrantes.map((member) =>
         Number(member.id_socio) === Number(id)
           ? { ...member, [key]: value }
-          : key === "es_titular" && value
-            ? { ...member, es_titular: false }
-            : member,
+          : member,
       ),
     }));
   };
@@ -257,16 +248,16 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  nombre: upperWithoutDigits(event.target.value),
+                  nombre: upper(event.target.value),
                 }))
               }
-              maxLength={150}
+              maxLength={120}
               placeholder=" "
               autoFocus
             />
           </FloatingField>
           <FloatingField
-            label="Descripción"
+            label="Observaciones"
             active={Boolean(form.descripcion)}
             textarea
           >
@@ -279,7 +270,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
                 }))
               }
               rows={3}
-              maxLength={500}
+              maxLength={2000}
               placeholder=" "
             />
           </FloatingField>
@@ -349,10 +340,10 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
                         onChange={() => togglePendingMember(person)}
                       />
                       <span className="familias-member-avatar" aria-hidden="true">
-                        {(person.apellido || person.nombre || "?").trim().charAt(0).toLocaleUpperCase("es-AR")}
+                        {(person.nombre || "?").trim().charAt(0).toLocaleUpperCase("es-AR")}
                       </span>
                       <span className="familias-modal__member-copy">
-                        <strong>{person.apellido}, {person.nombre}</strong>
+                        <strong>{person.nombre}</strong>
                         <small>
                           DNI {person.dni || "—"}
                           {person.categoria ? ` · ${person.categoria}` : ""}
@@ -378,7 +369,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
               <div className="familias-members-column__header">
                 <div>
                   <strong>Integrantes de la familia</strong>
-                  <span>Configurá sus datos dentro del grupo.</span>
+                  <span>Definí desde cuándo integra el grupo.</span>
                 </div>
                 <span className="familias-members-count">{form.integrantes.length}</span>
               </div>
@@ -386,31 +377,26 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
               <div className="familias-selected-members__list">
                 {form.integrantes.map((member) => (
                   <article
-                    className={`familias-selected-member ${member.es_titular ? "is-holder" : ""}`}
+                    className="familias-selected-member"
                     key={member.id_socio}
                   >
                     <div className="familias-selected-member__top">
                       <span className="familias-member-avatar" aria-hidden="true">
-                        {(member.apellido || member.nombre || "?").trim().charAt(0).toLocaleUpperCase("es-AR")}
+                        {(member.nombre || "?").trim().charAt(0).toLocaleUpperCase("es-AR")}
                       </span>
                       <div className="familias-selected-member__identity">
-                        <strong>{member.apellido}, {member.nombre}</strong>
-                        <small>DNI {member.dni || "—"}</small>
+                        <strong>{member.nombre}</strong>
+                        <small>
+                          DNI {member.dni || "—"}
+                          {member.categoria ? ` · ${member.categoria}` : ""}
+                          {member.vigente === false ? " · SOCIO DE BAJA" : ""}
+                        </small>
                       </div>
-                      <label className="familias-holder-toggle">
-                        <input
-                          type="radio"
-                          name="titular-familia"
-                          checked={Boolean(member.es_titular)}
-                          onChange={() => updateMember(member.id_socio, "es_titular", true)}
-                        />
-                        <span>Titular</span>
-                      </label>
                       <button
                         type="button"
                         className="familias-member-remove"
                         title="Quitar integrante"
-                        aria-label={`Quitar a ${member.apellido}, ${member.nombre}`}
+                        aria-label={`Quitar a ${member.nombre}`}
                         onClick={() =>
                           setForm((current) => ({
                             ...current,
@@ -424,33 +410,18 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
                       </button>
                     </div>
                     <div className="familias-selected-member__fields">
-                      <input
-                        className="familias-member-input"
-                        value={member.parentesco || ""}
-                        onChange={(event) =>
-                          updateMember(member.id_socio, "parentesco", upperWithoutDigits(event.target.value))
-                        }
-                        maxLength={50}
-                        placeholder="Parentesco"
-                      />
-                      <input
-                        className="familias-member-input"
-                        type="date"
-                        value={member.fecha_incorporacion || today()}
-                        max={today()}
-                        onChange={(event) =>
-                          updateMember(member.id_socio, "fecha_incorporacion", event.target.value)
-                        }
-                      />
-                      <input
-                        className="familias-member-input familias-member-input--observation"
-                        value={member.observaciones || ""}
-                        onChange={(event) =>
-                          updateMember(member.id_socio, "observaciones", upper(event.target.value))
-                        }
-                        maxLength={500}
-                        placeholder="Observaciones"
-                      />
+                      <label className="familias-member-date">
+                        <span>Integra la familia desde</span>
+                        <input
+                          className="familias-member-input"
+                          type="date"
+                          value={member.desde || today()}
+                          max={today()}
+                          onChange={(event) =>
+                            updateMember(member.id_socio, "desde", event.target.value)
+                          }
+                        />
+                      </label>
                     </div>
                   </article>
                 ))}
@@ -472,8 +443,8 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
                 {removedCount === 1 ? "" : "s"}
               </strong>
               <p>
-                La relación no se elimina: se cierra el período y queda
-                disponible en el historial.
+                El socio no se elimina: se cierra su vínculo con esta familia y
+                el período queda disponible en el historial.
               </p>
               <div className="entity-form__grid">
                 <FloatingField label="Fecha de desvinculación *" active>
@@ -489,22 +460,6 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
                     }
                   />
                 </FloatingField>
-                <FloatingField
-                  label="Motivo de desvinculación *"
-                  active={Boolean(form.motivo_desvinculacion)}
-                >
-                  <input
-                    value={form.motivo_desvinculacion}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        motivo_desvinculacion: upper(event.target.value),
-                      }))
-                    }
-                    maxLength={500}
-                    placeholder=" "
-                  />
-                </FloatingField>
               </div>
             </div>
           ) : null}
@@ -515,18 +470,16 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
 }
 
 function formFromFamily(item) {
-  const members = (item.integrantes || []).map((member) => ({
-    ...memberFromCatalog(member),
-    observaciones: member.observaciones || "",
-  }));
+  const members = (item.integrantes || []).map((member) =>
+    memberFromCatalog(member),
+  );
   return {
     id_familia: item.id_familia,
-    nombre: item.nombre || "",
-    descripcion: item.descripcion || "",
+    nombre: item.nombre || item.nombre_familia || "",
+    descripcion: item.descripcion || item.observaciones || "",
     integrantes: members,
     integrantes_originales: members.map((member) => member.id_socio),
     fecha_desvinculacion: today(),
-    motivo_desvinculacion: "",
   };
 }
 
@@ -615,37 +568,18 @@ export default function Familias() {
       });
       return;
     }
-    const selected = new Set(
-      form.integrantes.map((member) => Number(member.id_socio)),
-    );
-    const removed = form.integrantes_originales.filter(
-      (id) => !selected.has(Number(id)),
-    );
-    if (removed.length && !form.motivo_desvinculacion.trim()) {
-      setFormTab(FORM_TAB_MEMBERS);
-      setFeedback({
-        type: "error",
-        message:
-          "Indicá el motivo de desvinculación de los integrantes quitados.",
-      });
-      return;
-    }
-
     setSaving(true);
     try {
       const response = await familiasApi.guardar({
         id_familia: form.id_familia || null,
-        nombre: upperWithoutDigits(form.nombre),
+        nombre: upper(form.nombre),
         descripcion: form.descripcion,
+        observaciones: form.descripcion,
         integrantes: form.integrantes.map((member) => ({
           id_socio: member.id_socio,
-          parentesco: upperWithoutDigits(member.parentesco),
-          es_titular: member.es_titular,
-          observaciones: member.observaciones,
-          fecha_incorporacion: member.fecha_incorporacion,
+          desde: member.desde || today(),
         })),
         fecha_desvinculacion: form.fecha_desvinculacion,
-        motivo_desvinculacion: form.motivo_desvinculacion,
       });
       setModalOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
@@ -779,8 +713,7 @@ export default function Familias() {
           skeletonRows={6}
           columns={[
             "Familia",
-            "Descripción",
-            "Titular",
+            "Observaciones",
             "Integrantes",
             "Acciones",
           ]}
@@ -805,9 +738,6 @@ export default function Familias() {
                 <span className="entity-wrap-text">
                   {item.descripcion || "—"}
                 </span>
-              </div>
-              <div className="mov-gridCell">
-                {item.titular || "SIN TITULAR"}
               </div>
               <div className="mov-gridCell is-strong">
                 {Number(item.cantidad_integrantes || 0)}
@@ -897,7 +827,7 @@ export default function Familias() {
       <CrudModal
         open={modalOpen}
         title={form.id_familia ? "Editar familia" : "Nueva familia"}
-        subtitle="Los integrantes se vinculan de forma histórica; quitar uno cierra su período sin borrar datos."
+        subtitle="Los integrantes se vinculan de forma histórica; quitar uno cierra su período sin borrar al socio."
         onClose={() => setModalOpen(false)}
         onSubmit={save}
         saving={saving}
@@ -975,16 +905,18 @@ export default function Familias() {
                     icon: faUsers,
                   },
                   {
-                    label: "Titular",
-                    value: detailModal.data.titular || "SIN TITULAR",
-                    icon: faUser,
-                  },
-                  {
                     label: "Creación",
                     value: formatDate(
                       String(detailModal.data.creado_en || "").slice(0, 10),
                     ),
                     icon: faCalendarDays,
+                  },
+                  {
+                    label: "Actualización",
+                    value: formatDate(
+                      String(detailModal.data.actualizado_en || "").slice(0, 10),
+                    ),
+                    icon: faClockRotateLeft,
                   },
                 ]}
               />
@@ -1000,13 +932,13 @@ export default function Familias() {
                       title={member.denominacion}
                       detail={[
                         `DNI ${member.dni || "—"}`,
-                        member.parentesco,
-                        member.es_titular ? "TITULAR" : null,
+                        member.categoria,
+                        member.socio_vigente === false ? "SOCIO DE BAJA" : "SOCIO VIGENTE",
                       ]
                         .filter(Boolean)
                         .join(" · ")}
-                      meta={`DESDE ${formatDate(member.fecha_incorporacion)}`}
-                      tone={member.activo ? "success" : ""}
+                      meta={`DESDE ${formatDate(member.desde || member.fecha_incorporacion)}`}
+                      tone={member.socio_vigente === false ? "danger" : "success"}
                     />
                   ))
                 ) : (
@@ -1016,7 +948,7 @@ export default function Familias() {
                 )}
               </InfoSection>
               {detailModal.data.descripcion ? (
-                <InfoSection title="Descripción" icon={faAddressBook}>
+                <InfoSection title="Observaciones" icon={faAddressBook}>
                   <InfoRow title={detailModal.data.descripcion} />
                 </InfoSection>
               ) : null}
@@ -1033,13 +965,13 @@ export default function Familias() {
                     key={member.id_familia_socio}
                     title={member.denominacion}
                     detail={[
-                      member.parentesco,
-                      member.es_titular ? "TITULAR" : null,
-                      member.motivo_desvinculacion,
+                      member.categoria,
+                      member.activo ? "VÍNCULO ACTIVO" : "VÍNCULO FINALIZADO",
+                      member.socio_vigente === false ? "SOCIO DE BAJA" : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}
-                    meta={`${formatDate(member.fecha_incorporacion)} → ${member.fecha_desvinculacion ? formatDate(member.fecha_desvinculacion) : "ACTUALIDAD"}`}
+                    meta={`${formatDate(member.desde || member.fecha_incorporacion)} → ${member.hasta || member.fecha_desvinculacion ? formatDate(member.hasta || member.fecha_desvinculacion) : "ACTUALIDAD"}`}
                     tone={member.activo ? "success" : ""}
                   />
                 ))
