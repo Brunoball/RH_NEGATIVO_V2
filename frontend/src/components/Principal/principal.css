@@ -1592,13 +1592,10 @@ body.pp-lockScroll{ overflow:hidden !important; }
   }
 }
 
-/* RH Negativo: marca textual temporal hasta incorporar el logo institucional. */
+/* Logo institucional de RH Negativo. */
 .rh-brand-mark {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.9em;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.08em;
-  color: currentColor;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
 }

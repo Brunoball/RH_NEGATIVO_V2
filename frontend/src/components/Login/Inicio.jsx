@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
 import { apiPost } from "../_shared/api/apiClient";
 import { saveSession } from "../_shared/auth/session";
+import logoRh from "../../imagenes/Logo_rh_sf.png";
 import "./inicio.css";
 
 const APP_NAME = "RH Negativo";
@@ -91,7 +92,7 @@ export default function Inicio() {
           <div className="ini_brand-content">
             <div className="ini_brand-logo--placeholder" aria-label="RH Negativo">
               <div className="brand-mark brand-mark--rh" aria-hidden="true">
-                RH−
+                <img src={logoRh} alt="" />
               </div>
               <div className="brand-word">
                 <strong className="brand-word-title">RH Negativo</strong>

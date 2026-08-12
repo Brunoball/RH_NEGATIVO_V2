@@ -16,6 +16,7 @@ import {
 import { clearSession, getSession } from "../_shared/auth/session";
 import { apiPost } from "../_shared/api/apiClient";
 import ModalPerfil from "../Perfil/ModalPerfil";
+import logoRh from "../../imagenes/Logo_rh_sf.png";
 import "./principal.css";
 
 const NAV_ITEMS = [
@@ -119,7 +120,14 @@ function LogoutModal({ open, onClose, onConfirm }) {
 }
 
 function RhMark({ className = "" }) {
-  return <span className={`rh-brand-mark ${className}`.trim()}>RH−</span>;
+  return (
+    <img
+      className={`rh-brand-mark ${className}`.trim()}
+      src={logoRh}
+      alt=""
+      aria-hidden="true"
+    />
+  );
 }
 
 export default function Principal() {
@@ -211,11 +219,6 @@ export default function Principal() {
     }
   };
 
-  const userInitial = String(session?.usuario?.nombre || "U")
-    .trim()
-    .charAt(0)
-    .toUpperCase();
-
   return (
     <div className="pp-shell">
       <header className="mov-topbar">
@@ -229,7 +232,7 @@ export default function Principal() {
             <FontAwesomeIcon icon={faBars} />
           </button>
           <div className="mov-topbar__logo mov-topbar__appBrand">
-            <span className="mov-topbar__appBrandMark">
+            <span className="mov-topbar__appBrandMark mov-topbar__appBrandMark--image">
               <RhMark />
             </span>
             <span className="mov-topbar__brandText">
@@ -251,13 +254,18 @@ export default function Principal() {
             <FontAwesomeIcon icon={faGear} />
           </button>
           <button
-            className="mov-topbar__usericon"
+            className="mov-topbar__usericon has-logo"
             type="button"
             onClick={() => setPerfilOpen(true)}
             title="Perfil"
             aria-label="Abrir perfil"
           >
-            {userInitial}
+            <img
+              className="mov-topbar__userlogo"
+              src={logoRh}
+              alt=""
+              aria-hidden="true"
+            />
           </button>
           <button
             className="pp-topbarLogout"
@@ -283,7 +291,7 @@ export default function Principal() {
             role="button"
             tabIndex={0}
           >
-            <div className="pp-drawerBrand__mark">
+            <div className="pp-drawerBrand__mark pp-drawerBrand__mark--image">
               <RhMark />
             </div>
             <div className="pp-drawerBrand__txt">
@@ -307,7 +315,7 @@ export default function Principal() {
           role="button"
           tabIndex={0}
         >
-          <div className="pp-brand__mark">
+          <div className="pp-brand__mark pp-brand__mark--image">
             <RhMark />
           </div>
           <div className="pp-brand__text">

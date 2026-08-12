@@ -1,4 +1,4 @@
-import logoLalcec from "../../../imagenes/logo_lalcec_sf.png";
+import logoLalcec from "../../../imagenes/Logo_rh.png";
 
 const htmlEscape = (value) =>
   String(value ?? "").replace(
