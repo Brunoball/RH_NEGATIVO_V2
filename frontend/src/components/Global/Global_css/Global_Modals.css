@@ -6,12 +6,12 @@
 
 :root {
   --entity-modal-ink: var(--balto-ink, #0f172a);
-  --entity-modal-action: var(--balto-action, #f97316);
+  --entity-modal-action: var(--balto-action, #2563eb);
   --entity-modal-bg: var(--balto-bg, #f8fafc);
   --entity-modal-text: var(--balto-text, #475569);
   --entity-modal-danger: var(--balto-danger, #ef4444);
   --entity-modal-border: var(--mov-border, #e2e8f0);
-  --entity-modal-focus: var(--mov-focus, 0 0 0 4px rgb(249 115 22 / 0.14));
+  --entity-modal-focus: var(--mov-focus, 0 0 0 4px rgb(37 99 235 / 0.14));
   --entity-modal-transition: var(
     --mov-trans,
     160ms cubic-bezier(0.4, 0, 0.2, 1)

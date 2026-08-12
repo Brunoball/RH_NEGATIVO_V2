@@ -137,15 +137,15 @@
   margin-left: 2px;
   padding: 5px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--primary-500, #f97316) 10%, #ffffff);
-  color: var(--primary-700, #c2410c);
+  background: color-mix(in srgb, var(--primary-500, #2563eb) 10%, #ffffff);
+  color: var(--primary-700, #1e40af);
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-500, #f97316) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-500, #2563eb) 20%, transparent);
 }
 
 .entity-wrap-text {

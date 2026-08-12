@@ -57,7 +57,7 @@
 }
 
 .gdel-modal--primary {
-  border-top-color: var(--primary-color, #f97316);
+  border-top-color: var(--primary-color, #2563eb);
 }
 
 /*
@@ -145,8 +145,8 @@
 }
 
 .gdel-icon--primary {
-  background: color-mix(in srgb, var(--primary-color, #f97316) 12%, #fff);
-  color: var(--primary-color, #f97316);
+  background: color-mix(in srgb, var(--primary-color, #2563eb) 12%, #fff);
+  color: var(--primary-color, #2563eb);
 }
 
 .gdel-title {
@@ -173,7 +173,7 @@
 }
 
 .gdel-title--primary {
-  color: color-mix(in srgb, var(--primary-color, #f97316) 82%, #7c2d12);
+  color: color-mix(in srgb, var(--primary-color, #2563eb) 82%, #172554);
 }
 
 .gdel-body {
@@ -302,9 +302,9 @@
 }
 
 .gdel-reason textarea:focus {
-  border-color: var(--primary-color, #f97316);
+  border-color: var(--primary-color, #2563eb);
   box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--primary-color, #f97316) 12%, transparent);
+    color-mix(in srgb, var(--primary-color, #2563eb) 12%, transparent);
 }
 
 .gdel-reason textarea::placeholder {
@@ -345,7 +345,7 @@
 .gdel-close:focus-visible,
 .gdel-btn:focus-visible {
   outline: 3px solid
-    color-mix(in srgb, var(--primary-color, #f97316) 24%, transparent);
+    color-mix(in srgb, var(--primary-color, #2563eb) 24%, transparent);
   outline-offset: 2px;
 }
 
@@ -378,7 +378,7 @@
 }
 
 .gdel-btn--solid-primary {
-  background: var(--primary-color, #f97316);
+  background: var(--primary-color, #2563eb);
 }
 
 .gdel-btn--solid-danger:hover:not(:disabled) {

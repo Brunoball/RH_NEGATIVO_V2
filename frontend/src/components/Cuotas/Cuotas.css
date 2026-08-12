@@ -335,10 +335,10 @@
   width: fit-content;
   max-width: 100%;
   padding: 5px 9px;
-  border: 1px solid #fed7aa;
+  border: 1px solid var(--primary-200, #bfdbfe);
   border-radius: 999px;
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--primary-50, #eff6ff);
+  color: var(--primary-800, #1e3a8a);
   font-size: 0.73rem;
   font-weight: 800;
   letter-spacing: 0.025em;
@@ -362,16 +362,16 @@
   gap: 5px;
   margin-top: 18px;
   padding: 16px 18px;
-  border: 1px solid #fed7aa;
+  border: 1px solid var(--primary-200, #bfdbfe);
   border-radius: 14px;
-  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+  background: linear-gradient(135deg, var(--primary-50, #eff6ff) 0%, #ffffff 100%);
 }
 
 .cuotas-payment-summary > span {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #c2410c;
+  color: var(--primary-700, #1e40af);
   font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0.055em;
@@ -851,7 +851,7 @@
 
 .cuotas-family-card__head span:not(.cuotas-family-card__icon),
 .cuotas-batch-list header span {
-  color: var(--balto-action, #c2410c);
+  color: var(--balto-action, #2563eb);
   font-size: 0.69rem;
   font-weight: 900;
   letter-spacing: 0.055em;
@@ -1074,7 +1074,7 @@
 }
 
 .cuotas-batch-list > header > strong {
-  color: var(--balto-action, #f97316);
+  color: var(--balto-action, #2563eb);
   font-size: 1.08rem;
   font-weight: 850;
 }
@@ -1104,7 +1104,7 @@
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--primary-color) 18%, transparent);
   border-radius: 9px;
-  color: var(--balto-action, #f97316);
+  color: var(--balto-action, #2563eb);
   background: color-mix(in srgb, var(--primary-color) 8%, #fff);
   font-size: 0.7rem;
   font-weight: 850;

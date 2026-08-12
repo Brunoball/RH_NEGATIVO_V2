@@ -2,8 +2,8 @@
 
 .ini_contenedor-principal {
   --ini-primary: var(--text-primary, #0f172a);
-  --ini-action: var(--primary-color, #f97316);
-  --ini-action-soft: color-mix(in srgb, var(--primary-color, #f97316) 12%, transparent);
+  --ini-action: var(--primary-color, #2563eb);
+  --ini-action-soft: color-mix(in srgb, var(--primary-color, #2563eb) 12%, transparent);
   --ini-bg: var(--background-color, #f8fafc);
   --ini-text: var(--text-secondary, #475569);
   --ini-muted: var(--gray-500, #64748b);
@@ -429,7 +429,7 @@
   background: var(--ini-action);
   border: 1px solid var(--ini-action);
   border-radius: 14px;
-  box-shadow: 0 14px 28px -18px rgb(249 115 22 / .65);
+  box-shadow: 0 14px 28px -18px rgb(37 99 235 / .65);
   font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
   font-size: .96rem;
   font-weight: 600;
@@ -441,7 +441,7 @@
 .ini_boton:hover:not(:disabled) {
   transform: translateY(-2px);
   background: color-mix(in srgb, var(--ini-action) 88%, var(--ini-primary));
-  box-shadow: 0 18px 34px -18px rgb(249 115 22 / .72);
+  box-shadow: 0 18px 34px -18px rgb(37 99 235 / .72);
 }
 
 .ini_boton:active:not(:disabled) {
@@ -618,7 +618,7 @@
 .ini_modal-btn-pri {
   color: #fff;
   background: var(--ini-action);
-  box-shadow: 0 14px 28px -18px rgb(249 115 22 / .68);
+  box-shadow: 0 14px 28px -18px rgb(37 99 235 / .68);
 }
 
 .ini_modal-btn-pri:hover:not(:disabled) {
@@ -791,7 +791,7 @@
   border-radius: 28px;
   background: rgba(255, 255, 255, .96);
   border: 1px solid rgba(217, 226, 239, .9);
-  box-shadow: 0 20px 45px -20px rgb(124 45 18 / .28);
+  box-shadow: 0 20px 45px -20px rgb(30 64 175 / .28);
 }
 
 .ini_brand-logo--placeholder .brand-mark img {

@@ -26,10 +26,10 @@
   margin-bottom: 3px;
   border: 2.5px solid color-mix(
     in srgb,
-    var(--entity-modal-action, var(--primary-color, #f97316)) 16%,
+    var(--entity-modal-action, var(--primary-color, #2563eb)) 16%,
     transparent
   );
-  border-top-color: var(--entity-modal-action, var(--primary-color, #f97316));
+  border-top-color: var(--entity-modal-action, var(--primary-color, #2563eb));
   border-radius: 50%;
   animation: globalLoaderSpin 0.72s linear infinite;
 }

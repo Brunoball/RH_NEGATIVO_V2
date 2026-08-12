@@ -1,13 +1,13 @@
 /* Layout principal reutilizable */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 
-/* Variables exclusivas del layout. La paleta proviene de tokens.css. */
+/* Variables exclusivas del layout. La paleta proviene de Global/roots.css. */
 .pp-shell{
-  --balto-action-hover:var(--primary-hover, #ea580c);
+  --balto-action-hover:var(--primary-hover, #1d4ed8);
   --balto-border:var(--border-color, #e2e8f0);
   --balto-muted:color-mix(in srgb, var(--text-secondary, #475569) 72%, transparent);
-  --balto-focus:color-mix(in srgb, var(--primary-color, #f97316) 18%, transparent);
-  --balto-hover:color-mix(in srgb, var(--primary-color, #f97316) 6%, transparent);
+  --balto-focus:color-mix(in srgb, var(--primary-color, #2563eb) 18%, transparent);
+  --balto-hover:color-mix(in srgb, var(--primary-color, #2563eb) 6%, transparent);
   --r-md:14px;
   --r-lg:18px;
   --t:180ms ease;
@@ -16,7 +16,7 @@
   --pp-side-expanded:248px;
   --drawer-w:286px;
   --sub-open-h:320px;
-  --pp-icon-gradient:var(--gradient-primary, linear-gradient(135deg, #f97316, #c2410c));
+  --pp-icon-gradient:var(--gradient-primary, linear-gradient(135deg, #2563eb, #1e40af));
 }
 
 /* =========================
@@ -70,9 +70,9 @@ body.pp-lockScroll{ overflow:hidden !important; }
   justify-content:space-between;
   gap:14px;
   padding:0 16px 0 ;
-  background:#f97316;
+  background:var(--primary-color, #2563eb);
   border-bottom:1px solid rgba(255,255,255,.12);
-  box-shadow:0 10px 24px rgb(124 45 18 / .22);
+  box-shadow:0 10px 24px rgb(30 64 175 / .22);
 }
 
 .mov-topbar__left{
@@ -508,7 +508,7 @@ body.pp-lockScroll{ overflow:hidden !important; }
   justify-content:center;
   color:#fff;
   background:var(--gradient-primary);
-  box-shadow:0 12px 20px rgb(249 115 22 / .18);
+  box-shadow:0 12px 20px rgb(37 99 235 / .18);
   flex:0 0 auto;
 }
 .pp-drawerBrand__txt{ min-width:0; }
@@ -571,7 +571,7 @@ body.pp-lockScroll{ overflow:hidden !important; }
   justify-content:center;
   color:#fff;
   background:var(--gradient-primary);
-  box-shadow:0 12px 20px rgb(249 115 22 / .18);
+  box-shadow:0 12px 20px rgb(37 99 235 / .18);
   flex:0 0 auto;
 }
 .pp-brand__mark--image{
@@ -700,7 +700,7 @@ body.pp-lockScroll{ overflow:hidden !important; }
   .pp-nav__item:hover .pp-nav__icon{
     background:var(--pp-icon-gradient);
     color:#fff;
-    box-shadow:0 12px 20px rgb(249 115 22 / .18);
+    box-shadow:0 12px 20px rgb(37 99 235 / .18);
   }
 }
 
@@ -934,7 +934,7 @@ body.pp-lockScroll{ overflow:hidden !important; }
 
   .pp-sidebarAction:hover{
     border-color:color-mix(in srgb, var(--primary-color) 28%, transparent);
-    box-shadow:0 12px 24px -18px rgb(249 115 22 / .45);
+    box-shadow:0 12px 24px -18px rgb(37 99 235 / .45);
   }
 
   .pp-logout:hover{

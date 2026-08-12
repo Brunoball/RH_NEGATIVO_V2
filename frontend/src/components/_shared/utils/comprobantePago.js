@@ -294,7 +294,7 @@ export const paymentReceiptHtml = (source, options = {}) => {
           border: 0;
           border-radius: 8px;
           color: #fff;
-          background: #f97316;
+          background: #2563eb;
           font-weight: 700;
           cursor: pointer;
         }

@@ -32,14 +32,14 @@
 
 .global-exportHistorial-trigger:not(.mov-btn):hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--balto-action, #f97316) 28%, var(--mov-border, #e2e8f0));
+  border-color: color-mix(in srgb, var(--balto-action, #2563eb) 28%, var(--mov-border, #e2e8f0));
   background: color-mix(in srgb, var(--balto-bg, #f8fafc) 70%, #fff);
   box-shadow: var(--mov-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
 }
 
 .global-exportHistorial-trigger:not(.mov-btn):focus-visible {
   outline: none;
-  box-shadow: var(--mov-focus, 0 0 0 4px rgb(249 115 22 / 0.14));
+  box-shadow: var(--mov-focus, 0 0 0 4px rgb(37 99 235 / 0.14));
 }
 
 .global-exportHistorial-trigger:not(.mov-btn):disabled {
@@ -71,13 +71,13 @@
 
 .global-exportHistorial-overlay {
   --export-ink: var(--entity-modal-ink, var(--balto-ink, #0f172a));
-  --export-action: var(--entity-modal-action, var(--balto-action, #f97316));
+  --export-action: var(--entity-modal-action, var(--balto-action, #2563eb));
   --export-bg: var(--entity-modal-bg, var(--balto-bg, #f8fafc));
   --export-text: var(--entity-modal-text, var(--balto-text, #475569));
   --export-danger: var(--entity-modal-danger, var(--balto-danger, #ef4444));
   --export-success: var(--balto-success, #10b981);
   --export-border: var(--entity-modal-border, var(--mov-border, #e2e8f0));
-  --export-focus: var(--entity-modal-focus, var(--mov-focus, 0 0 0 4px rgb(249 115 22 / 0.14)));
+  --export-focus: var(--entity-modal-focus, var(--mov-focus, 0 0 0 4px rgb(37 99 235 / 0.14)));
   --export-transition: var(--entity-modal-transition, var(--mov-trans, 160ms ease));
   position: fixed;
   inset: 0;
@@ -519,12 +519,12 @@
   border-color: color-mix(in srgb, var(--export-action) 60%, #fff);
   color: #fff;
   background: var(--export-action);
-  box-shadow: 0 10px 22px rgb(249 115 22 / 0.18);
+  box-shadow: 0 10px 22px rgb(37 99 235 / 0.18);
 }
 
 .global-exportHistorial-action--primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--export-action) 88%, #000);
-  box-shadow: 0 14px 26px rgb(249 115 22 / 0.22);
+  box-shadow: 0 14px 26px rgb(37 99 235 / 0.22);
 }
 
 @media (max-width: 720px) {

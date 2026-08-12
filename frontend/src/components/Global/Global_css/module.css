@@ -279,17 +279,17 @@
   background: var(--balto-action);
   border-color: color-mix(in srgb, var(--balto-action) 60%, #fff);
   color: #fff;
-  box-shadow: 0 10px 22px rgb(249 115 22 / 0.18);
+  box-shadow: 0 10px 22px rgb(37 99 235 / 0.18);
 }
 .mov-btn--primary:hover {
   background: color-mix(in srgb, var(--balto-action) 88%, #000);
-  box-shadow: 0 14px 26px rgb(249 115 22 / 0.22);
+  box-shadow: 0 14px 26px rgb(37 99 235 / 0.22);
 }
 .mov-btn--primary:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 4px rgb(249 115 22 / 0.18),
-    0 10px 22px rgb(249 115 22 / 0.18);
+    0 0 0 4px rgb(37 99 235 / 0.18),
+    0 10px 22px rgb(37 99 235 / 0.18);
 }
 
 .mov-btn--danger {
@@ -552,10 +552,10 @@
   width: fit-content;
   max-width: 100%;
   padding: 5px 9px;
-  border: 1px solid #fed7aa;
+  border: 1px solid var(--primary-200, #bfdbfe);
   border-radius: 999px;
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--primary-50, #eff6ff);
+  color: var(--primary-800, #1e3a8a);
   font-size: 0.73rem;
   font-weight: 800;
   letter-spacing: 0.025em;
@@ -841,7 +841,7 @@
     transparent,
     color-mix(
       in srgb,
-      var(--primary-100, #ffedd5) 58%,
+      var(--primary-100, #dbeafe) 58%,
       rgba(255, 255, 255, 0.72)
     ),
     transparent
@@ -876,7 +876,7 @@
     transparent,
     color-mix(
       in srgb,
-      var(--primary-100, #ffedd5) 58%,
+      var(--primary-100, #dbeafe) 58%,
       rgba(255, 255, 255, 0.72)
     ),
     transparent
