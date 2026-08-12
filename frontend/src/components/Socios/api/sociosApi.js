@@ -6,7 +6,6 @@ export const sociosApi = {
   historial: (id) => apiGet("socios_historial", { id }),
   guardar: (payload) => apiPost("socios_guardar", payload),
   darBaja: (payload) => apiPost("socios_eliminar", payload),
-  eliminarDefinitivo: (payload) => apiPost("socios_eliminar_definitivo", payload),
   reactivar: (payload) =>
     apiPost(
       "socios_reactivar",

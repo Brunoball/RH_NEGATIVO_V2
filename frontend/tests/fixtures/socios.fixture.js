@@ -1,43 +1,27 @@
 const { digitsFromSuffix, lettersFromSuffix, uniqueSuffix } = require('../helpers/data.helper');
 
-function personData() {
+function socioData(label = 'SOCIO') {
   const suffix = uniqueSuffix();
-  const textSuffix = lettersFromSuffix(suffix);
+  const text = lettersFromSuffix(suffix, 12);
   return {
     suffix,
-    textSuffix,
-    apellido: `PW EE APELLIDO ${textSuffix}`,
-    nombre: `NOMBRE ${textSuffix}`,
-    nombreEditado: `NOMBRE EDITADO ${textSuffix}`,
+    nombre: `PW E2E SOCIO ${label} ${text}`,
+    nombreEditado: `PW E2E SOCIO ${label} ${text} EDITADO`,
     dni: `9${digitsFromSuffix(suffix, 7)}`.slice(0, 8),
-    email: `pw.socio.${suffix.toLowerCase()}@example.test`,
-    telefono: `351${digitsFromSuffix(suffix, 7)}`,
-  };
-}
-
-function companyData() {
-  const suffix = uniqueSuffix();
-  return {
-    suffix,
-    razonSocial: `PW E2E EMPRESA ${suffix}`,
-    razonSocialEditada: `PW E2E EMPRESA EDITADA ${suffix}`,
-    cuit: `30${digitsFromSuffix(suffix, 8)}1`.slice(0, 11),
-    email: `pw.empresa.${suffix.toLowerCase()}@example.test`,
-    telefono: `354${digitsFromSuffix(suffix, 7)}`,
+    movil: `351${digitsFromSuffix(`${suffix}-movil`, 7)}`,
+    fijo: `3564${digitsFromSuffix(`${suffix}-fijo`, 6)}`,
+    observaciones: `PW E2E SOCIO ${label} CREADO POR PLAYWRIGHT ${text}`,
   };
 }
 
 function familyData() {
   const suffix = uniqueSuffix();
-  const textSuffix = lettersFromSuffix(suffix);
+  const text = lettersFromSuffix(suffix, 12);
   return {
-    suffix,
-    textSuffix,
-    prefix: `PW EE FAM ${textSuffix}`,
-    nombre: `PW EE FAM ${textSuffix}`,
-    nombreEditado: `PW EE FAM ${textSuffix} EDITADA`,
-    descripcion: `FAMILIA CREADA POR PLAYWRIGHT ${textSuffix}`,
+    nombre: `PW E2E FAM ${text}`,
+    nombreEditado: `PW E2E FAM ${text} EDITADA`,
+    descripcion: `PW E2E FAM OBSERVACION ${text}`,
   };
 }
 
-module.exports = { companyData, familyData, personData };
+module.exports = { familyData, socioData };

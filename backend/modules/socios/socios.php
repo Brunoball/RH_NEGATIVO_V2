@@ -85,20 +85,11 @@ final class Socios
 
     public static function eliminarDefinitivo(): never
     {
-        $auth = require_admin();
-        $body = request_body();
-        $id = positive_id($body['id'] ?? $body['id_socio'] ?? null, 'socio');
-        $confirmation = strtoupper(trim((string)($body['confirmacion'] ?? '')));
-        if ($confirmation !== 'ELIMINAR') {
-            api_error(
-                'Escribí ELIMINAR para confirmar la eliminación definitiva.',
-                'CONFIRMACION_ELIMINACION_INVALIDA',
-                422
-            );
-        }
-        api_success(
-            self::eliminarDefinitivoDatos($auth, $id),
-            'El socio y toda su información relacionada fueron eliminados definitivamente.'
+        require_admin();
+        api_error(
+            'No se permite eliminar físicamente un socio. Utilizá la baja lógica para conservar su historial.',
+            'ELIMINACION_FISICA_NO_PERMITIDA',
+            405
         );
     }
 }
