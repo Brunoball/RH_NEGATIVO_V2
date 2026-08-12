@@ -2,42 +2,25 @@ const { lettersFromSuffix, uniqueSuffix } = require('../helpers/data.helper');
 
 function categoryData() {
   const suffix = uniqueSuffix();
-  const textSuffix = lettersFromSuffix(suffix);
+  const text = lettersFromSuffix(suffix, 12);
   return {
-    suffix,
-    textSuffix,
-    prefix: 'PW EE CAT ',
-    nombre: `PW EE CAT ${textSuffix}`,
-    nombreEditado: `PW EE CAT ${textSuffix} EDITADA`,
-    descripcion: 'CATEGORÍA CREADA POR PLAYWRIGHT',
-    descripcionEditada: 'CATEGORÍA EDITADA Y AUDITADA POR PLAYWRIGHT',
-    montoInicial: '1234.56',
-    montoEditado: '1789.45',
+    nombre: `PW EE CAT ${text}`,
+    nombreEditado: `PW EE CAT ${text} EDITADA`,
+    mensual: '1234.56',
+    anual: '12000.00',
+    mensualEditado: '1789.45',
+    anualEditado: '17000.25',
   };
 }
 
-function discountData(thresholds = [49, 50]) {
-  const [firstThreshold, secondThreshold] = [...thresholds]
-    .map(Number)
-    .sort((a, b) => a - b);
-
+function discountData() {
+  const suffix = uniqueSuffix();
+  const text = lettersFromSuffix(suffix, 10);
   return {
-    thresholds: [firstThreshold, secondThreshold],
-    vigenciaDesde: '2000-01-01',
-    vigenciaHasta: '2000-12-31',
-    first: {
-      desde: firstThreshold,
-      hasta: firstThreshold,
-      porcentaje: '91.37',
-      porcentajeEditado: '93.59',
-      descripcion: 'PW E2E DESCUENTO GLOBAL UNO',
-    },
-    second: {
-      desde: secondThreshold,
-      hasta: null,
-      porcentaje: '92.48',
-      descripcion: 'PW E2E DESCUENTO GLOBAL DOS',
-    },
+    descripcion: `PW E2E DESC ${text}`,
+    descripcionEditada: `PW E2E DESC ${text} EDITADO`,
+    porcentaje: '17.35',
+    porcentajeEditado: '19.25',
   };
 }
 

@@ -11,4 +11,6 @@ export default BASE_URL;
 // php -c "C:\\php\\php.ini" -S localhost:3001
 // REACT_APP_API_URL=http://localhost:3001/routes
 
+//npx playwright test --project=chromium --workers=1 --reporter=list
+
 

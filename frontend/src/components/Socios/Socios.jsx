@@ -18,7 +18,6 @@ import {
   faReceipt,
   faRotateLeft,
   faTags,
-  faTrash,
   faUser,
   faUserSlash,
   faWallet,
@@ -511,7 +510,7 @@ function BirthdayContactCard({ items, onView, onClose, writable }) {
   );
 }
 
-const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState, onDelete }) {
+const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState }) {
   return items.map((item) => (
     <div
       className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid"
@@ -560,9 +559,6 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
                 onClick={() => onState(item)}
               >
                 <FontAwesomeIcon icon={item.vigente ? faUserSlash : faRotateLeft} />
-              </button>
-              <button className="mov-iconBtn mov-iconBtn--danger" type="button" title="Eliminar definitivamente" onClick={() => onDelete(item)}>
-                <FontAwesomeIcon icon={faTrash} />
               </button>
             </>
           ) : null}
@@ -853,7 +849,6 @@ export default function Socios() {
   const [infoTab, setInfoTab] = useState(INFO_TAB_GENERAL);
   const [infoLoading, setInfoLoading] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
-  const [deleteModal, setDeleteModal] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
 
   const resetAdvanced = useCallback(() => {
@@ -974,23 +969,6 @@ export default function Socios() {
     return response;
   };
 
-  const openPermanentDelete = async (item) => {
-    setDeleteModal({ item, loading: true, data: null, error: "" });
-    try {
-      const response = await sociosApi.historial(item.id_socio);
-      setDeleteModal({ item: response.item || item, loading: false, data: response, error: "" });
-    } catch (requestError) {
-      setDeleteModal({ item, loading: false, data: null, error: requestError.message || "No se pudo calcular el impacto de la eliminación." });
-    }
-  };
-
-  const deletePermanently = async () => {
-    if (!deleteModal?.item) return { ok: false, mensaje: "No hay socio seleccionado." };
-    const response = await sociosApi.eliminarDefinitivo({ id: deleteModal.item.id_socio, confirmacion: "ELIMINAR" });
-    await refresh();
-    return response;
-  };
-
   const obtainAllForExport = useCallback(async () => {
     const first = await sociosApi.listar({ ...filters, pagina: 1 });
     const total = Number(first.paginacion?.total_paginas || 1);
@@ -1046,7 +1024,6 @@ export default function Socios() {
 
   const info = infoModal?.data;
   const itemInfo = info?.item || infoModal?.item;
-  const deleteImpact = deleteModal?.data?.impacto_eliminacion || {};
   const filterDescription = [
     status === "BAJA" ? "Bajas" : "Vigentes",
     category ? `Categoría ${catalogos.categorias?.find((item) => String(item.id_categoria) === String(category))?.nombre || category}` : null,
@@ -1105,7 +1082,7 @@ export default function Socios() {
               <span>Cambiá los filtros o creá un nuevo registro.</span>
             </div>
           ) : null}
-          <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openPermanentDelete} />
+          <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} />
         </GlobalDivTable>
 
         {Number(paginacion?.total || 0) > 0 ? (
@@ -1254,30 +1231,6 @@ export default function Socios() {
         successMessage={stateModal?.vigente ? "Socio dado de baja correctamente." : "Socio reactivado correctamente."}
       />
 
-      <ModalEliminarGlobal
-        open={Boolean(deleteModal)}
-        operacion="eliminar"
-        row={deleteModal?.item}
-        title="Eliminar definitivamente al socio"
-        message="Esta operación borra el socio y todos sus datos relacionados del sistema. Es irreversible."
-        details={deleteModal?.item ? [
-          { label: "Socio", value: deleteModal.item.nombre },
-          { label: "DNI", value: deleteModal.item.dni },
-          { label: "Pagos", value: deleteImpact.pagos ?? "Calculando..." },
-          { label: "Inscripciones", value: deleteImpact.pagos_inscripcion ?? "Calculando..." },
-          { label: "Contactos", value: deleteImpact.contactos ?? "Calculando..." },
-          { label: "Historial", value: deleteImpact.historial_estados ?? "Calculando..." },
-          { label: "Vínculos familiares", value: deleteImpact.vinculos_familiares ?? "Calculando..." },
-        ] : []}
-        extraContent={deleteModal?.error ? <p className="socios-deleteError">{deleteModal.error}</p> : null}
-        confirmDisabled={Boolean(deleteModal?.loading) || Boolean(deleteModal?.error)}
-        onClose={() => setDeleteModal(null)}
-        onConfirm={deletePermanently}
-        onToast={(type, message, duration) => setFeedback({ type: type === "exito" ? "success" : type, message, duration })}
-        confirmLabel="Eliminar definitivamente"
-        successMessage="El socio fue eliminado definitivamente."
-        errorMessage="No se pudo eliminar definitivamente el socio."
-      />
     </>
   );
 }

@@ -123,7 +123,10 @@
 /* Filtros avanzados: mismo patrón de acordeón que la referencia. */
 .socios-filterRoot {
   position: relative;
-  z-index: 35;
+  /* Debe quedar por encima de la tarjeta fija de cumpleaños (z-index: 80).
+     Si este stacking context queda por debajo, el menú de filtros no puede
+     recibir clicks en su zona inferior aunque .socios-filterMenu tenga 120. */
+  z-index: 90;
 }
 
 .socios-filterTrigger {
