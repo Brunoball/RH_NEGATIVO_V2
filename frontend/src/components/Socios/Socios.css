@@ -1,5 +1,24 @@
 .socios-headFilters {
-  min-width: min(520px, 48vw);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.socios-headFilters .module-filter--search {
+  flex: 0 1 250px;
+  width: 250px;
+  margin-left: 0;
+}
+
+.socios-categoryFilter {
+  flex: 0 0 120px;
+  width: 120px;
+  max-width: 120px;
 }
 
 .socios-grid {
@@ -518,7 +537,9 @@
 }
 
 .socios-form .entity-form-panel__body {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 14px;
 }
 
 .socios-form .entity-field--wide {
@@ -691,7 +712,7 @@
 
 @media (max-width: 1250px) {
   .socios-headFilters {
-    min-width: 0;
+    flex-wrap: wrap;
   }
 
   .socios-filterMenu {
@@ -700,6 +721,19 @@
 }
 
 @media (max-width: 780px) {
+  .socios-headFilters {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .socios-headFilters .module-filter--search,
+  .socios-categoryFilter {
+    width: 100%;
+    max-width: none;
+  }
+
   .socios-filterMenu {
     position: fixed;
     top: 82px;

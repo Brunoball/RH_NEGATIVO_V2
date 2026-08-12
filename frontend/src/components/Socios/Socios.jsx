@@ -524,17 +524,17 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
           {[item.domicilio, item.numero].filter(Boolean).join(" ") || `ID ${item.id_socio}`}
         </small>
       </div>
-      <div className="mov-gridCell is-strong">{item.dni || "—"}</div>
-      <div className="mov-gridCell">
+      <div className="mov-gridCell is-strong is-center">{item.dni || "—"}</div>
+      <div className="mov-gridCell is-center">
         <span className="socios-bloodChip">{item.grupo_sanguineo || "SIN DATO"}</span>
       </div>
-      <div className="mov-gridCell socios-statusCell">
+      <div className="mov-gridCell socios-statusCell is-center">
         <span className={`socios-statusChip ${item.vigente ? "is-active" : "is-inactive"}`}>
           {item.vigente ? (item.estado || "ACTIVO") : "BAJA"}
         </span>
         <small>{item.categoria || "SIN CATEGORÍA"}</small>
       </div>
-      <div className="mov-gridCell">
+      <div className="mov-gridCell is-center">
         <span className={`socios-debtChip ${Number(item.meses_adeudados) ? "is-due" : "is-ok"}`}>
           {debtLabel(item.meses_adeudados)}
         </span>
@@ -592,10 +592,10 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
           <FloatingField label="DNI" active={activeValue("dni")}>
             <input value={form.dni} inputMode="numeric" maxLength={15} onChange={(event) => set("dni", onlyDigits(event.target.value).slice(0, 15))} placeholder=" " />
           </FloatingField>
-          <FloatingField label="Fecha de nacimiento" active={activeValue("fecha_nacimiento")}>
+          <FloatingField label="Fecha de nacimiento" active>
             <input type="date" value={form.fecha_nacimiento} max={localToday()} onChange={(event) => set("fecha_nacimiento", event.target.value)} />
           </FloatingField>
-          <FloatingField label="Grupo sanguíneo" active={activeValue("id_grupo_sanguineo")}>
+          <FloatingField label="Grupo sanguíneo" active>
             <select value={form.id_grupo_sanguineo} onChange={(event) => set("id_grupo_sanguineo", event.target.value)}>
               <option value="">SIN INFORMAR</option>
               {(catalogs.grupos_sanguineos || []).map((item) => (
@@ -829,7 +829,6 @@ export default function Socios() {
   const {
     items,
     catalogos,
-    resumen,
     paginacion,
     avisos_cumpleanios: birthdayItems,
     loading,
@@ -1015,15 +1014,15 @@ export default function Socios() {
         setPage(1);
       },
       options: [
-        { value: "VIGENTE", label: "Vigentes", count: resumen.vigentes ?? null },
-        { value: "BAJA", label: "Bajas", count: resumen.bajas ?? null },
+        { value: "VIGENTE", label: "Vigentes" },
+        { value: "BAJA", label: "Bajas" },
       ],
     },
     {
       type: "search",
       key: "buscar",
       label: "Buscar socio",
-      placeholder: "Nombre, DNI, domicilio...",
+      placeholder: "",
       value: search,
       onChange: setSearch,
     },
@@ -1031,6 +1030,7 @@ export default function Socios() {
       type: "select",
       key: "categoria",
       label: "Categoría",
+      className: "socios-categoryFilter",
       placeholder: "Todas",
       value: category,
       onChange: (value) => {
@@ -1088,7 +1088,15 @@ export default function Socios() {
           loading={loading}
           loadingLabel="Cargando socios..."
           skeletonRows={7}
-          columns={["Socio", "DNI", "Sangre", "Estado", "Deudas / pagos", "Último contacto", "Acciones"]}
+          columns={[
+            "Socio",
+            { label: "DNI", align: "center" },
+            { label: "Sangre", align: "center" },
+            { label: "Estado", align: "center" },
+            { label: "Deudas / pagos", align: "center" },
+            "Último contacto",
+            { label: "Acciones", align: "center" },
+          ]}
         >
           {!loading && !error && !items.length ? (
             <div className="module-empty">

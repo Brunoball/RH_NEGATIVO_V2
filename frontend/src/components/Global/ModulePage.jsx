@@ -193,6 +193,7 @@ export function ModulePage({
   primaryActionClassName = "",
   headFiltersClassName = "",
   headFiltersContainerClassName = "",
+  headFiltersInActions = false,
   canCreate = true,
   refreshing = false,
   tabsInTitle = false,
@@ -207,6 +208,21 @@ export function ModulePage({
   const headerFilters = titleTabs
     ? filters.filter((filter) => filter !== titleTabs)
     : filters;
+  const headerFilterControls = headerFilters.length ? (
+    <div
+      className={
+        headFiltersContainerClassName ||
+        `mov-headFilters module-headFilters ${headFiltersClassName}`.trim()
+      }
+    >
+      {headerFilters.map((filter) => (
+        <ModuleFilter
+          filter={filter}
+          key={filter.key || filter.label}
+        />
+      ))}
+    </div>
+  ) : null;
 
   return (
     <section className={`mov-page module-page ${className}`.trim()}>
@@ -245,24 +261,11 @@ export function ModulePage({
               ) : null}
             </div>
 
-            {headerFilters.length ? (
-              <div
-                className={
-                  headFiltersContainerClassName ||
-                  `mov-headFilters module-headFilters ${headFiltersClassName}`.trim()
-                }
-              >
-                {headerFilters.map((filter) => (
-                  <ModuleFilter
-                    filter={filter}
-                    key={filter.key || filter.label}
-                  />
-                ))}
-              </div>
-            ) : null}
+            {headFiltersInActions ? null : headerFilterControls}
           </div>
 
           <div className="mov-card__actions module-card__actions">
+            {headFiltersInActions ? headerFilterControls : null}
             {headerActions}
             {secondaryActions.map((action) => (
               <button
