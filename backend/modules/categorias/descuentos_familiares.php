@@ -11,8 +11,8 @@ trait DescuentosFamiliaresGestion
         }
 
         $where = match ($status) {
-            'vigente' => 'WHERE d.activo = 1',
-            'historial' => 'WHERE d.activo = 0',
+            'vigente' => "WHERE d.activo = 1 AND (d.vigencia_hasta IS NULL OR d.vigencia_hasta >= CURDATE())",
+            'historial' => "WHERE d.activo = 0 OR (d.vigencia_hasta IS NOT NULL AND d.vigencia_hasta < CURDATE())",
             default => '',
         };
 
@@ -132,14 +132,11 @@ trait DescuentosFamiliaresGestion
                     );
                     $after = self::obtenerDescuento($db, $discountId);
 
-                    audit_change(
+                    self::auditarDescuento(
                         $db,
                         $auth,
-                        'CATEGORIAS',
-                        'CREAR',
-                        'descuentos_familiares',
                         $discountId,
-                        'Se creó una regla global de descuento familiar por cantidad de integrantes.',
+                        'INSERT',
                         null,
                         $after
                     );
@@ -183,45 +180,60 @@ trait DescuentosFamiliaresGestion
                         $effectiveTo,
                         $description
                     );
-                    $discountId = $id;
-                } else {
-                    $dayBefore = (new DateTimeImmutable($effectiveFrom))
-                        ->modify('-1 day')
-                        ->format('Y-m-d');
-                    $previousEnd = $before['vigencia_hasta'] === null
-                        ? $dayBefore
-                        : min((string)$before['vigencia_hasta'], $dayBefore);
-
-                    self::desactivarDescuento($db, $id, $previousEnd);
-                    self::validarSolapamientoDescuento(
+                    $after = self::obtenerDescuento($db, $id);
+                    self::auditarDescuento(
                         $db,
-                        $from,
-                        $to,
-                        $effectiveFrom,
-                        $effectiveTo,
-                        null
+                        $auth,
+                        $id,
+                        'UPDATE',
+                        $before,
+                        $after
                     );
-                    $discountId = self::insertarDescuento(
-                        $db,
-                        $from,
-                        $to,
-                        $percentage,
-                        $effectiveFrom,
-                        $effectiveTo,
-                        $description
-                    );
+                    return ['item' => $after, 'creado' => false];
                 }
 
-                $after = self::obtenerDescuento($db, $discountId);
-                audit_change(
+                $dayBefore = (new DateTimeImmutable($effectiveFrom))
+                    ->modify('-1 day')
+                    ->format('Y-m-d');
+                $previousEnd = $before['vigencia_hasta'] === null
+                    ? $dayBefore
+                    : min((string)$before['vigencia_hasta'], $dayBefore);
+
+                self::desactivarDescuento($db, $id, $previousEnd);
+                $previousAfter = self::obtenerDescuento($db, $id);
+                self::auditarDescuento(
                     $db,
                     $auth,
-                    'CATEGORIAS',
-                    'EDITAR',
-                    'descuentos_familiares',
-                    $discountId,
-                    'Se modificó una regla global de descuento familiar. Si cambió la vigencia, la versión anterior quedó en el historial.',
+                    $id,
+                    'UPDATE',
                     $before,
+                    $previousAfter
+                );
+
+                self::validarSolapamientoDescuento(
+                    $db,
+                    $from,
+                    $to,
+                    $effectiveFrom,
+                    $effectiveTo,
+                    null
+                );
+                $discountId = self::insertarDescuento(
+                    $db,
+                    $from,
+                    $to,
+                    $percentage,
+                    $effectiveFrom,
+                    $effectiveTo,
+                    $description
+                );
+                $after = self::obtenerDescuento($db, $discountId);
+                self::auditarDescuento(
+                    $db,
+                    $auth,
+                    $discountId,
+                    'INSERT',
+                    null,
                     $after
                 );
 
@@ -259,14 +271,11 @@ trait DescuentosFamiliaresGestion
                 self::desactivarDescuento($db, $id, $endDate);
                 $after = self::obtenerDescuento($db, $id);
 
-                audit_change(
+                self::auditarDescuento(
                     $db,
                     $auth,
-                    'CATEGORIAS',
-                    'ELIMINAR',
-                    'descuentos_familiares',
                     $id,
-                    'Se desactivó una regla global de descuento familiar y se conservó en el historial.',
+                    'UPDATE',
                     $before,
                     $after
                 );
@@ -461,6 +470,46 @@ trait DescuentosFamiliaresGestion
             );
         }
         return self::castDescuento($row);
+    }
+
+    /** Auditoría según el esquema real de RH Negativo V2. */
+    private static function auditarDescuento(
+        PDO $db,
+        array $auth,
+        int $recordId,
+        string $action,
+        mixed $before,
+        mixed $after
+    ): void {
+        if (!in_array($action, ['INSERT', 'UPDATE', 'DELETE'], true)) {
+            throw new LogicException('Acción de auditoría no permitida.');
+        }
+
+        $encode = static function (mixed $value): ?string {
+            if ($value === null) return null;
+            $json = json_encode(
+                $value,
+                JSON_UNESCAPED_UNICODE
+                    | JSON_UNESCAPED_SLASHES
+                    | JSON_INVALID_UTF8_SUBSTITUTE
+                    | JSON_PARTIAL_OUTPUT_ON_ERROR
+                    | JSON_PRESERVE_ZERO_FRACTION
+            );
+            return is_string($json) ? $json : '{"error":"No se pudo serializar la auditoría."}';
+        };
+
+        $statement = $db->prepare(
+            "INSERT INTO auditoria
+             (tabla, id_registro, accion, datos_anteriores, datos_nuevos, id_usuario, origen)
+             VALUES ('descuentos_familiares', ?, ?, ?, ?, ?, 'SISTEMA')"
+        );
+        $statement->execute([
+            $recordId,
+            $action,
+            $encode($before),
+            $encode($after),
+            $auth['id_usuario'],
+        ]);
     }
 
     private static function resolverErrorPersistenciaDescuento(PDOException $error): never

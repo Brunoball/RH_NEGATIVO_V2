@@ -7,7 +7,8 @@ const initialResponse = {
     total: 0,
     activas: 0,
     inactivas: 0,
-    promedio: "0.00",
+    promedio_mensual: "0.00",
+    promedio_anual: "0.00",
   },
 };
 
@@ -43,9 +44,7 @@ export function useCategorias(filtros = {}, enabled = true) {
       return result;
     } catch (requestError) {
       if (currentRequest !== requestId.current) return null;
-      setError(
-        requestError.message || "No se pudieron cargar las categorías.",
-      );
+      setError(requestError.message || "No se pudieron cargar las categorías.");
       return null;
     } finally {
       if (currentRequest === requestId.current) setLoading(false);

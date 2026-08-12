@@ -1,26 +1,27 @@
 /* Medidas y alineaciones exclusivas de las tablas de Categorías. */
 .categorias-grid {
   grid-template-columns:
-    minmax(0, 0.62fr)
-    minmax(0, 1.8fr)
-    minmax(0, 0.82fr)
-    minmax(0, 0.52fr)
-    minmax(0, 0.78fr)
-    minmax(0, 0.82fr);
+    minmax(0, 1.15fr)
+    minmax(0, 0.9fr)
+    minmax(0, 0.9fr)
+    minmax(0, 0.72fr)
+    minmax(0, 0.85fr)
+    minmax(0, 0.72fr);
   width: 100%;
   min-width: 0;
 }
 
-.categorias-grid > :not(:nth-child(2)):not(:nth-child(3)) {
+.categorias-grid > :not(:first-child) {
   justify-content: center;
   text-align: center;
 }
 
-.categorias-grid > :nth-child(2) {
+.categorias-grid > :first-child {
   justify-content: flex-start;
   text-align: left;
 }
 
+.categorias-grid > :nth-child(2),
 .categorias-grid > :nth-child(3) {
   justify-content: flex-end;
   text-align: right;
@@ -37,7 +38,7 @@
     minmax(0, 0.5fr)
     minmax(0, 0.9fr)
     minmax(0, 1.65fr)
-    minmax(0, 0.52fr)
+    minmax(0, 0.62fr)
     minmax(0, 0.52fr);
   width: 100%;
   min-width: 0;
@@ -95,6 +96,26 @@
   display: grid;
   gap: 2px;
   font-size: 0.82rem;
+}
+
+.categorias-discount-note {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--mov-border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--mov-surface, #fff);
+  margin-bottom: 12px;
+}
+
+.categorias-discount-note strong {
+  font-size: 0.88rem;
+}
+
+.categorias-discount-note span {
+  color: var(--mov-text-muted, #667085);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 1080px) {
