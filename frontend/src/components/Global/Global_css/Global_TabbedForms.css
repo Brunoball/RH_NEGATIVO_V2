@@ -295,3 +295,19 @@
     white-space: nowrap;
   }
 }
+
+/*
+ * Las pestañas de formularios permanecen montadas. Así se conservan también
+ * estados nativos del navegador (por ejemplo archivos seleccionados) y estados
+ * locales de componentes al navegar entre tabs.
+ */
+.entity-tab-pane[hidden] {
+  display: none !important;
+}
+
+.entity-tab-pane__fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

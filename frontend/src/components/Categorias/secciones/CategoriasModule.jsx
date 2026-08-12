@@ -26,12 +26,16 @@ import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
 import {
   EntityFormPanel,
+  EntityTabPane,
   EntityTabs,
   FloatingField,
 } from "../../Global/Formularios/TabbedForm";
 import { canWrite } from "../../_shared/auth/session";
 import {
+  decimalInput,
   onlyDigits,
+  preventInvalidDecimalKey,
+  upperLimitedText,
   upperWithoutDigits,
 } from "../../Global/Formularios/inputSanitizers";
 import { categoriasApi } from "../api/categoriasApi";
@@ -62,16 +66,6 @@ const openDatePicker = (event) => {
 
 const upper = (value) => String(value ?? "").toLocaleUpperCase("es-AR");
 
-const decimalInput = (value, maxIntegerDigits = 10, maxDecimals = 2) => {
-  const normalized = String(value ?? "")
-    .replace(",", ".")
-    .replace(/[^0-9.]/g, "");
-  const [rawInteger = "", ...decimalParts] = normalized.split(".");
-  const integer = rawInteger.slice(0, maxIntegerDigits);
-  if (decimalParts.length === 0) return integer;
-  const decimals = decimalParts.join("").slice(0, maxDecimals);
-  return `${integer || "0"}.${decimals}`;
-};
 
 const money = (value) =>
   new Intl.NumberFormat("es-AR", {
@@ -127,7 +121,7 @@ function CategoryForm({ form, setForm, activeTab, onTabChange }) {
         ariaLabel="Secciones de la categoría"
       />
 
-      {activeTab === CATEGORY_TAB_GENERAL ? (
+      <EntityTabPane active={activeTab === CATEGORY_TAB_GENERAL} disableWhenInactive>
         <EntityFormPanel
           tabValue={CATEGORY_TAB_GENERAL}
           idPrefix="categoria-form-tab"
@@ -143,7 +137,7 @@ function CategoryForm({ form, setForm, activeTab, onTabChange }) {
               value={form.nombre}
               placeholder=" "
               onChange={(event) =>
-                update("nombre", upperWithoutDigits(event.target.value))
+                update("nombre", upperWithoutDigits(event.target.value).slice(0, 100))
               }
               required
               maxLength={100}
@@ -151,7 +145,9 @@ function CategoryForm({ form, setForm, activeTab, onTabChange }) {
             />
           </FloatingField>
         </EntityFormPanel>
-      ) : (
+      </EntityTabPane>
+
+      <EntityTabPane active={activeTab === CATEGORY_TAB_PRICE} disableWhenInactive>
         <EntityFormPanel
           tabValue={CATEGORY_TAB_PRICE}
           idPrefix="categoria-form-tab"
@@ -171,6 +167,8 @@ function CategoryForm({ form, setForm, activeTab, onTabChange }) {
               inputMode="decimal"
               placeholder=" "
               value={form.monto_mensual}
+              maxLength={13}
+              onKeyDown={preventInvalidDecimalKey}
               onChange={(event) =>
                 update("monto_mensual", decimalInput(event.target.value, 10, 2))
               }
@@ -186,6 +184,8 @@ function CategoryForm({ form, setForm, activeTab, onTabChange }) {
               inputMode="decimal"
               placeholder=" "
               value={form.monto_anual}
+              maxLength={13}
+              onKeyDown={preventInvalidDecimalKey}
               onChange={(event) =>
                 update("monto_anual", decimalInput(event.target.value, 10, 2))
               }
@@ -203,7 +203,7 @@ function CategoryForm({ form, setForm, activeTab, onTabChange }) {
             />
           </FloatingField>
         </EntityFormPanel>
-      )}
+      </EntityTabPane>
     </div>
   );
 }
@@ -229,6 +229,9 @@ function DiscountForm({ form, setForm }) {
             type="text"
             inputMode="numeric"
             value={form.cantidad_integrantes_desde}
+            maxLength={2}
+            pattern="[0-9]{1,2}"
+            title="Ingresá una cantidad entre 2 y 50."
             onChange={(event) =>
               update(
                 "cantidad_integrantes_desde",
@@ -248,6 +251,9 @@ function DiscountForm({ form, setForm }) {
             inputMode="numeric"
             placeholder=" "
             value={form.cantidad_integrantes_hasta}
+            maxLength={2}
+            pattern="[0-9]{1,2}"
+            title="Ingresá una cantidad de hasta 50."
             onChange={(event) =>
               update(
                 "cantidad_integrantes_hasta",
@@ -265,6 +271,8 @@ function DiscountForm({ form, setForm }) {
             inputMode="decimal"
             placeholder=" "
             value={form.porcentaje_descuento}
+            maxLength={6}
+            onKeyDown={preventInvalidDecimalKey}
             onChange={(event) =>
               update(
                 "porcentaje_descuento",
@@ -301,7 +309,7 @@ function DiscountForm({ form, setForm }) {
             value={form.descripcion}
             placeholder=" "
             maxLength={255}
-            onChange={(event) => update("descripcion", upper(event.target.value))}
+            onChange={(event) => update("descripcion", upperLimitedText(event.target.value, 255))}
           />
         </FloatingField>
       </EntityFormPanel>

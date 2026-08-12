@@ -9,73 +9,70 @@ trait ConfiguracionGestion
         $definition = configuracion_lista_definicion($body['lista'] ?? null);
         $idText = trim((string)($body['id'] ?? ''));
         $id = $idText === '' ? null : positive_id($idText, $definition['etiqueta']);
-        $name = required_text(
-            $body,
-            'nombre',
-            $definition['etiqueta'],
-            (int)$definition['max_nombre']
-        );
+        $data = self::normalizarCamposConfiguracion($definition, $body);
 
         try {
-            return transaction($db, static function () use ($db, $auth, $definition, $id, $name): array {
+            return transaction($db, static function () use ($db, $auth, $definition, $id, $data): array {
                 $table = $definition['tabla'];
                 $idField = $definition['id_campo'];
+                self::validarNombreDuplicado($db, $definition, $data['nombre'], $id);
                 $before = null;
 
-                self::validarNombreDuplicado($db, $definition, $name, $id);
-
                 if ($id === null) {
+                    $savedId = null;
+                    $columns = array_keys($data);
+                    $params = array_values($data);
+                    if (!(bool)$definition['auto_id']) {
+                        $savedId = (int)$db->query("SELECT COALESCE(MAX({$idField}), 0) + 1 FROM {$table}")->fetchColumn();
+                        array_unshift($columns, $idField);
+                        array_unshift($params, $savedId);
+                    }
+                    $columns[] = 'activo';
+                    $params[] = 1;
+                    $columns[] = 'creado_en';
+                    $placeholders = array_fill(0, count($params), '?');
+                    $placeholders[] = 'CURDATE()';
                     $insert = $db->prepare(
-                        "INSERT INTO {$table} (nombre, activo, creado_en, actualizado_en)
-                         VALUES (?, 1, NOW(), NOW())"
+                        'INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')'
                     );
-                    $insert->execute([$name]);
-                    $savedId = (int)$db->lastInsertId();
-                    $action = 'CREAR_' . $definition['entidad'];
-                    $description = "Se creó {$definition['etiqueta']} {$name}.";
+                    $insert->execute($params);
+                    if ($savedId === null) $savedId = (int)$db->lastInsertId();
+
+                    if ($definition['lista'] === 'categoria') {
+                        self::registrarPrecioCategoriaConfiguracion($db, $savedId, 'mensual', '0.00', $data['monto_mensual']);
+                        self::registrarPrecioCategoriaConfiguracion($db, $savedId, 'anual', '0.00', $data['monto_anual']);
+                    }
                 } else {
                     $before = configuracion_item($db, $definition, $id, true);
-                    if (!$before) {
-                        api_error('La opción que intentás editar no existe.', 'OPCION_NO_ENCONTRADA', 404);
-                    }
-
-                    $db->prepare(
-                        "UPDATE {$table}
-                         SET nombre = ?, actualizado_en = NOW()
-                         WHERE {$idField} = ?"
-                    )->execute([$name, $id]);
+                    if (!$before) api_error('La opción que intentás editar no existe.', 'OPCION_NO_ENCONTRADA', 404);
+                    $sets = [];
+                    foreach (array_keys($data) as $column) $sets[] = "{$column} = ?";
+                    $params = array_values($data);
+                    $params[] = $id;
+                    $db->prepare('UPDATE ' . $table . ' SET ' . implode(', ', $sets) . " WHERE {$idField} = ?")->execute($params);
                     $savedId = $id;
-                    $action = 'EDITAR_' . $definition['entidad'];
-                    $description = "Se modificó {$definition['etiqueta']} {$name}.";
+
+                    if ($definition['lista'] === 'categoria') {
+                        $oldMonthly = number_format((float)$before['monto_mensual'], 2, '.', '');
+                        $oldAnnual = number_format((float)$before['monto_anual'], 2, '.', '');
+                        if ($oldMonthly !== $data['monto_mensual']) {
+                            self::registrarPrecioCategoriaConfiguracion($db, $id, 'mensual', $oldMonthly, $data['monto_mensual']);
+                        }
+                        if ($oldAnnual !== $data['monto_anual']) {
+                            self::registrarPrecioCategoriaConfiguracion($db, $id, 'anual', $oldAnnual, $data['monto_anual']);
+                        }
+                    }
                 }
 
                 $after = configuracion_item($db, $definition, $savedId);
-                audit_change(
-                    $db,
-                    $auth,
-                    'CONFIGURACION',
-                    $action,
-                    $table,
-                    $savedId,
-                    $description,
-                    $before,
-                    $after
-                );
-
-                return [
-                    'creado' => $id === null,
-                    'lista' => $definition['lista'],
-                    'item' => $after,
-                ];
+                configuracion_auditar($db, $auth, $definition, $savedId, $id === null ? 'INSERT' : 'UPDATE', $before, $after);
+                return ['creado' => $id === null, 'lista' => $definition['lista'], 'item' => $after];
             });
         } catch (Throwable $error) {
-            if (duplicate_key($error)) {
-                api_error('Ya existe una opción con ese nombre.', 'NOMBRE_DUPLICADO', 409);
-            }
+            if (duplicate_key($error)) api_error('Ya existe una opción con ese nombre.', 'NOMBRE_DUPLICADO', 409);
             throw $error;
         }
     }
-
 
     private static function establecerEstadoItemDatos(array $auth, array $body, bool $activo): array
     {
@@ -87,42 +84,20 @@ trait ConfiguracionGestion
             $table = $definition['tabla'];
             $idField = $definition['id_campo'];
             $before = configuracion_item($db, $definition, $id, true);
-            if (!$before) {
-                api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
+            if (!$before) api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
+            if ((bool)$before['activo'] === $activo) {
+                api_error($activo ? 'La opción ya está activa.' : 'La opción ya está dada de baja.', 'ESTADO_SIN_CAMBIOS', 409);
             }
-
-            $db->prepare(
-                "UPDATE {$table}
-                 SET activo = ?, actualizado_en = NOW()
-                 WHERE {$idField} = ?"
-            )->execute([$activo ? 1 : 0, $id]);
-
+            $db->prepare("UPDATE {$table} SET activo = ? WHERE {$idField} = ?")->execute([$activo ? 1 : 0, $id]);
             $after = configuracion_item($db, $definition, $id);
-            $action = ($activo ? 'REACTIVAR_' : 'DAR_BAJA_') . $definition['entidad'];
-            $description = $activo
-                ? "Se reactivó {$definition['etiqueta']} {$before['nombre']}."
-                : "Se dio de baja {$definition['etiqueta']} {$before['nombre']}.";
-
-            audit_change(
-                $db,
-                $auth,
-                'CONFIGURACION',
-                $action,
-                $table,
-                $id,
-                $description,
-                $before,
-                $after
-            );
-
-            return [
-                'lista' => $definition['lista'],
-                'id' => $id,
-                'activo' => $activo,
-                'eliminado_definitivo' => false,
-                'item' => $after,
-            ];
+            configuracion_auditar($db, $auth, $definition, $id, 'UPDATE', $before, $after);
+            return ['lista' => $definition['lista'], 'id' => $id, 'activo' => $activo, 'eliminado_definitivo' => false, 'item' => $after];
         });
+    }
+
+    private static function cambiarEstadoItemDatos(array $auth, array $body, bool $reactivate): array
+    {
+        return self::establecerEstadoItemDatos($auth, $body, $reactivate);
     }
 
     private static function eliminarDefinitivoItemDatos(array $auth, array $body): array
@@ -131,136 +106,62 @@ trait ConfiguracionGestion
         $definition = configuracion_lista_definicion($body['lista'] ?? null);
         $id = positive_id($body['id'] ?? null, $definition['etiqueta']);
 
-        // ALTER TABLE hace commit implícito en MySQL/MariaDB, por eso la
-        // preparación de columnas nullable se realiza antes de la transacción.
-        configuracion_preparar_referencias_nullable($db, $definition);
-
         return transaction($db, static function () use ($db, $auth, $definition, $id): array {
             $table = $definition['tabla'];
             $idField = $definition['id_campo'];
             $before = configuracion_item($db, $definition, $id, true);
-            if (!$before) {
-                api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
-            }
-
+            if (!$before) api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
             $usageCount = configuracion_cantidad_usos($db, $definition, $id);
-            // Desvinculamos primero los hijos. Las FK pueden conservar RESTRICT:
-            // al momento del DELETE ya no existe ninguna referencia al catálogo.
-            $unlinkedCount = configuracion_desvincular_referencias($db, $definition, $id);
+            if ($usageCount > 0) {
+                api_error(
+                    "No se puede eliminar definitivamente porque esta {$definition['etiqueta']} tiene {$usageCount} registros asociados. Podés darla de baja para impedir nuevos usos sin perder información histórica.",
+                    'OPCION_EN_USO',
+                    409,
+                    ['cantidad_usos' => $usageCount]
+                );
+            }
+            if ($definition['lista'] === 'categoria') {
+                $db->prepare('DELETE FROM precios_historicos WHERE id_categoria = ?')->execute([$id]);
+            }
             $db->prepare("DELETE FROM {$table} WHERE {$idField} = ?")->execute([$id]);
-
-            audit_change(
-                $db,
-                $auth,
-                'CONFIGURACION',
-                'ELIMINAR_' . $definition['entidad'],
-                $table,
-                $id,
-                "Se eliminó definitivamente {$definition['etiqueta']} {$before['nombre']} y {$unlinkedCount} registros asociados quedaron sin esa referencia.",
-                $before,
-                null
-            );
-
-            return [
-                'lista' => $definition['lista'],
-                'id' => $id,
-                'activo' => false,
-                'eliminado_definitivo' => true,
-                'cantidad_usos' => $usageCount,
-                'registros_desvinculados' => $unlinkedCount,
-                'item' => null,
-            ];
+            configuracion_auditar($db, $auth, $definition, $id, 'DELETE', $before, null);
+            return ['lista' => $definition['lista'], 'id' => $id, 'activo' => false, 'eliminado_definitivo' => true, 'cantidad_usos' => 0, 'item' => null];
         });
     }
 
-    private static function cambiarEstadoItemDatos(array $auth, array $body, bool $reactivate): array
+    private static function normalizarCamposConfiguracion(array $definition, array $body): array
     {
-        $db = $auth['db'];
-        $definition = configuracion_lista_definicion($body['lista'] ?? null);
-        $id = positive_id($body['id'] ?? null, $definition['etiqueta']);
-
-        return transaction($db, static function () use ($db, $auth, $definition, $id, $reactivate): array {
-            $table = $definition['tabla'];
-            $idField = $definition['id_campo'];
-            $before = configuracion_item($db, $definition, $id, true);
-            if (!$before) {
-                api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
-            }
-
-            if ($reactivate) {
-                $db->prepare(
-                    "UPDATE {$table}
-                     SET activo = 1, actualizado_en = NOW()
-                     WHERE {$idField} = ?"
-                )->execute([$id]);
-                $after = configuracion_item($db, $definition, $id);
-                $action = 'REACTIVAR_' . $definition['entidad'];
-                $description = "Se reactivó {$definition['etiqueta']} {$before['nombre']}.";
-                $deleted = false;
+        $data = [];
+        foreach ($definition['campos'] as $field => $config) {
+            if ($config['tipo'] === 'decimal') {
+                $data[$field] = decimal_amount($body[$field] ?? null, $config['label']);
             } else {
-                $usageCount = configuracion_cantidad_usos($db, $definition, $id);
-                if ($usageCount === 0) {
-                    $db->prepare("DELETE FROM {$table} WHERE {$idField} = ?")->execute([$id]);
-                    $after = null;
-                    $action = 'ELIMINAR_' . $definition['entidad'];
-                    $description = "Se eliminó definitivamente {$definition['etiqueta']} {$before['nombre']}.";
-                    $deleted = true;
-                } else {
-                    $db->prepare(
-                        "UPDATE {$table}
-                         SET activo = 0, actualizado_en = NOW()
-                         WHERE {$idField} = ?"
-                    )->execute([$id]);
-                    $after = configuracion_item($db, $definition, $id);
-                    $action = 'DAR_BAJA_' . $definition['entidad'];
-                    $description = "Se dio de baja {$definition['etiqueta']} {$before['nombre']} para conservar sus relaciones.";
-                    $deleted = false;
-                }
+                $data[$field] = required_text($body, $field, $config['label'], (int)$config['max']);
             }
-
-            audit_change(
-                $db,
-                $auth,
-                'CONFIGURACION',
-                $action,
-                $table,
-                $id,
-                $description,
-                $before,
-                $after
-            );
-
-            return [
-                'lista' => $definition['lista'],
-                'id' => $id,
-                'activo' => $reactivate,
-                'eliminado_definitivo' => $deleted,
-                'item' => $after,
-            ];
-        });
+        }
+        return $data;
     }
 
-    private static function validarNombreDuplicado(
-        PDO $db,
-        array $definition,
-        string $name,
-        ?int $excludeId
-    ): void {
+    private static function validarNombreDuplicado(PDO $db, array $definition, string $name, ?int $excludeId): void
+    {
         $table = $definition['tabla'];
         $idField = $definition['id_campo'];
         $sql = "SELECT {$idField} FROM {$table} WHERE nombre = ?";
         $params = [$name];
-
         if ($excludeId !== null) {
             $sql .= " AND {$idField} <> ?";
             $params[] = $excludeId;
         }
         $sql .= ' LIMIT 1';
-
         $statement = $db->prepare($sql);
         $statement->execute($params);
-        if ($statement->fetchColumn()) {
-            api_error('Ya existe una opción con ese nombre.', 'NOMBRE_DUPLICADO', 409);
-        }
+        if ($statement->fetchColumn()) api_error('Ya existe una opción con ese nombre.', 'NOMBRE_DUPLICADO', 409);
+    }
+
+    private static function registrarPrecioCategoriaConfiguracion(PDO $db, int $categoryId, string $type, string $previousAmount, string $newAmount): void
+    {
+        $db->prepare(
+            'INSERT INTO precios_historicos (id_categoria, tipo, precio_viejo, precio_nuevo, fecha_cambio) VALUES (?, ?, ?, ?, CURDATE())'
+        )->execute([$categoryId, $type, $previousAmount, $newAmount]);
     }
 }

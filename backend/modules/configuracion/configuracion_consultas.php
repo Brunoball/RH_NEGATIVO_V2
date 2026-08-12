@@ -7,28 +7,21 @@ trait ConfiguracionConsultas
     {
         $lists = [];
         $summary = [];
-
         foreach (configuracion_listas_definiciones() as $key => $definition) {
             $items = self::listarConfiguracion($db, $definition);
             $lists[$key] = $items;
-            $summary[$key . '_activos'] = count(array_filter(
-                $items,
-                static fn(array $item): bool => (bool)$item['activo']
-            ));
+            $summary[$key . '_activos'] = count(array_filter($items, static fn(array $item): bool => (bool)$item['activo']));
         }
-
-        return [
-            'listas' => $lists,
-            'resumen' => $summary,
-        ];
+        return ['listas' => $lists, 'resumen' => $summary];
     }
 
     private static function listarConfiguracion(PDO $db, array $definition): array
     {
         $table = $definition['tabla'];
         $idField = $definition['id_campo'];
+        $fields = implode(', ', configuracion_columnas($definition));
         $rows = $db->query(
-            "SELECT {$idField}, nombre, activo, creado_en, actualizado_en
+            "SELECT {$idField}, {$fields}, activo, creado_en
              FROM {$table}
              ORDER BY activo DESC, nombre ASC, {$idField} ASC"
         )->fetchAll();
@@ -40,7 +33,6 @@ trait ConfiguracionConsultas
             $row['cantidad_usos'] = configuracion_cantidad_usos($db, $definition, $id);
         }
         unset($row);
-
         return $rows;
     }
 }

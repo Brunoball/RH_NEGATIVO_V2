@@ -269,36 +269,230 @@ trait SociosGestion
     private static function eliminarDefinitivoDatos(array $auth, int $id): array
     {
         $db = $auth['db'];
-        return transaction($db, function () use ($db, $auth, $id): array {
+
+        $result = transaction($db, function () use ($db, $id): array {
             $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
             $lock->execute([$id]);
-            if (!$lock->fetch()) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            $socio = $lock->fetch();
+            if (!$socio) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
 
-            $before = self::detalle($db, $id);
+            // El impacto es meramente informativo. Si una tabla opcional no
+            // existe en una instalación local, nunca debe impedir el borrado.
             $impact = self::impactoEliminacion($db, $id);
 
-            // El orden respeta todas las FK RESTRICT del esquema RH V2.
-            $db->prepare('DELETE FROM familias_socios WHERE id_socio = ?')->execute([$id]);
-            $db->prepare('DELETE FROM pagos_inscripcion WHERE id_socio = ?')->execute([$id]);
-            $db->prepare('DELETE FROM pagos WHERE id_socio = ?')->execute([$id]);
-            $db->prepare('DELETE FROM socios_contactos WHERE id_socio = ?')->execute([$id]);
-            $db->prepare('DELETE FROM socios_cumpleanios_cierres WHERE id_socio = ?')->execute([$id]);
-            $db->prepare('DELETE FROM socios_historial_estados WHERE id_socio = ?')->execute([$id]);
-            $db->prepare('DELETE FROM socios_fusiones WHERE id_socio_origen = ? OR id_socio_destino = ?')->execute([$id, $id]);
-            $db->prepare('DELETE FROM socios WHERE id_socio = ?')->execute([$id]);
+            // Descubre relaciones a partir del esquema REAL de la conexión y
+            // suma un fallback de las tablas conocidas de RH Negativo V2. De
+            // esta manera una DB local levemente desactualizada no genera 500
+            // por intentar borrar una tabla/columna que todavía no existe.
+            $relations = self::descubrirRelacionesSocio($db);
+            $eliminados = self::eliminarRelacionesSocio($db, $id, $relations);
 
-            self::auditarSocio(
-                $db,
-                $auth,
-                'socios',
-                $id,
-                'DELETE',
-                ['socio' => $before, 'impacto' => $impact],
-                null
-            );
+            try {
+                $delete = $db->prepare('DELETE FROM socios WHERE id_socio = ?');
+                $delete->execute([$id]);
+            } catch (PDOException $error) {
+                // Si MySQL todavía informa una FK, intentamos descubrir de
+                // nuevo únicamente las FK reales y limpiarlas una vez más.
+                // Esto cubre esquemas que agregaron una tabla nueva y evita
+                // desactivar FOREIGN_KEY_CHECKS, que podría dejar huérfanos.
+                $driverCode = (int)($error->errorInfo[1] ?? 0);
+                if ($driverCode !== 1451 && $driverCode !== 1452) throw $error;
 
-            return ['id_socio' => $id, 'impacto' => $impact];
+                $extra = self::descubrirForeignKeysSocio($db);
+                $extraDeleted = self::eliminarRelacionesSocio($db, $id, $extra);
+                foreach ($extraDeleted as $table => $count) {
+                    $eliminados[$table] = ($eliminados[$table] ?? 0) + $count;
+                }
+
+                $delete = $db->prepare('DELETE FROM socios WHERE id_socio = ?');
+                $delete->execute([$id]);
+            }
+
+            if ($delete->rowCount() !== 1) {
+                throw new RuntimeException('El registro principal del socio no fue eliminado.');
+            }
+
+            return [
+                'id_socio' => $id,
+                'impacto' => $impact,
+                'eliminados' => $eliminados,
+                '_auditoria' => [
+                    'socio' => $socio,
+                    'impacto' => $impact,
+                    'eliminados' => $eliminados,
+                ],
+            ];
         });
+
+        // La auditoría se escribe después del COMMIT. Si por un problema de
+        // auditoría falla el INSERT, el socio ya eliminado no reaparece.
+        $auditData = $result['_auditoria'] ?? null;
+        unset($result['_auditoria']);
+        if ($auditData !== null) {
+            try {
+                self::auditarSocio($db, $auth, 'socios', $id, 'DELETE', $auditData, null);
+            } catch (Throwable $auditError) {
+                error_log('[socios_eliminar_definitivo][auditoria] ' . $auditError->__toString());
+                $result['auditoria_registrada'] = false;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Devuelve todas las columnas que pueden relacionar una fila con socios.
+     * Combina FK reales + columnas convencionales + fallback conocido.
+     *
+     * @return array<string,array<int,string>>
+     */
+    private static function descubrirRelacionesSocio(PDO $db): array
+    {
+        $relations = self::descubrirForeignKeysSocio($db);
+
+        // Además de las FK buscamos columnas de relación convencionales. Esto
+        // cubre socios_fusiones.id_socio_origen (sin FK en el dump actual) y
+        // futuras tablas auxiliares del mismo sistema.
+        try {
+            $statement = $db->query(
+                "SELECT TABLE_NAME, COLUMN_NAME
+                   FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME <> 'socios'
+                    AND COLUMN_NAME IN ('id_socio','id_socio_origen','id_socio_destino')"
+            );
+            if ($statement !== false) {
+                foreach ($statement->fetchAll() as $row) {
+                    self::agregarRelacionSocio(
+                        $relations,
+                        (string)($row['TABLE_NAME'] ?? ''),
+                        (string)($row['COLUMN_NAME'] ?? '')
+                    );
+                }
+            }
+        } catch (Throwable $schemaError) {
+            error_log('[socios_eliminar_definitivo][columns] ' . $schemaError->getMessage());
+        }
+
+        // Fallback compatible con el esquema entregado. La eliminación valida
+        // existencia real antes de ejecutar, por lo que no rompe instalaciones
+        // donde alguna de estas tablas todavía no fue creada.
+        $fallback = [
+            'familias_socios' => ['id_socio'],
+            'pagos_inscripcion' => ['id_socio'],
+            'pagos' => ['id_socio'],
+            'socios_contactos' => ['id_socio'],
+            'socios_cumpleanios_cierres' => ['id_socio'],
+            'socios_historial_estados' => ['id_socio'],
+            'socios_fusiones' => ['id_socio_origen', 'id_socio_destino'],
+        ];
+        foreach ($fallback as $table => $columns) {
+            foreach ($columns as $column) self::agregarRelacionSocio($relations, $table, $column);
+        }
+
+        return $relations;
+    }
+
+    /** @return array<string,array<int,string>> */
+    private static function descubrirForeignKeysSocio(PDO $db): array
+    {
+        $relations = [];
+        try {
+            $statement = $db->query(
+                "SELECT TABLE_NAME, COLUMN_NAME
+                   FROM information_schema.KEY_COLUMN_USAGE
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND REFERENCED_TABLE_NAME = 'socios'
+                    AND REFERENCED_COLUMN_NAME = 'id_socio'"
+            );
+            if ($statement !== false) {
+                foreach ($statement->fetchAll() as $row) {
+                    self::agregarRelacionSocio(
+                        $relations,
+                        (string)($row['TABLE_NAME'] ?? ''),
+                        (string)($row['COLUMN_NAME'] ?? '')
+                    );
+                }
+            }
+        } catch (Throwable $schemaError) {
+            error_log('[socios_eliminar_definitivo][foreign_keys] ' . $schemaError->getMessage());
+        }
+        return $relations;
+    }
+
+    private static function agregarRelacionSocio(array &$relations, string $table, string $column): void
+    {
+        if ($table === 'socios') return;
+        if (!self::identificadorSqlSeguro($table) || !self::identificadorSqlSeguro($column)) return;
+        $relations[$table] ??= [];
+        if (!in_array($column, $relations[$table], true)) $relations[$table][] = $column;
+    }
+
+    /**
+     * @param array<string,array<int,string>> $relations
+     * @return array<string,int>
+     */
+    private static function eliminarRelacionesSocio(PDO $db, int $id, array $relations): array
+    {
+        $deleted = [];
+        foreach ($relations as $table => $columns) {
+            if (!self::identificadorSqlSeguro($table) || $table === 'socios') continue;
+
+            $validColumns = [];
+            foreach (array_unique($columns) as $column) {
+                if (!self::identificadorSqlSeguro((string)$column)) continue;
+                if (!self::columnaRelacionExiste($db, $table, (string)$column)) continue;
+                $validColumns[] = (string)$column;
+            }
+            if ($validColumns === []) continue;
+
+            $where = implode(' OR ', array_map(
+                static fn(string $column): string => "`{$column}` = ?",
+                $validColumns
+            ));
+            $params = array_fill(0, count($validColumns), $id);
+
+            try {
+                $statement = $db->prepare("DELETE FROM `{$table}` WHERE {$where}");
+                $statement->execute($params);
+                $deleted[$table] = ($deleted[$table] ?? 0) + $statement->rowCount();
+            } catch (PDOException $error) {
+                $driverCode = (int)($error->errorInfo[1] ?? 0);
+                // 1146 = tabla inexistente / 1054 = columna inexistente. Son
+                // diferencias de versión del esquema, no un motivo para abortar.
+                if ($driverCode === 1146 || $driverCode === 1054) {
+                    error_log('[socios_eliminar_definitivo][skip][' . $table . '] ' . $error->getMessage());
+                    continue;
+                }
+                throw $error;
+            }
+        }
+        return $deleted;
+    }
+
+    private static function columnaRelacionExiste(PDO $db, string $table, string $column): bool
+    {
+        try {
+            $statement = $db->prepare(
+                'SELECT COUNT(*)
+                   FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = ?
+                    AND COLUMN_NAME = ?'
+            );
+            $statement->execute([$table, $column]);
+            return (int)$statement->fetchColumn() > 0;
+        } catch (Throwable $schemaError) {
+            // En hosting con information_schema restringido probamos la
+            // consulta real y dejamos que eliminarRelacionesSocio maneje
+            // únicamente los errores de tabla/columna inexistente.
+            return true;
+        }
+    }
+
+    private static function identificadorSqlSeguro(string $value): bool
+    {
+        return $value !== '' && preg_match('/^[A-Za-z0-9_]+$/D', $value) === 1;
     }
 
     private static function validarSocio(PDO $db, array $body, ?int $editingId): array

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
@@ -20,8 +20,14 @@ import CrudModal from "../../Global/Modales/CrudModal";
 import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
 import { FloatingField } from "../../Global/Formularios/TabbedForm";
+import {
+  decimalInput,
+  preventInvalidDecimalKey,
+  upperBloodGroup,
+  upperCatalogName,
+  upperLettersOnly,
+} from "../../Global/Formularios/inputSanitizers";
 import { canWrite } from "../../_shared/auth/session";
-import { upperWithoutDigits } from "../../Global/Formularios/inputSanitizers";
 import { configuracionApi } from "../api/configuracionApi";
 import { useConfiguracion } from "../hooks/useConfiguracion";
 import { useTableScrollbarCompensation } from "../hooks/useTableScrollbarCompensation";
@@ -31,29 +37,121 @@ import "./CatalogosConfiguracion.css";
 const upper = (value) => String(value ?? "").toLocaleUpperCase("es-AR");
 
 const CATALOG_META = {
+  categoria: {
+    label: "categoría",
+    title: "Categorías",
+    description: "Categorías de socios con sus importes mensual y anual.",
+    detail: "Los cambios de importe también quedan registrados en el historial de precios.",
+    icon: faSliders,
+    idField: "id_categoria",
+    activePlural: "activas",
+    inactivePlural: "inactivas",
+    empty: "Todavía no hay categorías configuradas.",
+    deletedFieldLabel: "categoría",
+    fields: [
+      { key: "nombre", label: "Nombre", type: "text", maxLength: 100, sanitizer: "letters" },
+      { key: "monto_mensual", label: "Monto mensual", type: "decimal", maxLength: 13, maxIntegerDigits: 10, maxDecimals: 2 },
+      { key: "monto_anual", label: "Monto anual", type: "decimal", maxLength: 13, maxIntegerDigits: 10, maxDecimals: 2 },
+    ],
+    secondary: (item) => `Mensual ${Number(item.monto_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS" })} · Anual ${Number(item.monto_anual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS" })}`,
+  },
+  cobrador: {
+    label: "cobrador",
+    title: "Cobradores",
+    description: "Personas o modalidades responsables de la cobranza de socios.",
+    detail: "Se utilizan en la ficha del socio y en los filtros de gestión.",
+    icon: faUsers,
+    idField: "id_cobrador",
+    activePlural: "activos",
+    inactivePlural: "inactivos",
+    empty: "Todavía no hay cobradores configurados.",
+    deletedFieldLabel: "cobrador",
+    fields: [{ key: "nombre", label: "Nombre", type: "text", maxLength: 50, sanitizer: "catalog" }],
+  },
+  estado: {
+    label: "estado",
+    title: "Estados",
+    description: "Estados administrativos disponibles para clasificar socios.",
+    detail: "Los estados usados en historial no se pueden borrar definitivamente.",
+    icon: faPowerOff,
+    idField: "id_estado",
+    activePlural: "activos",
+    inactivePlural: "inactivos",
+    empty: "Todavía no hay estados configurados.",
+    deletedFieldLabel: "estado",
+    fields: [{ key: "nombre", label: "Nombre", type: "text", maxLength: 20, sanitizer: "letters" }],
+  },
+  grupo_sanguineo: {
+    label: "grupo sanguíneo",
+    title: "Grupos sanguíneos",
+    description: "Valores de grupo y factor sanguíneo disponibles en socios.",
+    detail: "Podés agregar, corregir o desactivar opciones sin tocar fichas existentes.",
+    icon: faGear,
+    idField: "id_grupo_sanguineo",
+    activePlural: "activos",
+    inactivePlural: "inactivos",
+    empty: "Todavía no hay grupos sanguíneos configurados.",
+    deletedFieldLabel: "grupo sanguíneo",
+    fields: [{ key: "nombre", label: "Nombre", type: "text", maxLength: 10, sanitizer: "blood" }],
+  },
   medios_pago: {
     label: "medio de pago",
     title: "Medios de pago",
-    description:
-      "Opciones disponibles para socios y para registrar el cobro de cuotas.",
-    detail:
-      "Se utilizan como medio habitual del socio y como medio real de cada pago.",
+    description: "Opciones disponibles al registrar cuotas e inscripciones.",
+    detail: "Los medios usados en pagos históricos se conservan mediante baja lógica.",
     icon: faMoneyBillTransfer,
     idField: "id_medio_pago",
-    activeSingular: "activo",
     activePlural: "activos",
     inactivePlural: "inactivos",
     empty: "Todavía no hay medios de pago configurados.",
-    maxLength: 100,
     deletedFieldLabel: "medio de pago",
+    fields: [{ key: "nombre", label: "Nombre", type: "text", maxLength: 50, sanitizer: "catalog" }],
+  },
+  periodo: {
+    label: "período",
+    title: "Períodos",
+    description: "Períodos de cuota y el texto de meses que representa cada uno.",
+    detail: "Los períodos usados por pagos no se pueden eliminar definitivamente.",
+    icon: faCalculator,
+    idField: "id_periodo",
+    activePlural: "activos",
+    inactivePlural: "inactivos",
+    empty: "Todavía no hay períodos configurados.",
+    deletedFieldLabel: "período",
+    fields: [
+      { key: "nombre", label: "Nombre", type: "text", maxLength: 50, sanitizer: "catalog" },
+      { key: "meses", label: "Meses / descripción", type: "text", maxLength: 50, sanitizer: "catalog" },
+    ],
+    secondary: (item) => item.meses || "Sin descripción de meses",
   },
 };
 
-const emptyForm = (lista = "medios_pago") => ({
-  lista,
-  id: "",
-  nombre: "",
-});
+const emptyForm = (lista = "categoria") => {
+  const meta = CATALOG_META[lista] || CATALOG_META.categoria;
+  const values = { lista, id: "" };
+  meta.fields.forEach((field) => {
+    values[field.key] = "";
+  });
+  return values;
+};
+
+const sanitizeCatalogField = (field, value) => {
+  if (field.type === "decimal") {
+    return decimalInput(
+      value,
+      field.maxIntegerDigits ?? 10,
+      field.maxDecimals ?? 2,
+    );
+  }
+
+  if (field.sanitizer === "letters") {
+    return upperLettersOnly(value, field.maxLength || 160);
+  }
+  if (field.sanitizer === "blood") {
+    return upperBloodGroup(value, field.maxLength || 10);
+  }
+  return upperCatalogName(value, field.maxLength || 160);
+};
 
 function AccessCard({
   icon,
@@ -96,8 +194,7 @@ function ConfigurationHome() {
     {
       id: "usuarios",
       title: "Usuarios y roles",
-      description:
-        "Creá, editá, eliminá o desactivá usuarios y definí qué rol tiene cada acceso.",
+      description: "Creá, editá, eliminá o desactivá usuarios y definí qué rol tiene cada acceso.",
       icon: faUsers,
       status: "Seguridad",
       area: "Usuarios",
@@ -105,21 +202,69 @@ function ConfigurationHome() {
       path: "/configuracion/usuarios",
     },
     {
-      id: "catalogos",
-      title: "Catálogos generales",
-      description:
-        "Administrá los medios de pago disponibles para socios y movimientos.",
+      id: "categoria",
+      title: "Categorías",
+      description: "Administrá las categorías de socios y sus importes mensual y anual.",
       icon: faSliders,
-      status: "Catálogo",
-      area: "Sistema",
-      detail: "Medios de pago",
-      path: "/configuracion/catalogos",
+      status: "Tabla maestra",
+      area: "Socios / cuotas",
+      detail: "Nombre, montos y vigencia",
+      path: "/configuracion/catalogos?lista=categoria",
+    },
+    {
+      id: "cobrador",
+      title: "Cobradores",
+      description: "Administrá las opciones de cobrador disponibles en la ficha de cada socio.",
+      icon: faUsers,
+      status: "Tabla maestra",
+      area: "Socios",
+      detail: "Altas, edición y bajas",
+      path: "/configuracion/catalogos?lista=cobrador",
+    },
+    {
+      id: "estado",
+      title: "Estados",
+      description: "Configurá los estados administrativos utilizados para clasificar socios.",
+      icon: faPowerOff,
+      status: "Tabla maestra",
+      area: "Socios",
+      detail: "Estados e historial",
+      path: "/configuracion/catalogos?lista=estado",
+    },
+    {
+      id: "grupo_sanguineo",
+      title: "Grupos sanguíneos",
+      description: "Administrá los grupos y factores sanguíneos disponibles en socios.",
+      icon: faGear,
+      status: "Tabla maestra",
+      area: "Socios",
+      detail: "Grupo y factor",
+      path: "/configuracion/catalogos?lista=grupo_sanguineo",
+    },
+    {
+      id: "medios_pago",
+      title: "Medios de pago",
+      description: "Administrá los medios disponibles para cuotas e inscripciones.",
+      icon: faMoneyBillTransfer,
+      status: "Tabla maestra",
+      area: "Pagos",
+      detail: "Cuotas e inscripciones",
+      path: "/configuracion/catalogos?lista=medios_pago",
+    },
+    {
+      id: "periodo",
+      title: "Períodos",
+      description: "Configurá los períodos de cuota y los meses que representa cada uno.",
+      icon: faCalculator,
+      status: "Tabla maestra",
+      area: "Cuotas",
+      detail: "Períodos y meses",
+      path: "/configuracion/catalogos?lista=periodo",
     },
     {
       id: "contable",
       title: "Contable",
-      description:
-        "Administrá las listas que aparecen en los selectores de otros ingresos y egresos.",
+      description: "Administrá las listas que aparecen en los selectores de otros ingresos y egresos.",
       icon: faCalculator,
       status: "5 listas",
       area: "Contabilidad",
@@ -235,7 +380,7 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
                   </span>
                   <div>
                     <strong>{item.nombre}</strong>
-                    <small>{meta.label}</small>
+                    <small>{meta.secondary ? meta.secondary(item) : meta.label}</small>
                   </div>
                 </div>
 
@@ -291,9 +436,10 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
                         type="button"
                         className="mov-iconBtn mov-iconBtn--danger"
                         onClick={() => onDelete(item)}
+                        disabled={usageCount > 0}
                         title={
                           usageCount > 0
-                            ? "Eliminar definitivamente; los registros asociados quedarán sin esta información"
+                            ? "No se puede eliminar definitivamente mientras tenga registros asociados; podés darlo de baja"
                             : "Eliminar definitivamente"
                         }
                         aria-label={`Eliminar definitivamente ${item.nombre}`}
@@ -322,9 +468,11 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
 
 function CatalogsPanel() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const writable = canWrite();
   const { listas, resumen, loading, error, cargar } = useConfiguracion();
-  const [activeList, setActiveList] = useState("medios_pago");
+  const requestedList = searchParams.get("lista");
+  const [activeList, setActiveList] = useState(() => CATALOG_META[requestedList] ? requestedList : "categoria");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm());
   const [formOpen, setFormOpen] = useState(false);
@@ -394,30 +542,45 @@ function CatalogsPanel() {
 
   const openEdit = (item) => {
     setFeedback(null);
-    setForm({
-      lista: activeList,
-      id: String(item[meta.idField]),
-      nombre: item.nombre || "",
+    const nextForm = emptyForm(activeList);
+    nextForm.id = String(item[meta.idField]);
+    meta.fields.forEach((field) => {
+      nextForm[field.key] = item[field.key] ?? "";
     });
+    setForm(nextForm);
     setFormOpen(true);
   };
 
   const saveItem = async (event) => {
     event.preventDefault();
-    const sanitizedName = upperWithoutDigits(form.nombre).trim();
-    if (!sanitizedName) {
-      setFeedback({ type: "error", message: "Ingresá un nombre válido." });
-      return;
+    const payload = { lista: form.lista, id: form.id || null };
+    for (const field of meta.fields) {
+      const rawValue = form[field.key];
+      if (field.type === "decimal") {
+        const value = decimalInput(
+          rawValue,
+          field.maxIntegerDigits ?? 10,
+          field.maxDecimals ?? 2,
+        );
+        if (value === "" || Number.isNaN(Number(value)) || Number(value) < 0) {
+          setFeedback({ type: "error", message: `Completá ${field.label.toLocaleLowerCase("es-AR")} con un valor válido. Los datos cargados se conservaron.` });
+          return;
+        }
+        payload[field.key] = value;
+      } else {
+        const value = sanitizeCatalogField(field, rawValue).trim();
+        if (!value) {
+          setFeedback({ type: "error", message: `Completá ${field.label.toLocaleLowerCase("es-AR")}. Los datos cargados se conservaron.` });
+          return;
+        }
+        payload[field.key] = value;
+      }
     }
 
     setSaving(true);
     setFeedback(null);
     try {
-      const response = await configuracionApi.guardarItem({
-        lista: form.lista,
-        id: form.id || null,
-        nombre: sanitizedName,
-      });
+      const response = await configuracionApi.guardarItem(payload);
       setFormOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
       void cargar();
@@ -528,6 +691,7 @@ function CatalogsPanel() {
                   className={activeList === key ? "is-active" : ""}
                   onClick={() => {
                     setActiveList(key);
+                    setSearchParams({ lista: key }, { replace: true });
                     setSearch("");
                     setFeedback(null);
                   }}
@@ -567,11 +731,7 @@ function CatalogsPanel() {
             <span>{`${form.id ? "Editar" : "Agregar"} ${meta.label}`}</span>
           </>
         }
-        subtitle={
-          form.lista === "medios_pago"
-            ? "La opción estará disponible en socios y pagos nuevos."
-            : "La opción estará disponible para nuevos registros."
-        }
+        subtitle={meta.description}
         onClose={() => setFormOpen(false)}
         onSubmit={saveItem}
         saving={saving}
@@ -581,29 +741,35 @@ function CatalogsPanel() {
       >
         <div className="entity-form config-catalogForm">
           <div className="entity-form__grid entity-form__grid--single">
-            <FloatingField
-              label={
-                <>
-                  <FontAwesomeIcon icon={meta.icon} aria-hidden="true" />
-                  Nombre *
-                </>
-              }
-              active={Boolean(form.nombre)}
-            >
-              <input
-                value={form.nombre}
-                placeholder=" "
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    nombre: upperWithoutDigits(event.target.value),
-                  }))
+            {meta.fields.map((field, index) => (
+              <FloatingField
+                key={field.key}
+                label={
+                  <>
+                    <FontAwesomeIcon icon={meta.icon} aria-hidden="true" />
+                    {field.label} *
+                  </>
                 }
-                maxLength={meta.maxLength}
-                required
-                autoFocus
-              />
-            </FloatingField>
+                active={String(form[field.key] ?? "").trim() !== ""}
+              >
+                <input
+                  type="text"
+                  inputMode={field.type === "decimal" ? "decimal" : undefined}
+                  value={form[field.key] ?? ""}
+                  placeholder=" "
+                  onKeyDown={field.type === "decimal" ? preventInvalidDecimalKey : undefined}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      [field.key]: sanitizeCatalogField(field, event.target.value),
+                    }))
+                  }
+                  maxLength={field.maxLength}
+                  required
+                  autoFocus={index === 0}
+                />
+              </FloatingField>
+            ))}
           </div>
           <p className="config-catalogForm__help">
             <FontAwesomeIcon icon={faSliders} aria-hidden="true" />
@@ -666,18 +832,8 @@ function CatalogsPanel() {
         operacion="eliminar"
         row={deleteModal}
         title={`Eliminar ${meta.label}`}
-        message={
-          Number(deleteModal?.cantidad_usos || 0) > 0
-            ? Number(deleteModal?.cantidad_usos || 0) === 1
-              ? `La opción se eliminará definitivamente. El registro asociado se conservará, pero quedará sin ${meta.deletedFieldLabel}.`
-              : `La opción se eliminará definitivamente. Los ${Number(deleteModal?.cantidad_usos || 0)} registros asociados se conservarán, pero quedarán sin ${meta.deletedFieldLabel}.`
-            : "La opción se eliminará definitivamente de la configuración."
-        }
-        warning={
-          Number(deleteModal?.cantidad_usos || 0) > 0
-            ? `Esta acción no se puede deshacer. Al confirmar, esos registros quedarán con el campo ${meta.deletedFieldLabel} vacío y sin información.`
-            : "Esta acción no se puede deshacer."
-        }
+        message="La opción se eliminará definitivamente de la configuración."
+        warning="Esta acción no se puede deshacer. Sólo se habilita para opciones que no tienen registros asociados."
         confirmLabel="Eliminar"
         loadingLabel="Eliminando..."
         loadingMessage="Eliminando opción…"

@@ -28,6 +28,7 @@ import ModuleFeedback from "../../Global/ModuleFeedback";
 import BotonExportarGlobal from "../../Global/Botones/BotonExportarGlobal";
 import {
   EntityFormPanel,
+  EntityTabPane,
   EntityTabs,
   FloatingField,
 } from "../../Global/Formularios/TabbedForm";
@@ -35,6 +36,10 @@ import {
   matchesEverySearchTerm,
   normalizeSearchQuery,
 } from "../../Global/Formularios/searchUtils";
+import {
+  personNameInput,
+  upperLimitedText,
+} from "../../Global/Formularios/inputSanitizers";
 import { canWrite } from "../../_shared/auth/session";
 import { familiasApi } from "../api/sociosApi";
 import { useFamilias } from "../hooks/useFamilias";
@@ -229,7 +234,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
         ariaLabel="Secciones de la familia"
       />
 
-      {activeTab === FORM_TAB_DETAILS ? (
+      <EntityTabPane active={activeTab === FORM_TAB_DETAILS} disableWhenInactive>
         <EntityFormPanel
           tabValue={FORM_TAB_DETAILS}
           idPrefix="familia-form-tab"
@@ -248,7 +253,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  nombre: upper(event.target.value),
+                  nombre: personNameInput(event.target.value, 120),
                 }))
               }
               maxLength={120}
@@ -266,7 +271,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  descripcion: upper(event.target.value),
+                  descripcion: upperLimitedText(event.target.value, 2000),
                 }))
               }
               rows={3}
@@ -282,7 +287,9 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
             </span>
           </div>
         </EntityFormPanel>
-      ) : (
+      </EntityTabPane>
+
+      <EntityTabPane active={activeTab === FORM_TAB_MEMBERS} disableWhenInactive>
         <EntityFormPanel
           tabValue={FORM_TAB_MEMBERS}
           idPrefix="familia-form-tab"
@@ -464,7 +471,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
             </div>
           ) : null}
         </EntityFormPanel>
-      )}
+      </EntityTabPane>
     </div>
   );
 }
@@ -572,8 +579,8 @@ export default function Familias() {
     try {
       const response = await familiasApi.guardar({
         id_familia: form.id_familia || null,
-        nombre: upper(form.nombre),
-        descripcion: form.descripcion,
+        nombre: personNameInput(form.nombre, 120).trim(),
+        descripcion: upperLimitedText(form.descripcion, 2000),
         observaciones: form.descripcion,
         integrantes: form.integrantes.map((member) => ({
           id_socio: member.id_socio,

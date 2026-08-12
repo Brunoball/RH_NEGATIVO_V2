@@ -117,6 +117,36 @@ export function EntityFormPanel({
   );
 }
 
+
+export function EntityTabPane({
+  active,
+  children,
+  disableWhenInactive = false,
+  className = "",
+}) {
+  const content = disableWhenInactive ? (
+    <fieldset
+      className="entity-tab-pane__fieldset"
+      disabled={!active}
+      aria-disabled={!active}
+    >
+      {children}
+    </fieldset>
+  ) : (
+    children
+  );
+
+  return (
+    <div
+      className={`entity-tab-pane ${className}`.trim()}
+      hidden={!active}
+      aria-hidden={!active}
+    >
+      {content}
+    </div>
+  );
+}
+
 export function FloatingField({
   label,
   active = false,

@@ -583,3 +583,25 @@
     text-align: center;
   }
 }
+
+/* RH V2: seis catálogos generales deben convivir sin forzar overflow horizontal. */
+.config-catalogTabs {
+  display: flex;
+  flex-wrap: wrap;
+  border-radius: 16px;
+}
+
+.config-catalogForm .entity-form__grid--single {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.config-catalogActions .mov-iconBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (max-width: 760px) {
+  .config-catalogForm .entity-form__grid--single {
+    grid-template-columns: 1fr;
+  }
+}

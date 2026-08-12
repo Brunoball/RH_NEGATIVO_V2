@@ -78,6 +78,7 @@ export default function CrudModal({
   footerStart = null,
   modalClassName = "",
   closeOnBackdrop = true,
+  autoUppercaseInputs = true,
 }) {
   const modalRef = useRef(null);
   const modalIdRef = useRef(Symbol("crud-modal"));
@@ -148,7 +149,7 @@ export default function CrudModal({
         <form
           onSubmit={onSubmit}
           onClick={openDatePickerFromInput}
-          onInputCapture={uppercaseModalTextField}
+          onInputCapture={autoUppercaseInputs ? uppercaseModalTextField : undefined}
         >
           <div
             className={`entity-modal__body ${loading ? "is-loading" : ""}`.trim()}

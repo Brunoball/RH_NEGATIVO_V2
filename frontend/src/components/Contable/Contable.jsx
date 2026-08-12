@@ -33,12 +33,17 @@ import ModuleFeedback from "../Global/ModuleFeedback";
 import SummaryCards from "../Global/SummaryCards";
 import {
   EntityFormPanel,
+  EntityTabPane,
   EntityTabs,
   FloatingField,
 } from "../Global/Formularios/TabbedForm";
 import {
   decimalInput,
   preventInvalidDecimalKey,
+  receiptNumberInput,
+  upperCatalogName,
+  upperLettersOnly,
+  upperLimitedText,
 } from "../Global/Formularios/inputSanitizers";
 import { canWrite } from "../_shared/auth/session";
 import { contableApi } from "./api/contableApi";
@@ -102,10 +107,10 @@ const localDate = () => {
 };
 
 const upper = (value) => String(value ?? "").toLocaleUpperCase("es-AR");
-const upperWithoutDigits = (value) => upper(String(value ?? "").replace(/[0-9]/g, ""));
-
 const sanitizeOptionName = (type, value) =>
-  type === "PROVEEDOR" ? upper(value) : upperWithoutDigits(value);
+  type === "PROVEEDOR"
+    ? upperCatalogName(value, 160)
+    : upperLettersOnly(value, 160);
 
 const emptyCatalogs = {
   opciones: {
@@ -761,7 +766,7 @@ export default function ContableModule({ view = "summary" }) {
     const sanitizedIncomeForm = {
       ...incomeForm,
       importe: decimalInput(incomeForm.importe),
-      detalle: upper(incomeForm.detalle),
+      detalle: upperLimitedText(incomeForm.detalle, 500),
     };
 
     if (!(Number(sanitizedIncomeForm.importe) > 0)) {
@@ -851,8 +856,8 @@ export default function ContableModule({ view = "summary" }) {
     const sanitizedExpenseForm = {
       ...expenseForm,
       importe: decimalInput(expenseForm.importe),
-      numero_comprobante: upper(expenseForm.numero_comprobante),
-      detalle: upper(expenseForm.detalle),
+      numero_comprobante: receiptNumberInput(expenseForm.numero_comprobante, 120),
+      detalle: upperLimitedText(expenseForm.detalle, 500),
     };
 
     if (
@@ -1705,6 +1710,7 @@ export default function ContableModule({ view = "summary" }) {
                 inputMode="decimal"
                 autoComplete="off"
                 onKeyDown={preventInvalidDecimalKey}
+                maxLength={15}
                 required
                 value={incomeForm.importe}
                 placeholder=" "
@@ -1730,7 +1736,7 @@ export default function ContableModule({ view = "summary" }) {
                 onChange={(event) =>
                   setIncomeForm((current) => ({
                     ...current,
-                    detalle: upper(event.target.value),
+                    detalle: upperLimitedText(event.target.value, 500),
                   }))
                 }
               />
@@ -1772,7 +1778,7 @@ export default function ContableModule({ view = "summary" }) {
             ariaLabel="Secciones del egreso"
           />
 
-          {expenseFormTab === "movement" ? (
+          <EntityTabPane active={expenseFormTab === "movement"} disableWhenInactive>
             <EntityFormPanel
               tabValue="movement"
               idPrefix="contable-expense-tab"
@@ -1838,7 +1844,7 @@ export default function ContableModule({ view = "summary" }) {
                   onChange={(event) =>
                     setExpenseForm((current) => ({
                       ...current,
-                      numero_comprobante: upper(event.target.value),
+                      numero_comprobante: receiptNumberInput(event.target.value, 120),
                     }))
                   }
                 />
@@ -1879,6 +1885,7 @@ export default function ContableModule({ view = "summary" }) {
                   inputMode="decimal"
                   autoComplete="off"
                   onKeyDown={preventInvalidDecimalKey}
+                  maxLength={15}
                   required
                   value={expenseForm.importe}
                   placeholder=" "
@@ -1904,13 +1911,15 @@ export default function ContableModule({ view = "summary" }) {
                   onChange={(event) =>
                     setExpenseForm((current) => ({
                       ...current,
-                      detalle: upper(event.target.value),
+                      detalle: upperLimitedText(event.target.value, 500),
                     }))
                   }
                 />
               </FloatingField>
             </EntityFormPanel>
-          ) : (
+          </EntityTabPane>
+
+          <EntityTabPane active={expenseFormTab === "receipt"} disableWhenInactive>
             <EntityFormPanel
               tabValue="receipt"
               idPrefix="contable-expense-tab"
@@ -1965,7 +1974,7 @@ export default function ContableModule({ view = "summary" }) {
                 ) : null}
               </div>
             </EntityFormPanel>
-          )}
+          </EntityTabPane>
         </div>
       </CrudModal>
 

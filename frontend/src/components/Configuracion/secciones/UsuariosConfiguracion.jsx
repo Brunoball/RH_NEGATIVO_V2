@@ -22,6 +22,7 @@ import CrudModal from "../../Global/Modales/CrudModal";
 import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
 import { FloatingField } from "../../Global/Formularios/TabbedForm";
+import { emailInput, usernameInput } from "../../Global/Formularios/inputSanitizers";
 import { getSession, saveSession } from "../../_shared/auth/session";
 import { configuracionApi } from "../api/configuracionApi";
 import { useTableScrollbarCompensation } from "../hooks/useTableScrollbarCompensation";
@@ -162,21 +163,25 @@ export default function UsuariosConfiguracion({ onBack }) {
 
   const saveUser = async (event) => {
     event.preventDefault();
+    if (!usernameInput(form.usuario, 100)) {
+      setFeedback({ type: "error", message: "Completá un usuario válido usando letras, números, punto, guion o guion bajo. Los datos cargados se conservaron." });
+      return;
+    }
     if (form.contrasena !== form.confirmar_contrasena) {
-      setFeedback({ type: "error", message: "Las contraseñas no coinciden." });
+      setFeedback({ type: "error", message: "Las contraseñas no coinciden. Los datos cargados se conservaron." });
       return;
     }
     if (!form.id && form.contrasena.length < 8) {
       setFeedback({
         type: "error",
-        message: "La contraseña debe tener al menos 8 caracteres.",
+        message: "La contraseña debe tener al menos 8 caracteres. Los datos cargados se conservaron.",
       });
       return;
     }
     if (form.id && form.contrasena && form.contrasena.length < 8) {
       setFeedback({
         type: "error",
-        message: "La contraseña debe tener al menos 8 caracteres.",
+        message: "La contraseña debe tener al menos 8 caracteres. Los datos cargados se conservaron.",
       });
       return;
     }
@@ -186,8 +191,8 @@ export default function UsuariosConfiguracion({ onBack }) {
     try {
       const response = await configuracionApi.guardarUsuario({
         id: form.id || null,
-        usuario: form.usuario.trim(),
-        email: form.email.trim() || null,
+        usuario: usernameInput(form.usuario, 100).trim(),
+        email: emailInput(form.email, 190).trim() || null,
         rol: form.rol,
         contrasena: form.contrasena,
         confirmar_contrasena: form.confirmar_contrasena,
@@ -510,6 +515,7 @@ export default function UsuariosConfiguracion({ onBack }) {
         submitLabel={form.id ? "Guardar cambios" : "Crear usuario"}
         closeOnBackdrop={false}
         modalClassName="config-usersModal"
+        autoUppercaseInputs={false}
         wide
       >
         <div className="entity-form config-usersForm">
@@ -526,8 +532,10 @@ export default function UsuariosConfiguracion({ onBack }) {
               <input
                 value={form.usuario}
                 placeholder=" "
-                onChange={(event) => updateForm("usuario", event.target.value)}
+                onChange={(event) => updateForm("usuario", usernameInput(event.target.value, 100))}
                 maxLength={100}
+                pattern="[A-Za-z0-9._-]+"
+                title="Usá sólo letras, números, punto, guion o guion bajo."
                 autoComplete="off"
                 required
                 autoFocus
@@ -546,7 +554,7 @@ export default function UsuariosConfiguracion({ onBack }) {
                 type="email"
                 value={form.email}
                 placeholder=" "
-                onChange={(event) => updateForm("email", event.target.value)}
+                onChange={(event) => updateForm("email", emailInput(event.target.value, 190))}
                 maxLength={190}
                 autoComplete="off"
                 disabled={!data.capacidades.email}

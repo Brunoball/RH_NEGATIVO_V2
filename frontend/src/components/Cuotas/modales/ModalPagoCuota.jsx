@@ -626,6 +626,7 @@ export default function ModalPagoCuota({
                                   type="text"
                                   inputMode="decimal"
                                   pattern="[0-9]*[.,]?[0-9]{0,2}"
+                                  maxLength={15}
                                   value={amountState.monto ?? ""}
                                   onChange={(event) =>
                                     updateMonthCustomAmount(monthId, event.target.value)

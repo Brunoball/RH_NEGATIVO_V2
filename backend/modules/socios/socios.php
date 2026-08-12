@@ -85,11 +85,41 @@ final class Socios
 
     public static function eliminarDefinitivo(): never
     {
-        require_admin();
-        api_error(
-            'No se permite eliminar físicamente un socio. Utilizá la baja lógica para conservar su historial.',
-            'ELIMINACION_FISICA_NO_PERMITIDA',
-            405
+        $auth = require_admin();
+        $body = request_body();
+        $id = positive_id($body['id'] ?? $body['id_socio'] ?? null, 'socio');
+
+        try {
+            $result = self::eliminarDefinitivoDatos($auth, $id);
+        } catch (PDOException $error) {
+            $driverCode = (int)($error->errorInfo[1] ?? 0);
+            error_log('[socios_eliminar_definitivo][PDO][' . $driverCode . '] ' . $error->__toString());
+
+            if ($driverCode === 1451 || $driverCode === 1452) {
+                $message = 'No se pudo completar la eliminación porque todavía existe una relación de base de datos que referencia al socio.';
+                if (env_bool('APP_DEBUG', false)) {
+                    $message .= ' MySQL: ' . $error->getMessage();
+                }
+                api_error($message, 'SOCIO_DELETE_RELACION_BLOQUEANTE', 409);
+            }
+
+            $message = 'No se pudo eliminar definitivamente el socio por un error de base de datos.';
+            if (env_bool('APP_DEBUG', false)) {
+                $message .= ' MySQL ' . ($driverCode ?: 'N/D') . ': ' . $error->getMessage();
+            }
+            api_error($message, 'SOCIO_DELETE_DB_ERROR', 500);
+        } catch (Throwable $error) {
+            error_log('[socios_eliminar_definitivo][ERROR] ' . $error->__toString());
+            $message = 'No se pudo eliminar definitivamente el socio.';
+            if (env_bool('APP_DEBUG', false)) {
+                $message .= ' Detalle: ' . $error->getMessage();
+            }
+            api_error($message, 'SOCIO_DELETE_ERROR', 500);
+        }
+
+        api_success(
+            $result,
+            'Socio eliminado definitivamente junto con todos sus pagos y registros relacionados.'
         );
     }
 }

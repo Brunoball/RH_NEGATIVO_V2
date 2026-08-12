@@ -259,20 +259,28 @@ trait SociosConsultas
     private static function impactoEliminacion(PDO $db, int $id): array
     {
         $queries = [
-            'pagos' => 'SELECT COUNT(*) FROM pagos WHERE id_socio = ?',
-            'pagos_inscripcion' => 'SELECT COUNT(*) FROM pagos_inscripcion WHERE id_socio = ?',
-            'contactos' => 'SELECT COUNT(*) FROM socios_contactos WHERE id_socio = ?',
-            'cumpleanios_cierres' => 'SELECT COUNT(*) FROM socios_cumpleanios_cierres WHERE id_socio = ?',
-            'historial_estados' => 'SELECT COUNT(*) FROM socios_historial_estados WHERE id_socio = ?',
-            'vinculos_familiares' => 'SELECT COUNT(*) FROM familias_socios WHERE id_socio = ?',
-            'fusiones' => 'SELECT COUNT(*) FROM socios_fusiones WHERE id_socio_origen = ? OR id_socio_destino = ?',
+            'pagos' => ['SELECT COUNT(*) FROM pagos WHERE id_socio = ?', [$id]],
+            'pagos_inscripcion' => ['SELECT COUNT(*) FROM pagos_inscripcion WHERE id_socio = ?', [$id]],
+            'contactos' => ['SELECT COUNT(*) FROM socios_contactos WHERE id_socio = ?', [$id]],
+            'cumpleanios_cierres' => ['SELECT COUNT(*) FROM socios_cumpleanios_cierres WHERE id_socio = ?', [$id]],
+            'historial_estados' => ['SELECT COUNT(*) FROM socios_historial_estados WHERE id_socio = ?', [$id]],
+            'vinculos_familiares' => ['SELECT COUNT(*) FROM familias_socios WHERE id_socio = ?', [$id]],
+            'fusiones' => ['SELECT COUNT(*) FROM socios_fusiones WHERE id_socio_origen = ? OR id_socio_destino = ?', [$id, $id]],
         ];
 
         $impact = [];
-        foreach ($queries as $key => $sql) {
-            $statement = $db->prepare($sql);
-            $statement->execute($key === 'fusiones' ? [$id, $id] : [$id]);
-            $impact[$key] = (int)$statement->fetchColumn();
+        foreach ($queries as $key => [$sql, $params]) {
+            try {
+                $statement = $db->prepare($sql);
+                $statement->execute($params);
+                $impact[$key] = (int)$statement->fetchColumn();
+            } catch (PDOException $error) {
+                // El contador es informativo: nunca debe impedir una baja o
+                // eliminación. El borrado definitivo valida las FK reales por
+                // separado antes de tocar el registro principal.
+                error_log('[socios_impacto_eliminacion][' . $key . '] ' . $error->getMessage());
+                $impact[$key] = 0;
+            }
         }
         $impact['total_relaciones'] = array_sum($impact);
         return $impact;

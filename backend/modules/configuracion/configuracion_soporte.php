@@ -4,13 +4,42 @@ declare(strict_types=1);
 function configuracion_listas_definiciones(): array
 {
     return [
+        'categoria' => [
+            'lista' => 'categoria', 'tabla' => 'categoria', 'id_campo' => 'id_categoria',
+            'etiqueta' => 'categoría', 'entidad' => 'CATEGORIA', 'auto_id' => true,
+            'campos' => [
+                'nombre' => ['tipo' => 'texto', 'max' => 100, 'label' => 'nombre'],
+                'monto_mensual' => ['tipo' => 'decimal', 'label' => 'monto mensual'],
+                'monto_anual' => ['tipo' => 'decimal', 'label' => 'monto anual'],
+            ],
+        ],
+        'cobrador' => [
+            'lista' => 'cobrador', 'tabla' => 'cobrador', 'id_campo' => 'id_cobrador',
+            'etiqueta' => 'cobrador', 'entidad' => 'COBRADOR', 'auto_id' => false,
+            'campos' => ['nombre' => ['tipo' => 'texto', 'max' => 50, 'label' => 'nombre']],
+        ],
+        'estado' => [
+            'lista' => 'estado', 'tabla' => 'estado', 'id_campo' => 'id_estado',
+            'etiqueta' => 'estado', 'entidad' => 'ESTADO', 'auto_id' => false,
+            'campos' => ['nombre' => ['tipo' => 'texto', 'max' => 20, 'label' => 'nombre']],
+        ],
+        'grupo_sanguineo' => [
+            'lista' => 'grupo_sanguineo', 'tabla' => 'grupo_sanguineo', 'id_campo' => 'id_grupo_sanguineo',
+            'etiqueta' => 'grupo sanguíneo', 'entidad' => 'GRUPO_SANGUINEO', 'auto_id' => false,
+            'campos' => ['nombre' => ['tipo' => 'texto', 'max' => 10, 'label' => 'nombre']],
+        ],
         'medios_pago' => [
-            'lista' => 'medios_pago',
-            'tabla' => 'medios_pago',
-            'id_campo' => 'id_medio_pago',
-            'etiqueta' => 'medio de pago',
-            'max_nombre' => 100,
-            'entidad' => 'MEDIO_PAGO',
+            'lista' => 'medios_pago', 'tabla' => 'medios_pago', 'id_campo' => 'id_medio_pago',
+            'etiqueta' => 'medio de pago', 'entidad' => 'MEDIO_PAGO', 'auto_id' => true,
+            'campos' => ['nombre' => ['tipo' => 'texto', 'max' => 50, 'label' => 'nombre']],
+        ],
+        'periodo' => [
+            'lista' => 'periodo', 'tabla' => 'periodo', 'id_campo' => 'id_periodo',
+            'etiqueta' => 'período', 'entidad' => 'PERIODO', 'auto_id' => false,
+            'campos' => [
+                'nombre' => ['tipo' => 'texto', 'max' => 50, 'label' => 'nombre'],
+                'meses' => ['tipo' => 'texto', 'max' => 50, 'label' => 'meses'],
+            ],
         ],
     ];
 }
@@ -25,21 +54,23 @@ function configuracion_lista_definicion(mixed $value): array
     return $definitions[$key];
 }
 
+function configuracion_columnas(array $definition): array
+{
+    return array_keys($definition['campos']);
+}
+
 function configuracion_item(PDO $db, array $definition, int $id, bool $lock = false): ?array
 {
     $table = $definition['tabla'];
     $idField = $definition['id_campo'];
+    $fields = implode(', ', configuracion_columnas($definition));
     $suffix = $lock ? ' FOR UPDATE' : '';
-
     $statement = $db->prepare(
-        "SELECT {$idField}, nombre, activo, creado_en, actualizado_en
-         FROM {$table}
-         WHERE {$idField} = ?{$suffix}"
+        "SELECT {$idField}, {$fields}, activo, creado_en FROM {$table} WHERE {$idField} = ?{$suffix}"
     );
     $statement->execute([$id]);
     $row = $statement->fetch();
     if (!$row) return null;
-
     $row[$idField] = (int)$row[$idField];
     $row['activo'] = (bool)$row['activo'];
     $row['cantidad_usos'] = configuracion_cantidad_usos($db, $definition, $id);
@@ -49,11 +80,26 @@ function configuracion_item(PDO $db, array $definition, int $id, bool $lock = fa
 function configuracion_relaciones(array $definition): array
 {
     return match ((string)$definition['lista']) {
+        'categoria' => [
+            ['tabla' => 'socios', 'columna' => 'id_categoria'],
+        ],
+        'cobrador' => [
+            ['tabla' => 'socios', 'columna' => 'id_cobrador'],
+        ],
+        'estado' => [
+            ['tabla' => 'socios', 'columna' => 'id_estado'],
+            ['tabla' => 'socios_historial_estados', 'columna' => 'id_estado_anterior'],
+            ['tabla' => 'socios_historial_estados', 'columna' => 'id_estado_nuevo'],
+        ],
+        'grupo_sanguineo' => [
+            ['tabla' => 'socios', 'columna' => 'id_grupo_sanguineo'],
+        ],
         'medios_pago' => [
             ['tabla' => 'pagos', 'columna' => 'id_medio_pago'],
-            ['tabla' => 'socios', 'columna' => 'id_medio_pago'],
-            ['tabla' => 'contable_ingresos', 'columna' => 'id_medio_pago'],
-            ['tabla' => 'contable_egresos', 'columna' => 'id_medio_pago'],
+            ['tabla' => 'pagos_inscripcion', 'columna' => 'id_medio_pago'],
+        ],
+        'periodo' => [
+            ['tabla' => 'pagos', 'columna' => 'id_periodo'],
         ],
         default => [],
     };
@@ -62,11 +108,8 @@ function configuracion_relaciones(array $definition): array
 function configuracion_tabla_columna_existe(PDO $db, string $table, string $column): bool
 {
     $statement = $db->prepare(
-        "SELECT COUNT(*)
-         FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = ?
-           AND COLUMN_NAME = ?"
+        'SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
     );
     $statement->execute([$table, $column]);
     return (int)$statement->fetchColumn() === 1;
@@ -79,7 +122,6 @@ function configuracion_cantidad_usos(PDO $db, array $definition, int $id): int
         $table = (string)$relation['tabla'];
         $column = (string)$relation['columna'];
         if (!configuracion_tabla_columna_existe($db, $table, $column)) continue;
-
         $statement = $db->prepare("SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = ?");
         $statement->execute([$id]);
         $total += (int)$statement->fetchColumn();
@@ -87,80 +129,21 @@ function configuracion_cantidad_usos(PDO $db, array $definition, int $id): int
     return $total;
 }
 
-/**
- * Hace nullable una columna hija sin modificar ni recrear la clave foránea.
- * Esto es suficiente porque la eliminación definitiva primero hace UPDATE ...
- * SET columna = NULL y recién después elimina la opción padre.
- */
-function configuracion_asegurar_columna_nullable(PDO $db, string $table, string $column): void
+function configuracion_auditar(PDO $db, array $auth, array $definition, int $id, string $action, mixed $before, mixed $after): void
 {
-    if (!preg_match('/^[A-Za-z0-9_]+$/', $table) || !preg_match('/^[A-Za-z0-9_]+$/', $column)) {
-        throw new RuntimeException('Se detectó una relación de configuración con un nombre no válido.');
+    if (!in_array($action, ['INSERT', 'UPDATE', 'DELETE'], true)) {
+        throw new LogicException('Acción de auditoría de configuración no permitida.');
     }
-
+    $encode = static function (mixed $value): ?string {
+        if ($value === null) return null;
+        $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+        return is_string($json) ? $json : '{"error":"No se pudo serializar la auditoría."}';
+    };
     $statement = $db->prepare(
-        "SELECT COLUMN_TYPE, IS_NULLABLE, CHARACTER_SET_NAME, COLLATION_NAME
-         FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = ?
-           AND COLUMN_NAME = ?
-         LIMIT 1"
+        "INSERT INTO auditoria (tabla, id_registro, accion, datos_anteriores, datos_nuevos, id_usuario, origen)
+         VALUES (?, ?, ?, ?, ?, ?, 'SISTEMA')"
     );
-    $statement->execute([$table, $column]);
-    $info = $statement->fetch();
-    if (!$info || strtoupper((string)$info['IS_NULLABLE']) === 'YES') return;
-
-    $columnType = trim((string)$info['COLUMN_TYPE']);
-    $charset = trim((string)($info['CHARACTER_SET_NAME'] ?? ''));
-    $collation = trim((string)($info['COLLATION_NAME'] ?? ''));
-
-    $sql = "ALTER TABLE `{$table}` MODIFY COLUMN `{$column}` {$columnType}";
-    if ($charset !== '') $sql .= " CHARACTER SET {$charset}";
-    if ($collation !== '') $sql .= " COLLATE {$collation}";
-    $sql .= ' NULL';
-
-    try {
-        $db->exec($sql);
-    } catch (Throwable $error) {
-        throw new RuntimeException(
-            "No se pudo preparar {$table}.{$column} para conservar los registros asociados al eliminar la opción. Detalle: "
-            . $error->getMessage(),
-            0,
-            $error
-        );
-    }
-}
-
-/**
- * Prepara únicamente las columnas que hoy son NOT NULL. No toca reglas de FK:
- * las FK RESTRICT pueden permanecer intactas porque antes del DELETE las filas
- * hijas se actualizan explícitamente a NULL.
- */
-function configuracion_preparar_referencias_nullable(PDO $db, array $definition): void
-{
-    foreach (configuracion_relaciones($definition) as $relation) {
-        $table = (string)$relation['tabla'];
-        $column = (string)$relation['columna'];
-        if (!configuracion_tabla_columna_existe($db, $table, $column)) continue;
-        configuracion_asegurar_columna_nullable($db, $table, $column);
-    }
-}
-
-/**
- * Desvincula los registros históricos antes de borrar una opción. De esta
- * manera las FK RESTRICT no bloquean el DELETE y ningún registro hijo se borra.
- */
-function configuracion_desvincular_referencias(PDO $db, array $definition, int $id): int
-{
-    $updated = 0;
-    foreach (configuracion_relaciones($definition) as $relation) {
-        $table = (string)$relation['tabla'];
-        $column = (string)$relation['columna'];
-        if (!configuracion_tabla_columna_existe($db, $table, $column)) continue;
-
-        $statement = $db->prepare("UPDATE `{$table}` SET `{$column}` = NULL WHERE `{$column}` = ?");
-        $statement->execute([$id]);
-        $updated += $statement->rowCount();
-    }
-    return $updated;
+    $statement->execute([
+        $definition['tabla'], $id, $action, $encode($before), $encode($after), $auth['id_usuario'],
+    ]);
 }

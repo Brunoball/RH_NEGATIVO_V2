@@ -18,6 +18,7 @@ import {
   faReceipt,
   faRotateLeft,
   faTags,
+  faTrashCan,
   faUser,
   faUserSlash,
   faWallet,
@@ -38,10 +39,18 @@ import ModuleFeedback from "../Global/ModuleFeedback";
 import BotonExportarGlobal from "../Global/Botones/BotonExportarGlobal";
 import {
   EntityFormPanel,
+  EntityTabPane,
   EntityTabs,
   FloatingField,
 } from "../Global/Formularios/TabbedForm";
-import { onlyDigits } from "../Global/Formularios/inputSanitizers";
+import {
+  addressInput,
+  addressNumberInput,
+  dniInput,
+  personNameInput,
+  phoneInput,
+  upperLimitedText,
+} from "../Global/Formularios/inputSanitizers";
 import { normalizeSearchQuery } from "../Global/Formularios/searchUtils";
 import { canWrite } from "../_shared/auth/session";
 import { sociosApi } from "./api/sociosApi";
@@ -510,7 +519,7 @@ function BirthdayContactCard({ items, onView, onClose, writable }) {
   );
 }
 
-const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState }) {
+const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState, onDelete }) {
   return items.map((item) => (
     <div
       className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid"
@@ -560,6 +569,14 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
               >
                 <FontAwesomeIcon icon={item.vigente ? faUserSlash : faRotateLeft} />
               </button>
+              <button
+                className="mov-iconBtn mov-iconBtn--danger"
+                type="button"
+                title="Eliminar socio definitivamente"
+                onClick={() => onDelete(item)}
+              >
+                <FontAwesomeIcon icon={faTrashCan} />
+              </button>
             </>
           ) : null}
         </div>
@@ -570,6 +587,7 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
 
 function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const setText = (key, value, maxLength) => set(key, upperLimitedText(value, maxLength));
   const tabs = [
     { value: FORM_TAB_PERSONAL, label: "Datos personales", icon: faIdCard },
     { value: FORM_TAB_MANAGEMENT, label: "Gestión", icon: faTags },
@@ -580,13 +598,30 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
     <div className="socios-form">
       <EntityTabs tabs={tabs} value={activeTab} onChange={onTabChange} idPrefix="socios-form" ariaLabel="Datos del socio" />
 
-      {activeTab === FORM_TAB_PERSONAL ? (
+      <EntityTabPane active={activeTab === FORM_TAB_PERSONAL} disableWhenInactive>
         <EntityFormPanel tabValue={FORM_TAB_PERSONAL} idPrefix="socios-form" title="Identificación y contacto" icon={faUser}>
           <FloatingField label="Nombre completo *" wide active={activeValue("nombre")}>
-            <input value={form.nombre} maxLength={100} onChange={(event) => set("nombre", event.target.value)} required placeholder=" " />
+            <input
+              value={form.nombre}
+              maxLength={100}
+              onChange={(event) => set("nombre", personNameInput(event.target.value, 100))}
+              required
+              placeholder=" "
+              autoComplete="name"
+            />
           </FloatingField>
           <FloatingField label="DNI" active={activeValue("dni")}>
-            <input value={form.dni} inputMode="numeric" maxLength={15} onChange={(event) => set("dni", onlyDigits(event.target.value).slice(0, 15))} placeholder=" " />
+            <input
+              value={form.dni}
+              inputMode="numeric"
+              maxLength={8}
+              minLength={8}
+              pattern="[0-9]{8}"
+              title="El DNI debe tener exactamente 8 números."
+              onChange={(event) => set("dni", dniInput(event.target.value))}
+              placeholder=" "
+              autoComplete="off"
+            />
           </FloatingField>
           <FloatingField label="Fecha de nacimiento" active>
             <input type="date" value={form.fecha_nacimiento} max={localToday()} onChange={(event) => set("fecha_nacimiento", event.target.value)} />
@@ -600,22 +635,50 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
             </select>
           </FloatingField>
           <FloatingField label="Domicilio" active={activeValue("domicilio")}>
-            <input value={form.domicilio} maxLength={100} onChange={(event) => set("domicilio", event.target.value)} placeholder=" " />
+            <input value={form.domicilio} maxLength={100} onChange={(event) => set("domicilio", addressInput(event.target.value, 100))} placeholder=" " autoComplete="street-address" />
           </FloatingField>
           <FloatingField label="Número" active={activeValue("numero")}>
-            <input value={form.numero} maxLength={20} onChange={(event) => set("numero", event.target.value)} placeholder=" " />
+            <input
+              value={form.numero}
+              maxLength={20}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              onChange={(event) => set("numero", addressNumberInput(event.target.value, 20))}
+              placeholder=" "
+              autoComplete="off"
+            />
           </FloatingField>
           <FloatingField label="Teléfono móvil" active={activeValue("telefono_movil")}>
-            <input value={form.telefono_movil} inputMode="tel" maxLength={20} onChange={(event) => set("telefono_movil", onlyDigits(event.target.value).slice(0, 20))} placeholder=" " />
+            <input
+              value={form.telefono_movil}
+              inputMode="tel"
+              maxLength={15}
+              pattern="[0-9]{6,15}"
+              title="Ingresá entre 6 y 15 números, sin espacios ni símbolos."
+              onChange={(event) => set("telefono_movil", phoneInput(event.target.value))}
+              placeholder=" "
+              autoComplete="tel"
+            />
           </FloatingField>
           <FloatingField label="Teléfono fijo" active={activeValue("telefono_fijo")}>
-            <input value={form.telefono_fijo} inputMode="tel" maxLength={20} onChange={(event) => set("telefono_fijo", onlyDigits(event.target.value).slice(0, 20))} placeholder=" " />
+            <input
+              value={form.telefono_fijo}
+              inputMode="tel"
+              maxLength={15}
+              pattern="[0-9]{6,15}"
+              title="Ingresá entre 6 y 15 números, sin espacios ni símbolos."
+              onChange={(event) => set("telefono_fijo", phoneInput(event.target.value))}
+              placeholder=" "
+              autoComplete="tel"
+            />
           </FloatingField>
           <FloatingField label="Domicilio de cobro" wide active={activeValue("domicilio_cobro")}>
-            <input value={form.domicilio_cobro} maxLength={150} onChange={(event) => set("domicilio_cobro", event.target.value)} placeholder=" " />
+            <input value={form.domicilio_cobro} maxLength={150} onChange={(event) => set("domicilio_cobro", addressInput(event.target.value, 150))} placeholder=" " />
           </FloatingField>
         </EntityFormPanel>
-      ) : (
+      </EntityTabPane>
+
+      <EntityTabPane active={activeTab === FORM_TAB_MANAGEMENT} disableWhenInactive>
         <EntityFormPanel tabValue={FORM_TAB_MANAGEMENT} idPrefix="socios-form" title="Configuración del socio" icon={faTags}>
           <FloatingField label="Fecha de ingreso" active={activeValue("fecha_ingreso")}>
             <input type="date" value={form.fecha_ingreso} max={localToday()} onChange={(event) => set("fecha_ingreso", event.target.value)} />
@@ -645,10 +708,10 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
             </select>
           </FloatingField>
           <FloatingField label="Observaciones" wide textarea active={activeValue("observaciones")}>
-            <textarea value={form.observaciones} maxLength={8000} rows={5} onChange={(event) => set("observaciones", event.target.value)} placeholder=" " />
+            <textarea value={form.observaciones} maxLength={8000} rows={5} onChange={(event) => setText("observaciones", event.target.value, 8000)} placeholder=" " />
           </FloatingField>
         </EntityFormPanel>
-      )}
+      </EntityTabPane>
     </div>
   );
 }
@@ -717,7 +780,7 @@ function ContactsPanel({ contacts, writable, saving, onSave }) {
             </label>
             <label className="is-wide">
               <span>Detalle</span>
-              <textarea value={form.detalle_contacto} maxLength={4000} rows={3} onChange={(event) => setForm((current) => ({ ...current, detalle_contacto: event.target.value }))} placeholder="OBSERVACIÓN DE LA LLAMADA, MENSAJE O GESTIÓN..." />
+              <textarea value={form.detalle_contacto} maxLength={4000} rows={3} onChange={(event) => setForm((current) => ({ ...current, detalle_contacto: upperLimitedText(event.target.value, 4000) }))} placeholder="OBSERVACIÓN DE LA LLAMADA, MENSAJE O GESTIÓN..." />
             </label>
           </div>
         </div>
@@ -844,6 +907,7 @@ export default function Socios() {
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [stateModal, setStateModal] = useState(null);
+  const [deleteModal, setDeleteModal] = useState(null);
   const [stateDate, setStateDate] = useState(localToday());
   const [infoModal, setInfoModal] = useState(null);
   const [infoTab, setInfoTab] = useState(INFO_TAB_GENERAL);
@@ -888,10 +952,44 @@ export default function Socios() {
     }
   };
 
+  const openDelete = async (item) => {
+    setDeleteModal({ ...item, impacto_eliminacion: null });
+    try {
+      const response = await sociosApi.historial(item.id_socio);
+      setDeleteModal((current) =>
+        current?.id_socio === item.id_socio
+          ? {
+              ...(response.item || item),
+              impacto_eliminacion: response.impacto_eliminacion || null,
+            }
+          : current,
+      );
+    } catch {
+      // La confirmación puede continuar: el backend vuelve a calcular el impacto
+      // dentro de la misma transacción antes de eliminar.
+    }
+  };
+
   const save = async (event) => {
     event.preventDefault();
-    if (!form.nombre.trim() || !form.id_categoria || !form.id_cobrador) {
-      setFeedback({ type: "error", message: "Completá nombre, categoría y cobrador." });
+    if (!form.nombre.trim()) {
+      setFormTab(FORM_TAB_PERSONAL);
+      setFeedback({ type: "warning", message: "Completá el nombre del socio. Los datos cargados se conservaron." });
+      return;
+    }
+    if (form.dni && dniInput(form.dni).length !== 8) {
+      setFormTab(FORM_TAB_PERSONAL);
+      setFeedback({ type: "error", message: "El DNI debe tener exactamente 8 números. Los datos cargados se conservaron." });
+      return;
+    }
+    if ([form.telefono_movil, form.telefono_fijo].some((value) => value && phoneInput(value).length < 6)) {
+      setFormTab(FORM_TAB_PERSONAL);
+      setFeedback({ type: "error", message: "Los teléfonos deben contener entre 6 y 15 números. Los datos cargados se conservaron." });
+      return;
+    }
+    if (!form.id_categoria || !form.id_cobrador) {
+      setFormTab(FORM_TAB_MANAGEMENT);
+      setFeedback({ type: "error", message: "Completá categoría y cobrador. Los datos cargados se conservaron." });
       return;
     }
     setSaving(true);
@@ -901,7 +999,16 @@ export default function Socios() {
       setFormOpen(false);
       await refresh();
     } catch (requestError) {
-      setFeedback({ type: "error", message: requestError.message || "No se pudo guardar el socio." });
+      const field = requestError?.data?.detalles?.campo || "";
+      if (["nombre", "dni", "fecha_nacimiento"].includes(field)) {
+        setFormTab(FORM_TAB_PERSONAL);
+      } else if (["id_categoria", "id_cobrador", "id_estado", "fecha_ingreso"].includes(field)) {
+        setFormTab(FORM_TAB_MANAGEMENT);
+      }
+      setFeedback({
+        type: "error",
+        message: `${requestError.message || "No se pudo guardar el socio."} Los datos cargados se conservaron.`,
+      });
     } finally {
       setSaving(false);
     }
@@ -965,6 +1072,18 @@ export default function Socios() {
     const response = stateModal.vigente
       ? await sociosApi.darBaja({ id: stateModal.id_socio, fecha_baja: stateDate, motivo_baja: motivo })
       : await sociosApi.reactivar({ id: stateModal.id_socio, fecha_reactivacion: stateDate, motivo_reactivacion: motivo || "REACTIVACIÓN" });
+    await refresh();
+    return response;
+  };
+
+  const deleteDefinitively = async () => {
+    if (!deleteModal) return { ok: false, mensaje: "No hay socio seleccionado." };
+    const response = await sociosApi.eliminarDefinitivo({
+      id: deleteModal.id_socio,
+    });
+    if (infoModal?.item?.id_socio === deleteModal.id_socio || infoModal?.data?.item?.id_socio === deleteModal.id_socio) {
+      setInfoModal(null);
+    }
     await refresh();
     return response;
   };
@@ -1082,7 +1201,7 @@ export default function Socios() {
               <span>Cambiá los filtros o creá un nuevo registro.</span>
             </div>
           ) : null}
-          <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} />
+          <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
         </GlobalDivTable>
 
         {Number(paginacion?.total || 0) > 0 ? (
@@ -1143,6 +1262,7 @@ export default function Socios() {
         submitLabel={form.id_socio ? "Guardar cambios" : "Crear socio"}
         modalClassName="socios-modal socios-modal--form"
         closeOnBackdrop={false}
+        autoUppercaseInputs={false}
         wide
       >
         <PartnerForm form={form} setForm={setForm} catalogs={catalogos} activeTab={formTab} onTabChange={setFormTab} />
@@ -1166,39 +1286,47 @@ export default function Socios() {
         modalClassName="socios-info-modal"
       >
         {info && itemInfo ? (
-          infoTab === INFO_TAB_GENERAL ? (
-            <div className="socios-info-content">
-              <InfoSummary items={[
-                { label: "DNI", value: itemInfo.dni || "SIN INFORMAR", icon: faIdCard },
-                { label: "Grupo sanguíneo", value: itemInfo.grupo_sanguineo || "SIN INFORMAR", icon: faDroplet },
-                { label: "Estado", value: itemInfo.vigente ? (itemInfo.estado || "VIGENTE") : "BAJA", icon: itemInfo.vigente ? faCheck : faUserSlash, tone: itemInfo.vigente ? "success" : "warning" },
-                { label: "Situación de cuota", value: debtLabel(itemInfo.meses_adeudados), icon: faWallet, tone: Number(itemInfo.meses_adeudados) ? "warning" : "success" },
-              ]} />
-              <div className="entity-info-grid">
-                <InfoSection title="Datos personales" icon={faIdCard}>
-                  <InfoRow title={itemInfo.nombre} detail={`Nacimiento: ${formatDate(itemInfo.fecha_nacimiento)}${itemInfo.edad !== null ? ` · ${itemInfo.edad} años` : ""}`} />
-                  <InfoRow title="Domicilio" detail={[itemInfo.domicilio, itemInfo.numero].filter(Boolean).join(" ") || "—"} />
-                  <InfoRow title="Domicilio de cobro" detail={itemInfo.domicilio_cobro || "—"} />
-                  <InfoRow title="Teléfonos" detail={[itemInfo.telefono_movil, itemInfo.telefono_fijo].filter(Boolean).join(" · ") || "—"} />
-                </InfoSection>
-                <InfoSection title="Gestión" icon={faTags}>
-                  <InfoRow title="Fecha de ingreso" detail={formatDate(itemInfo.fecha_ingreso)} />
-                  <InfoRow title="Categoría" detail={`${itemInfo.categoria || "—"} · ${formatMoney(itemInfo.categoria_monto_mensual)} mensual`} />
-                  <InfoRow title="Cobrador" detail={itemInfo.cobrador || "—"} />
-                  <InfoRow title="Último contacto" detail={itemInfo.ultimo_contacto_fecha ? `${formatDate(itemInfo.ultimo_contacto_fecha)} · ${contactLabel(itemInfo.ultimo_contacto_estado)}` : "SIN GESTIÓN"} />
-                  {itemInfo.observaciones ? <InfoRow title="Observaciones" detail={itemInfo.observaciones} /> : null}
-                </InfoSection>
+          <>
+            <EntityTabPane active={infoTab === INFO_TAB_GENERAL}>
+              <div className="socios-info-content">
+                <InfoSummary items={[
+                  { label: "DNI", value: itemInfo.dni || "SIN INFORMAR", icon: faIdCard },
+                  { label: "Grupo sanguíneo", value: itemInfo.grupo_sanguineo || "SIN INFORMAR", icon: faDroplet },
+                  { label: "Estado", value: itemInfo.vigente ? (itemInfo.estado || "VIGENTE") : "BAJA", icon: itemInfo.vigente ? faCheck : faUserSlash, tone: itemInfo.vigente ? "success" : "warning" },
+                  { label: "Situación de cuota", value: debtLabel(itemInfo.meses_adeudados), icon: faWallet, tone: Number(itemInfo.meses_adeudados) ? "warning" : "success" },
+                ]} />
+                <div className="entity-info-grid">
+                  <InfoSection title="Datos personales" icon={faIdCard}>
+                    <InfoRow title={itemInfo.nombre} detail={`Nacimiento: ${formatDate(itemInfo.fecha_nacimiento)}${itemInfo.edad !== null ? ` · ${itemInfo.edad} años` : ""}`} />
+                    <InfoRow title="Domicilio" detail={[itemInfo.domicilio, itemInfo.numero].filter(Boolean).join(" ") || "—"} />
+                    <InfoRow title="Domicilio de cobro" detail={itemInfo.domicilio_cobro || "—"} />
+                    <InfoRow title="Teléfonos" detail={[itemInfo.telefono_movil, itemInfo.telefono_fijo].filter(Boolean).join(" · ") || "—"} />
+                  </InfoSection>
+                  <InfoSection title="Gestión" icon={faTags}>
+                    <InfoRow title="Fecha de ingreso" detail={formatDate(itemInfo.fecha_ingreso)} />
+                    <InfoRow title="Categoría" detail={`${itemInfo.categoria || "—"} · ${formatMoney(itemInfo.categoria_monto_mensual)} mensual`} />
+                    <InfoRow title="Cobrador" detail={itemInfo.cobrador || "—"} />
+                    <InfoRow title="Último contacto" detail={itemInfo.ultimo_contacto_fecha ? `${formatDate(itemInfo.ultimo_contacto_fecha)} · ${contactLabel(itemInfo.ultimo_contacto_estado)}` : "SIN GESTIÓN"} />
+                    {itemInfo.observaciones ? <InfoRow title="Observaciones" detail={itemInfo.observaciones} /> : null}
+                  </InfoSection>
+                </div>
               </div>
-            </div>
-          ) : infoTab === INFO_TAB_CONTACTS ? (
-            <ContactsPanel contacts={info.contactos || []} writable={writable} saving={contactSaving} onSave={saveContact} />
-          ) : infoTab === INFO_TAB_PAYMENTS ? (
-            <PaymentsPanel item={itemInfo} payments={info.pagos || []} registrationPayments={info.pagos_inscripcion || []} />
-          ) : (
-            <InfoSection title="Altas, bajas y cambios de estado" icon={faClockRotateLeft} badge={info.historial_estados?.length || 0}>
-              <StateHistory events={info.historial_estados || []} />
-            </InfoSection>
-          )
+            </EntityTabPane>
+
+            <EntityTabPane active={infoTab === INFO_TAB_CONTACTS}>
+              <ContactsPanel contacts={info.contactos || []} writable={writable} saving={contactSaving} onSave={saveContact} />
+            </EntityTabPane>
+
+            <EntityTabPane active={infoTab === INFO_TAB_PAYMENTS}>
+              <PaymentsPanel item={itemInfo} payments={info.pagos || []} registrationPayments={info.pagos_inscripcion || []} />
+            </EntityTabPane>
+
+            <EntityTabPane active={infoTab === INFO_TAB_HISTORY}>
+              <InfoSection title="Altas, bajas y cambios de estado" icon={faClockRotateLeft} badge={info.historial_estados?.length || 0}>
+                <StateHistory events={info.historial_estados || []} />
+              </InfoSection>
+            </EntityTabPane>
+          </>
         ) : null}
       </InfoModal>
 
@@ -1229,6 +1357,45 @@ export default function Socios() {
         onToast={(type, message, duration) => setFeedback({ type: type === "exito" ? "success" : type, message, duration })}
         confirmLabel={stateModal?.vigente ? "Dar de baja" : "Reactivar"}
         successMessage={stateModal?.vigente ? "Socio dado de baja correctamente." : "Socio reactivado correctamente."}
+      />
+
+      <ModalEliminarGlobal
+        open={Boolean(deleteModal)}
+        operacion="eliminar"
+        row={deleteModal}
+        title="Eliminar socio definitivamente"
+        message="El socio desaparecerá del sistema. Se eliminarán también todos sus pagos de cuotas, pagos de inscripción, contactos, vínculos familiares, cierres de cumpleaños, historial de estados y registros de fusión relacionados."
+        warning="ADVERTENCIA: esta acción es irreversible. Si sólo querés que deje de figurar como activo, usá Dar de baja en lugar de eliminar."
+        details={deleteModal ? [
+          { label: "Socio", value: deleteModal.nombre },
+          { label: "DNI", value: deleteModal.dni || "SIN INFORMAR" },
+          { label: "Estado actual", value: deleteModal.vigente ? (deleteModal.estado || "VIGENTE") : "BAJA" },
+          ...(deleteModal.impacto_eliminacion ? [
+            {
+              label: "Pagos que se eliminarán",
+              value: Number(deleteModal.impacto_eliminacion.pagos || 0) + Number(deleteModal.impacto_eliminacion.pagos_inscripcion || 0),
+            },
+            {
+              label: "Otros registros relacionados",
+              value: Math.max(
+                0,
+                Number(deleteModal.impacto_eliminacion.total_relaciones || 0)
+                  - Number(deleteModal.impacto_eliminacion.pagos || 0)
+                  - Number(deleteModal.impacto_eliminacion.pagos_inscripcion || 0),
+              ),
+            },
+          ] : []),
+        ] : []}
+        onClose={() => setDeleteModal(null)}
+        onConfirm={deleteDefinitively}
+        onToast={(type, message, duration) =>
+          setFeedback({ type: type === "exito" ? "success" : type, message, duration })
+        }
+        confirmLabel="Eliminar definitivamente"
+        loadingLabel="Eliminando..."
+        loadingMessage="Eliminando socio y todos sus registros asociados…"
+        successMessage="Socio y registros relacionados eliminados definitivamente."
+        errorMessage="No se pudo eliminar definitivamente el socio."
       />
 
     </>

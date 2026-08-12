@@ -20,7 +20,7 @@ import CrudModal from "../../Global/Modales/CrudModal";
 import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
 import { canWrite } from "../../_shared/auth/session";
-import { upperWithoutDigits } from "../../Global/Formularios/inputSanitizers";
+import { upperCatalogName, upperLettersOnly } from "../../Global/Formularios/inputSanitizers";
 import { contableApi } from "../../Contable/api/contableApi";
 import { useTableScrollbarCompensation } from "../hooks/useTableScrollbarCompensation";
 import "../configuracion.css";
@@ -28,7 +28,9 @@ import "./ContableConfiguracion.css";
 
 const upper = (value) => String(value ?? "").toLocaleUpperCase("es-AR");
 const sanitizeOptionName = (type, value) =>
-  type === "PROVEEDOR" ? upper(value) : upperWithoutDigits(value);
+  type === "PROVEEDOR"
+    ? upperCatalogName(value, 160)
+    : upperLettersOnly(value, 160);
 
 const LIST_META = {
   PROVEEDOR: {

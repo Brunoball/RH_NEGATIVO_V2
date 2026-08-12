@@ -17,6 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import Toast from "../Toast";
 import useAnimatedModalSize from "./useAnimatedModalSize";
+import { upperLimitedText } from "../Formularios/inputSanitizers";
 import "../Global_css/Global_ModalEliminar.css";
 
 const OPERATION_CONFIG = {
@@ -83,7 +84,7 @@ const OPERATION_CONFIG = {
 };
 
 const safeText = (value) => String(value ?? "").trim() || "—";
-const upper = (value) => String(value ?? "").toLocaleUpperCase("es-AR");
+const upper = (value) => upperLimitedText(value, 500);
 
 function openDatePickerFromInput(event) {
   const input = event.target;
@@ -390,7 +391,7 @@ export default function ModalEliminarGlobal({
                 ref={reasonRef}
                 rows={3}
                 value={reason}
-                onChange={(event) => setReason(upper(event.target.value))}
+                onChange={(event) => setReason(upperLimitedText(event.target.value, 500))}
                 placeholder={reasonPlaceholder}
                 maxLength={500}
                 disabled={isLoading}

@@ -38,7 +38,14 @@
   min-width: 0;
 }
 
-.socios-grid .entity-main-cell strong,
+.socios-grid .entity-main-cell strong {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
 .socios-contactCell strong {
   overflow: hidden;
   text-overflow: ellipsis;
