@@ -212,24 +212,17 @@ export default function ModalPagoCuota({
       title={
         paymentMode === "multiple"
           ? "Registrar pagos seleccionados"
-          : tipo === "PERSONA"
-            ? selectedPartner?.denominacion || principal?.denominacion || "Pago de socio"
-            : "Pago de empresa"
+          : selectedPartner?.denominacion || principal?.denominacion || "Pago de socio"
       }
       subtitle={
         paymentMode === "multiple" ? (
           `Se registrarán ${paymentForm.pagos.length} cuotas en una sola operación.`
         ) : (
           <span className="cuotas-payment-header-meta">
-            {tipo === "EMPRESA" ? (
-              <strong title={selectedPartner?.denominacion || ""}>
-                {selectedPartner?.denominacion || `Sin ${entityLabel}`}
-              </strong>
-            ) : null}
             <span>
               {selectedPartner?.documento
-                ? `${tipo === "EMPRESA" ? "CUIT" : "DNI"} ${selectedPartner.documento}`
-                : `${tipo === "EMPRESA" ? "CUIT" : "DNI"} no informado`}
+                ? `DNI ${selectedPartner.documento}`
+                : `DNI no informado`}
             </span>
             <span>
               Categoría {principal?.categoria || selectedPartner?.categoria || "SIN CATEGORÍA"}

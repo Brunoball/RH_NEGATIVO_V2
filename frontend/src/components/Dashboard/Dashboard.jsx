@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBell,
-  faBuilding,
   faCalendarDays,
   faCircleCheck,
   faClock,
@@ -214,18 +213,6 @@ export default function Dashboard() {
             title="Socios activos"
             value={Number(socios.activos || 0)}
             detail={`${Number(socios.inactivos || 0)} de baja`}
-          />
-          <MetricCard
-            icon={faUsers}
-            title="Personas activas"
-            value={Number(socios.personas_activas || 0)}
-            detail={`${Number(familias.activas || 0)} familias activas`}
-          />
-          <MetricCard
-            icon={faBuilding}
-            title="Empresas activas"
-            value={Number(socios.empresas_activas || 0)}
-            detail="Socios de tipo empresa"
           />
           <MetricCard
             icon={faCircleCheck}

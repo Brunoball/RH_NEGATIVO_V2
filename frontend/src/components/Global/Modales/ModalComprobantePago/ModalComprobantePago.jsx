@@ -51,7 +51,7 @@ export default function ModalComprobantePago({
         aria-label="Información del comprobante"
       >
         <article>
-          <span>{receipt.tipoEntidad === "EMPRESA" ? "Empresa" : "Socio"}</span>
+          <span>Socio</span>
           <strong>{receipt.socios}</strong>
         </article>
         <article>

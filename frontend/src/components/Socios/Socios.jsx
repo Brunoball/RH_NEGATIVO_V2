@@ -3,7 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faAddressBook,
   faBell,
-  faBuilding,
   faCalendarDays,
   faCheck,
   faCircleInfo,
@@ -54,7 +53,6 @@ import "./Socios.css";
 import "./modales/SociosModal.css";
 
 const PERSON = "PERSONA";
-const COMPANY = "EMPRESA";
 const FORM_TAB_MAIN = "principal";
 const FORM_TAB_CONFIG = "configuracion";
 const INFO_TAB_SUMMARY = "general";
@@ -159,26 +157,6 @@ const PERSON_EXPORT_COLUMNS = [
   },
 ];
 
-const COMPANY_EXPORT_COLUMNS = [
-  { label: "N.º", value: (_item, index) => index + 1 },
-  { label: "Empresa", key: "denominacion" },
-  { label: "CUIT", value: (item) => item.cuit || "—" },
-  {
-    label: "Domicilio",
-    value: (item) =>
-      [item.localidad, item.domicilio, item.numero_domicilio]
-        .filter(Boolean)
-        .join(" · ") || "SIN DOMICILIO",
-  },
-  { label: "Categoría", value: (item) => item.categoria || "SIN CATEGORÍA" },
-  { label: "Fecha de alta", value: (item) => formatDate(item.fecha_alta) },
-  { label: "Teléfono", value: (item) => item.telefono || "—" },
-  { label: "Correo", value: (item) => item.email || "—" },
-  {
-    label: "Estado",
-    value: (item) => item.estado || (item.activo ? "ACTIVA" : "BAJA"),
-  },
-];
 
 function matchesSocioSearch(item, query) {
   return matchesEverySearchTerm(
@@ -186,9 +164,7 @@ function matchesSocioSearch(item, query) {
       item.denominacion,
       item.apellido,
       item.nombre,
-      item.razon_social,
       item.dni,
-      item.cuit,
       item.categoria,
       item.localidad,
       item.domicilio,
@@ -236,7 +212,6 @@ function paginationItems(currentPage, totalPages) {
 
 const SociosRows = memo(function SociosRows({
   items,
-  isCompany,
   categoryAmounts,
   writable,
   onHistory,
@@ -246,7 +221,7 @@ const SociosRows = memo(function SociosRows({
 }) {
   return items.map((item) => (
     <div
-      className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid ${isCompany ? "socios-grid--empresa" : "socios-grid--persona"}`}
+      className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid socios-grid--persona"
       role="row"
       key={item.id_socio}
     >
@@ -259,7 +234,7 @@ const SociosRows = memo(function SociosRows({
         </small>
       </div>
       <div className="mov-gridCell is-strong">
-        {isCompany ? item.cuit || "—" : item.dni || "—"}
+        {item.dni || "—"}
       </div>
       <div className="mov-gridCell socios-category-cell socios-category-cell--inline">
         {item.categoria ? (
@@ -328,7 +303,7 @@ const SociosRows = memo(function SociosRows({
               <button
                 className="mov-iconBtn mov-iconBtn--danger socios-delete-action"
                 type="button"
-                title={`Eliminar definitivamente ${isCompany ? "la empresa" : "al socio"}`}
+                title="Eliminar definitivamente al socio"
                 aria-label={`Eliminar definitivamente ${item.denominacion}`}
                 onClick={() => onDelete(item)}
               >
@@ -582,16 +557,13 @@ function StateHistory({ events = [] }) {
   );
 }
 
-function emptyForm(type, catalogs = {}) {
+function emptyForm(catalogs = {}) {
   return {
     id_socio: "",
-    tipo_socio: type,
+    tipo_socio: PERSON,
     apellido: "",
     nombre: "",
     dni: "",
-    razon_social: "",
-    cuit: "",
-    id_condicion_iva: "",
     domicilio: "",
     numero_domicilio: "",
     localidad: "",
@@ -618,14 +590,12 @@ function activeOrCurrent(items, idKey, currentId) {
 }
 
 function PartnerForm({
-  type,
   form,
   setForm,
   catalogs,
   activeTab,
   onTabChange,
 }) {
-  const isCompany = type === COMPANY;
   const update = (key, value) =>
     setForm((current) => ({ ...current, [key]: value }));
   const reminderPhoneReady = hasValidReminderPhone(form.telefono);
@@ -637,8 +607,8 @@ function PartnerForm({
         tabs={[
           {
             value: FORM_TAB_MAIN,
-            label: isCompany ? "Datos de la empresa" : "Datos personales",
-            icon: isCompany ? faBuilding : faUser,
+            label: "Datos personales",
+            icon: faUser,
           },
           {
             value: FORM_TAB_CONFIG,
@@ -648,110 +618,52 @@ function PartnerForm({
         ]}
         value={activeTab}
         onChange={onTabChange}
-        idPrefix={`socio-${type.toLowerCase()}-form-tab`}
+        idPrefix="socio-persona-form-tab"
         ariaLabel="Secciones de la ficha"
       />
 
       {activeTab === FORM_TAB_MAIN ? (
         <EntityFormPanel
           tabValue={FORM_TAB_MAIN}
-          idPrefix={`socio-${type.toLowerCase()}-form-tab`}
+          idPrefix="socio-persona-form-tab"
           eyebrow="Ficha principal"
-          title={
-            isCompany ? "Identificación empresarial" : "Identificación personal"
-          }
-          icon={isCompany ? faBuilding : faIdCard}
+          title="Identificación personal"
+          icon={faIdCard}
           tag="Datos obligatorios"
           bodyClassName="entity-form__grid"
         >
-          {isCompany ? (
-            <>
-              <FloatingField
-                label="Razón social *"
-                active={Boolean(form.razon_social)}
-                wide
-              >
-                <input
-                  value={form.razon_social}
-                  onChange={(event) =>
-                    update("razon_social", upper(event.target.value))
-                  }
-                  maxLength={255}
-                  placeholder=" "
-                  autoFocus
-                />
-              </FloatingField>
-              <FloatingField label="CUIT" active={Boolean(form.cuit)}>
-                <input
-                  value={form.cuit}
-                  onChange={(event) =>
-                    update("cuit", onlyDigits(event.target.value, 11))
-                  }
-                  maxLength={11}
-                  inputMode="numeric"
-                  placeholder=" "
-                />
-              </FloatingField>
-              <FloatingField label="Condición de IVA" active>
-                <select
-                  value={form.id_condicion_iva}
-                  onChange={(event) =>
-                    update("id_condicion_iva", event.target.value)
-                  }
-                >
-                  <option value="">SIN INFORMAR</option>
-                  {activeOrCurrent(
-                    catalogs.condiciones_iva,
-                    "id_condicion_iva",
-                    form.id_condicion_iva,
-                  ).map((item) => (
-                    <option
-                      value={item.id_condicion_iva}
-                      key={item.id_condicion_iva}
-                    >
-                      {item.nombre}
-                      {item.activo ? "" : " (BAJA)"}
-                    </option>
-                  ))}
-                </select>
-              </FloatingField>
-            </>
-          ) : (
-            <>
-              <FloatingField label="Apellido *" active={Boolean(form.apellido)}>
-                <input
-                  value={form.apellido}
-                  onChange={(event) =>
-                    update("apellido", upperWithoutDigits(event.target.value))
-                  }
-                  maxLength={100}
-                  placeholder=" "
-                  autoFocus
-                />
-              </FloatingField>
-              <FloatingField label="Nombre *" active={Boolean(form.nombre)}>
-                <input
-                  value={form.nombre}
-                  onChange={(event) =>
-                    update("nombre", upperWithoutDigits(event.target.value))
-                  }
-                  maxLength={100}
-                  placeholder=" "
-                />
-              </FloatingField>
-              <FloatingField label="DNI" active={Boolean(form.dni)}>
-                <input
-                  value={form.dni}
-                  onChange={(event) =>
-                    update("dni", onlyDigits(event.target.value, 8))
-                  }
-                  maxLength={8}
-                  inputMode="numeric"
-                  placeholder=" "
-                />
-              </FloatingField>
-            </>
-          )}
+          <>
+            <FloatingField label="Apellido *" active={Boolean(form.apellido)}>
+              <input
+                value={form.apellido}
+                onChange={(event) =>
+                  update("apellido", upperWithoutDigits(event.target.value))
+                }
+                maxLength={100}
+                placeholder=" "
+                autoFocus
+              />
+            </FloatingField>
+            <FloatingField label="Nombre *" active={Boolean(form.nombre)}>
+              <input
+                value={form.nombre}
+                onChange={(event) =>
+                  update("nombre", upperWithoutDigits(event.target.value))
+                }
+                maxLength={100}
+                placeholder=" "
+              />
+            </FloatingField>
+            <FloatingField label="DNI" active={Boolean(form.dni)}>
+              <input
+                value={form.dni}
+                onChange={(event) => update("dni", onlyDigits(event.target.value, 8))}
+                maxLength={8}
+                inputMode="numeric"
+                placeholder=" "
+              />
+            </FloatingField>
+          </>
 
           <FloatingField label="Fecha de alta *" active>
             <input
@@ -765,11 +677,11 @@ function PartnerForm({
       ) : (
         <EntityFormPanel
           tabValue={FORM_TAB_CONFIG}
-          idPrefix={`socio-${type.toLowerCase()}-form-tab`}
+          idPrefix="socio-persona-form-tab"
           eyebrow="Información complementaria"
           title="Contacto, cuota y recordatorios"
           icon={faAddressBook}
-          tag={isCompany ? "Socio empresa" : "Socio persona"}
+          tag="Socio persona"
           bodyClassName="socios-form-panel__body--membership"
         >
           <div className="entity-form__grid socios-contact-grid">
@@ -783,12 +695,11 @@ function PartnerForm({
                 onChange={(event) =>
                   update("domicilio", upper(event.target.value))
                 }
-                maxLength={isCompany ? 255 : 150}
+                maxLength={150}
                 placeholder=" "
               />
             </FloatingField>
-            {!isCompany ? (
-              <FloatingField
+                          <FloatingField
                 label="Número"
                 active={Boolean(form.numero_domicilio)}
               >
@@ -803,9 +714,7 @@ function PartnerForm({
                   placeholder=" "
                 />
               </FloatingField>
-            ) : null}
-            {!isCompany ? (
-              <FloatingField label="Localidad" active={Boolean(form.localidad)}>
+            <FloatingField label="Localidad" active={Boolean(form.localidad)}>
                 <input
                   value={form.localidad}
                   onChange={(event) =>
@@ -815,7 +724,6 @@ function PartnerForm({
                   placeholder=" "
                 />
               </FloatingField>
-            ) : null}
             <FloatingField
               label="Teléfono"
               active={Boolean(form.telefono)}
@@ -952,15 +860,10 @@ function PartnerForm({
 function formFromItem(item) {
   return {
     id_socio: item.id_socio,
-    tipo_socio: item.tipo_socio,
+    tipo_socio: PERSON,
     apellido: item.apellido || "",
     nombre: item.nombre || "",
     dni: item.dni || "",
-    razon_social: item.razon_social || "",
-    cuit: item.cuit || "",
-    id_condicion_iva: item.id_condicion_iva
-      ? String(item.id_condicion_iva)
-      : "",
     domicilio: item.domicilio || "",
     numero_domicilio: item.numero_domicilio || "",
     localidad: item.localidad || "",
@@ -975,9 +878,8 @@ function formFromItem(item) {
   };
 }
 
-export default function Socios({ tipo = PERSON }) {
-  const type = tipo === COMPANY ? COMPANY : PERSON;
-  const isCompany = type === COMPANY;
+export default function Socios() {
+  const type = PERSON;
   const writable = canWrite();
   const tableBodyRef = useRef(null);
   const pendingTableScrollRef = useRef(null);
@@ -1068,7 +970,7 @@ export default function Socios({ tipo = PERSON }) {
     return () => window.cancelAnimationFrame(frame);
   }, [loading, items.length]);
 
-  const [form, setForm] = useState(() => emptyForm(type));
+  const [form, setForm] = useState(() => emptyForm());
   const [formTab, setFormTab] = useState(FORM_TAB_MAIN);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1081,12 +983,10 @@ export default function Socios({ tipo = PERSON }) {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
-  const title = isCompany ? "Empresas" : "Socios";
-  const singular = isCompany ? "empresa" : "socio";
-  const createTitle = isCompany ? "Nueva empresa" : "Nuevo socio";
-  const exportColumns = isCompany
-    ? COMPANY_EXPORT_COLUMNS
-    : PERSON_EXPORT_COLUMNS;
+  const title = "Socios";
+  const singular = "socio";
+  const createTitle = "Nuevo socio";
+  const exportColumns = PERSON_EXPORT_COLUMNS;
   const exportFilterDescription = useMemo(() => {
     const selectedCategory = (catalogos.categorias || []).find(
       (item) => String(item.id_categoria) === String(category),
@@ -1130,7 +1030,7 @@ export default function Socios({ tipo = PERSON }) {
   }, [debouncedSearch, filters]);
 
   const openNew = () => {
-    setForm(emptyForm(type, catalogos));
+    setForm(emptyForm(catalogos));
     setFormTab(FORM_TAB_MAIN);
     setModalOpen(true);
   };
@@ -1143,16 +1043,12 @@ export default function Socios({ tipo = PERSON }) {
   }, []);
   const save = async (event) => {
     event.preventDefault();
-    const missingMain = isCompany
-      ? !form.razon_social.trim()
-      : !form.apellido.trim() || !form.nombre.trim();
+    const missingMain = !form.apellido.trim() || !form.nombre.trim();
     if (missingMain || !form.fecha_alta) {
       setFormTab(FORM_TAB_MAIN);
       setFeedback({
         type: "error",
-        message: isCompany
-          ? "Completá la razón social y la fecha de alta."
-          : "Completá apellido, nombre y fecha de alta.",
+        message: "Completá apellido, nombre y fecha de alta.",
       });
       return;
     }
@@ -1184,14 +1080,12 @@ export default function Socios({ tipo = PERSON }) {
         apellido: upperWithoutDigits(form.apellido),
         nombre: upperWithoutDigits(form.nombre),
         dni: onlyDigits(form.dni, 8),
-        cuit: onlyDigits(form.cuit, 11),
         numero_domicilio: onlyDigits(form.numero_domicilio, 20),
         localidad: upperWithoutDigits(form.localidad),
         telefono: normalizedPhone || "",
-        tipo_socio: type,
+        tipo_socio: PERSON,
         id_categoria: form.id_categoria || null,
         id_medio_pago: form.id_medio_pago || null,
-        id_condicion_iva: form.id_condicion_iva || null,
       });
       setModalOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
@@ -1317,7 +1211,7 @@ export default function Socios({ tipo = PERSON }) {
         filters={pageFilters}
         tabsInTitle
         headFiltersClassName="socios-headFilters"
-        primaryActionLabel={isCompany ? "Nueva empresa" : "Nuevo socio"}
+        primaryActionLabel="Nuevo socio"
         onPrimaryAction={openNew}
         headerActions={
           <BotonExportarGlobal
@@ -1345,41 +1239,22 @@ export default function Socios({ tipo = PERSON }) {
           className={`socios-table ${Number(paginacion?.total || 0) > 0 ? "has-bottom-pagination" : ""}`.trim()}
           bodyClassName="entity-table-wrap"
           bodyRef={tableBodyRef}
-          gridClassName={`socios-grid ${isCompany ? "socios-grid--empresa" : "socios-grid--persona"}`}
+          gridClassName="socios-grid socios-grid--persona"
           ariaLabel={`Listado de ${title.toLowerCase()}`}
           loading={loading}
           loadingLabel={`Cargando ${title.toLowerCase()}...`}
           skeletonRows={7}
-          columns={
-            isCompany
-              ? [
-                  "Empresa",
-                  "CUIT",
-                  "Categoría",
-                  "Contacto",
-                  "Recordatorio",
-                  "Acciones",
-                ]
-              : [
-                  "Socio",
-                  "DNI",
-                  "Categoría",
-                  "Contacto",
-                  "Recordatorio",
-                  "Acciones",
-                ]
-          }
+          columns={["Socio", "DNI", "Categoría", "Contacto", "Recordatorio", "Acciones"]}
         >
           {!loading && !error && !visibleItems.length ? (
             <div className="module-empty">
-              <FontAwesomeIcon icon={isCompany ? faBuilding : faUser} />
+              <FontAwesomeIcon icon={faUser} />
               <strong>Sin {title.toLowerCase()} para mostrar</strong>
               <span>Creá el primer registro o cambiá los filtros.</span>
             </div>
           ) : null}
           <SociosRows
             items={visibleItems}
-            isCompany={isCompany}
             categoryAmounts={categoryAmounts}
             writable={writable}
             onHistory={openHistory}
@@ -1454,7 +1329,7 @@ export default function Socios({ tipo = PERSON }) {
         tituloArchivo={title}
         subtituloArchivoActual={`${exportFilterDescription} · Página ${page} de ${Math.max(1, totalPages)}`}
         subtituloArchivoTodos={exportFilterDescription}
-        nombreArchivo={isCompany ? "empresas" : "socios"}
+        nombreArchivo="socios"
         columnas={exportColumns}
         registrosActuales={visibleItems}
         obtenerRegistrosTodos={obtenerTodosParaExportar}
@@ -1465,8 +1340,8 @@ export default function Socios({ tipo = PERSON }) {
         alcanceActualDescription="Descarga los registros visibles con los filtros actuales."
         alcanceTodosLabel={`Exportar todos los ${title.toLowerCase()}`}
         alcanceTodosDescription="Descarga todas las páginas que coinciden con los filtros actuales."
-        totalLabelSingular={isCompany ? "empresa disponible" : "socio disponible"}
-        totalLabelPlural={isCompany ? "empresas disponibles" : "socios disponibles"}
+        totalLabelSingular="socio disponible"
+        totalLabelPlural="socios disponibles"
         onClose={() => setExportModalOpen(false)}
         onSuccess={(message) =>
           setFeedback({ type: "success", message, duration: 4200 })
@@ -1493,7 +1368,6 @@ export default function Socios({ tipo = PERSON }) {
         wide
       >
         <PartnerForm
-          type={type}
           form={form}
           setForm={setForm}
           catalogs={catalogos}
@@ -1504,12 +1378,10 @@ export default function Socios({ tipo = PERSON }) {
 
       <InfoModal
         open={Boolean(historyModal)}
-        title={
-          isCompany ? "Información de la Empresa" : "Información del Socio"
-        }
+        title="Información del Socio"
         subtitle={
           itemInfo
-            ? `${isCompany ? "CUIT" : "DNI"}: ${isCompany ? itemInfo.cuit || "—" : itemInfo.dni || "—"} · ${itemInfo.denominacion}`
+            ? `DNI: ${itemInfo.dni || "—"} · ${itemInfo.denominacion}`
             : historyModal?.item?.denominacion || ""
         }
         onClose={() => setHistoryModal(null)}
@@ -1572,33 +1444,22 @@ export default function Socios({ tipo = PERSON }) {
 
               <div className="entity-info-grid">
                 <InfoSection
-                  title={isCompany ? "Datos empresariales" : "Datos personales"}
-                  icon={isCompany ? faBuilding : faIdCard}
+                  title="Datos personales"
+                  icon={faIdCard}
                 >
                   <InfoRow
                     title={itemInfo.denominacion}
-                    detail={
-                      isCompany
-                        ? `CUIT ${itemInfo.cuit || "—"}`
-                        : `DNI ${itemInfo.dni || "—"}`
-                    }
+                    detail={`DNI ${itemInfo.dni || "—"}`}
                   />
                   <InfoRow
                     title="Fecha de alta"
                     detail={formatDate(itemInfo.fecha_alta)}
                   />
-                  {isCompany ? (
-                    <InfoRow
-                      title="Condición de IVA"
-                      detail={itemInfo.condicion_iva || "SIN INFORMAR"}
-                    />
-                  ) : (
-                    <InfoRow
+                  <InfoRow
                       title="Familia activa"
                       detail={itemInfo.familia || "SIN FAMILIA"}
                       meta={itemInfo.parentesco || ""}
                     />
-                  )}
                 </InfoSection>
 
                 <InfoSection title="Configuración de cuota" icon={faWallet}>
@@ -1624,7 +1485,7 @@ export default function Socios({ tipo = PERSON }) {
                 </InfoSection>
               </div>
 
-              {!isCompany && info.familias?.length ? (
+              {info.familias?.length ? (
                 <InfoSection
                   title="Historial familiar"
                   icon={faHouse}
@@ -1716,8 +1577,8 @@ export default function Socios({ tipo = PERSON }) {
         row={stateModal}
         title={
           stateModal?.activo
-            ? `Dar de baja ${isCompany ? "la empresa" : "al socio"}`
-            : `Reactivar ${isCompany ? "empresa" : "socio"}`
+            ? "Dar de baja al socio"
+            : "Reactivar socio"
         }
         message={
           stateModal?.activo
@@ -1729,12 +1590,12 @@ export default function Socios({ tipo = PERSON }) {
           stateModal
             ? [
                 {
-                  label: isCompany ? "Empresa" : "Socio",
+                  label: "Socio",
                   value: stateModal.denominacion,
                 },
                 {
-                  label: isCompany ? "CUIT" : "DNI",
-                  value: isCompany ? stateModal.cuit : stateModal.dni,
+                  label: "DNI",
+                  value: stateModal.dni,
                 },
                 { label: "Estado actual", value: stateModal.estado },
               ]
@@ -1784,20 +1645,18 @@ export default function Socios({ tipo = PERSON }) {
         operacion="eliminar"
         row={deleteModal?.item}
         modalClassName="socios-delete-modal"
-        title={`Eliminar definitivamente ${isCompany ? "la empresa" : "al socio"}`}
+        title="Eliminar definitivamente al socio"
         message="Confirmá la eliminación definitiva del registro. Esta operación es irreversible."
         details={
           deleteModal?.item
             ? [
                 {
-                  label: isCompany ? "Empresa" : "Socio",
+                  label: "Socio",
                   value: deleteModal.item.denominacion,
                 },
                 {
-                  label: isCompany ? "CUIT" : "DNI",
-                  value: isCompany
-                    ? deleteModal.item.cuit
-                    : deleteModal.item.dni,
+                  label: "DNI",
+                  value: deleteModal.item.dni,
                 },
                 {
                   label: "Pagos / condonaciones que se borrarán",

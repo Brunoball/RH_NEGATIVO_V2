@@ -12,14 +12,6 @@ function configuracion_listas_definiciones(): array
             'max_nombre' => 100,
             'entidad' => 'MEDIO_PAGO',
         ],
-        'condiciones_iva' => [
-            'lista' => 'condiciones_iva',
-            'tabla' => 'condiciones_iva',
-            'id_campo' => 'id_condicion_iva',
-            'etiqueta' => 'condición frente al IVA',
-            'max_nombre' => 100,
-            'entidad' => 'CONDICION_IVA',
-        ],
     ];
 }
 
@@ -62,9 +54,6 @@ function configuracion_relaciones(array $definition): array
             ['tabla' => 'socios', 'columna' => 'id_medio_pago'],
             ['tabla' => 'contable_ingresos', 'columna' => 'id_medio_pago'],
             ['tabla' => 'contable_egresos', 'columna' => 'id_medio_pago'],
-        ],
-        'condiciones_iva' => [
-            ['tabla' => 'socios_empresas', 'columna' => 'id_condicion_iva'],
         ],
         default => [],
     };

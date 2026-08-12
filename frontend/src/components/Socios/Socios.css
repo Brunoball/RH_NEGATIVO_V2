@@ -9,15 +9,6 @@
     minmax(0, 0.82fr);
 }
 
-.socios-grid--empresa {
-  grid-template-columns:
-    minmax(0, 2.1fr)
-    minmax(0, 0.8fr)
-    minmax(0, 1fr)
-    minmax(0, 1.1fr)
-    minmax(0, 0.75fr)
-    minmax(0, 0.82fr);
-}
 
 .socios-grid {
   width: 100%;
@@ -95,13 +86,6 @@
 .socios-grid--persona > :nth-child(3),
 .socios-grid--persona > :nth-child(5),
 .socios-grid--persona > :nth-child(6),
-.socios-grid--empresa > :nth-child(2),
-.socios-grid--empresa > :nth-child(3),
-.socios-grid--empresa > :nth-child(5),
-.socios-grid--empresa > :nth-child(6) {
-  justify-content: center;
-  text-align: center;
-}
 
 
 .socios-category-cell {
@@ -207,7 +191,7 @@
   font-size: 11px;
 }
 
-/* En las fichas de Socios/Empresas el contenido de las tarjetas nunca se corta. */
+/* En las fichas de socios el contenido de las tarjetas nunca se corta. */
 .socios-info-modal .entity-info-summary__item span,
 .socios-info-modal .entity-info-summary__item strong {
   overflow: visible;

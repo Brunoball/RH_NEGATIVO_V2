@@ -564,8 +564,8 @@ export default function ContableModule({ view = "summary" }) {
   const [month, setMonth] = useState(String(CURRENT_MONTH));
   const [summaryMode, setSummaryMode] = useState("annual");
   const [incomeTab, setIncomeTab] = useState("partners");
-  const isFeeIncomeTab = incomeTab === "partners" || incomeTab === "companies";
-  const feeEntityType = incomeTab === "companies" ? "EMPRESA" : "PERSONA";
+  const isFeeIncomeTab = incomeTab === "partners";
+  const feeEntityType = "PERSONA";
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [mean, setMean] = useState("");
@@ -613,7 +613,7 @@ export default function ContableModule({ view = "summary" }) {
     setSearch("");
     setPage(1);
     // Evita mostrar datos de la pestaña anterior mientras se carga la nueva.
-    // También evita mezclar filas de socios, empresas y otros ingresos al cambiar de pestaña.
+    // También evita mezclar filas de socios y otros ingresos al cambiar de pestaña.
     setData({ items: [], resumen: {} });
   }, [view, incomeTab]);
 
@@ -980,18 +980,15 @@ export default function ContableModule({ view = "summary" }) {
     const items = data.items || [];
 
     if (view === "income" && isFeeIncomeTab) {
-      const isCompanyIncome = incomeTab === "companies";
       return {
-        title: isCompanyIncome
-          ? "Exportar ingresos de empresas"
-          : "Exportar ingresos de socios",
-        fileTitle: isCompanyIncome ? "Ingresos de empresas" : "Ingresos de socios",
-        fileName: `${isCompanyIncome ? "ingresos_empresas" : "ingresos_socios"}_${year}_${month}`,
+        title: "Exportar ingresos de socios",
+        fileTitle: "Ingresos de socios",
+        fileName: `ingresos_socios_${year}_${month}`,
         columns: [
           { label: "Fecha de cobro", value: (item) => formatDate(item.fecha) },
-          { label: isCompanyIncome ? "Empresa" : "Socio", key: "socio" },
+          { label: "Socio", key: "socio" },
           {
-            label: isCompanyIncome ? "CUIT" : "DNI",
+            label: "DNI",
             value: (item) => item.documento || item.dni || "",
           },
           { label: "Categoría", key: "categoria" },
@@ -1160,7 +1157,6 @@ export default function ContableModule({ view = "summary" }) {
               onChange: setIncomeTab,
               options: [
                 { value: "partners", label: "Socios" },
-                { value: "companies", label: "Empresas" },
                 { value: "manual", label: "Otros ingresos" },
               ],
             },
@@ -1179,7 +1175,7 @@ export default function ContableModule({ view = "summary" }) {
   const tableColumns =
     view === "income" && isFeeIncomeTab
       ? [
-          incomeTab === "companies" ? "Empresa" : "Socio",
+          "Socio",
           "Fecha de cobro",
           "Período pagado",
           "Medio",
@@ -1327,9 +1323,7 @@ export default function ContableModule({ view = "summary" }) {
                   {!data.items?.length ? (
                     <EmptyState
                       message={
-                        incomeTab === "companies"
-                          ? "No hubo cobros de empresas en el mes seleccionado."
-                          : "No hubo cobros de socios en el mes seleccionado."
+                        "No hubo cobros de socios en el mes seleccionado."
                       }
                     />
                   ) : null}
@@ -1345,7 +1339,7 @@ export default function ContableModule({ view = "summary" }) {
                       <div className="mov-gridCell entity-main-cell">
                         <strong>{item.socio}</strong>
                         <small>
-                          {incomeTab === "companies" ? "CUIT" : "DNI"}: {item.documento || item.dni || "—"}
+                          DNI: {item.documento || item.dni || "—"}
                           {" · "}
                           Categoría: {item.categoria || "Sin categoría"}
                         </small>

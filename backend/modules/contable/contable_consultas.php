@@ -259,18 +259,14 @@ trait ContableConsultas
         $categoryId = self::idOpcional($filters['categoria'] ?? null, 'categoría');
         $meanId = self::idOpcional($filters['medio'] ?? null, 'medio de pago');
         $partnerType = strtoupper(trim((string)($filters['tipo'] ?? '')));
-        if ($partnerType !== '' && !in_array($partnerType, ['PERSONA', 'EMPRESA'], true)) {
+        if ($partnerType !== '' && $partnerType !== 'PERSONA') {
             api_error('El tipo de socio indicado no es válido.', 'TIPO_SOCIO_INVALIDO', 422);
         }
         [$start, $end] = self::rangoMes($year, $month);
         $paymentAmount = self::importePagoSql();
 
-        $where = ["p.estado = 'PAGADO'", 'p.fecha_pago >= ?', 'p.fecha_pago < ?'];
+        $where = ["p.estado = 'PAGADO'", 'p.fecha_pago >= ?', 'p.fecha_pago < ?', "s.tipo_socio = 'PERSONA'"];
         $params = [$start, $end];
-        if ($partnerType !== '') {
-            $where[] = 's.tipo_socio = ?';
-            $params[] = $partnerType;
-        }
         if ($categoryId !== null) {
             $where[] = 's.id_categoria = ?';
             $params[] = $categoryId;
@@ -283,7 +279,6 @@ trait ContableConsultas
             $search,
             ["CONCAT_WS(' ',
                 sp.apellido, sp.nombre, sp.dni,
-                se.razon_social, se.cuit,
                 c.nombre, mp.nombre
             ) LIKE {param}"],
             160,
@@ -299,18 +294,14 @@ trait ContableConsultas
                 p.id_pago, p.id_socio, p.anio, p.mes, p.fecha_pago, p.id_medio_pago,
                 {$paymentAmount} AS monto_calculado,
                 CASE WHEN p.monto IS NULL THEN 1 ELSE 0 END AS monto_estimado,
-                s.tipo_socio, s.id_categoria,
-                CASE
-                    WHEN s.tipo_socio = 'EMPRESA' THEN COALESCE(NULLIF(se.razon_social, ''), CONCAT('EMPRESA #', s.id_socio))
-                    ELSE COALESCE(NULLIF(TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))), ', '), CONCAT('SOCIO #', s.id_socio))
-                END AS socio,
-                CASE WHEN s.tipo_socio = 'EMPRESA' THEN se.cuit ELSE sp.dni END AS documento,
+                s.id_categoria,
+                COALESCE(NULLIF(TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))), ', '), CONCAT('SOCIO #', s.id_socio)) AS socio,
+                sp.dni AS documento,
                 COALESCE(NULLIF(c.nombre, ''), 'SIN CATEGORÍA') AS categoria,
                 COALESCE(NULLIF(mp.nombre, ''), 'SIN ESPECIFICAR') AS medio
              FROM pagos p
              INNER JOIN socios s ON s.id_socio = p.id_socio
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
              WHERE " . implode(' AND ', $where) . "
@@ -328,13 +319,12 @@ trait ContableConsultas
             $categoryName = $row['categoria'] === null ? null : (string)$row['categoria'];
             $items[] = [
                 'clave' => 'PAGO-' . (int)$row['id_pago'],
-                'origen' => $row['tipo_socio'] === 'EMPRESA' ? 'CUOTA_EMPRESA' : 'CUOTA_SOCIO',
+                'origen' => 'CUOTA_SOCIO',
                 'id_registro' => (int)$row['id_pago'],
                 'id_pago' => (int)$row['id_pago'],
                 'id_socio' => (int)$row['id_socio'],
                 'fecha' => (string)$row['fecha_pago'],
                 'socio' => (string)$row['socio'],
-                'tipo_socio' => (string)$row['tipo_socio'],
                 'documento' => $row['documento'] === null ? '—' : (string)$row['documento'],
                 // Se conserva `dni` por compatibilidad con exportaciones/clientes anteriores.
                 'dni' => $row['documento'] === null ? '—' : (string)$row['documento'],

@@ -3,14 +3,12 @@ import { configuracionApi } from "../api/configuracionApi";
 
 const initialLists = {
   medios_pago: [],
-  condiciones_iva: [],
 };
 
 const initialState = {
   listas: initialLists,
   resumen: {
     medios_pago_activos: 0,
-    condiciones_iva_activos: 0,
   },
 };
 

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class Cuotas
 {
-    private const TIPOS = ['PERSONA', 'EMPRESA'];
+    private const TIPOS = ['PERSONA'];
     private const ESTADOS = ['DEUDORES', 'PAGADOS', 'CONDONADOS'];
     private const MAX_PAGOS_LOTE = 200;
 
@@ -28,7 +28,7 @@ final class Cuotas
     public static function contextoPago(): never
     {
         $auth = auth_context();
-        $partnerId = positive_id($_GET['id_socio'] ?? null, 'socio o empresa');
+        $partnerId = positive_id($_GET['id_socio'] ?? null, 'socio');
         $year = self::validYear($_GET['anio'] ?? date('Y'));
         $month = self::validMonth($_GET['mes'] ?? date('n'));
         $paymentDate = valid_date($_GET['fecha_pago'] ?? date('Y-m-d'), 'pago');
@@ -38,7 +38,7 @@ final class Cuotas
     public static function contextosPago(): never
     {
         $auth = auth_context();
-        $partnerId = positive_id($_GET['id_socio'] ?? null, 'socio o empresa');
+        $partnerId = positive_id($_GET['id_socio'] ?? null, 'socio');
         $year = self::validYear($_GET['anio'] ?? date('Y'));
         $paymentDate = valid_date($_GET['fecha_pago'] ?? date('Y-m-d'), 'pago');
 
@@ -150,7 +150,6 @@ final class Cuotas
             $buscar,
             ["CONCAT_WS(' ',
                 sp.apellido, sp.nombre, sp.dni,
-                se.razon_social, se.cuit,
                 c.nombre, mp_preferido.nombre, mp.nombre, f.nombre, p.estado
             ) LIKE {param}"],
             120,
@@ -169,11 +168,8 @@ final class Cuotas
                 s.fecha_alta,
                 s.id_categoria,
                 s.id_medio_pago AS id_medio_pago_preferido,
-                CASE
-                    WHEN s.tipo_socio = 'EMPRESA' THEN se.razon_social
-                    ELSE TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, '')))
-                END AS denominacion,
-                CASE WHEN s.tipo_socio = 'EMPRESA' THEN se.cuit ELSE sp.dni END AS documento,
+                TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))) AS denominacion,
+                sp.dni AS documento,
                 c.nombre AS categoria,
                 c.monto_cuota AS monto_actual,
                 mp_preferido.nombre AS medio_pago_preferido,
@@ -190,7 +186,6 @@ final class Cuotas
                 mp.nombre AS medio_pago
              FROM socios s
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
              LEFT JOIN medios_pago mp_preferido ON mp_preferido.id_medio_pago = s.id_medio_pago
              LEFT JOIN familias_socios fs
@@ -330,11 +325,8 @@ final class Cuotas
                 s.tipo_socio,
                 s.id_categoria,
                 s.id_medio_pago,
-                CASE
-                    WHEN s.tipo_socio = 'EMPRESA' THEN se.razon_social
-                    ELSE TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, '')))
-                END AS denominacion,
-                CASE WHEN s.tipo_socio = 'EMPRESA' THEN se.cuit ELSE sp.dni END AS documento,
+                TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))) AS denominacion,
+                sp.dni AS documento,
                 c.nombre AS categoria,
                 c.monto_cuota AS monto_actual,
                 f.id_familia,
@@ -342,7 +334,6 @@ final class Cuotas
                 fc.cantidad_integrantes
              FROM socios s
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
              LEFT JOIN familias_socios fs
                     ON fs.id_socio = s.id_socio
@@ -351,7 +342,8 @@ final class Cuotas
                     ON f.id_familia = fs.id_familia
                    AND f.activo = 1
              LEFT JOIN (" . self::familyCountSql() . ") fc ON fc.id_familia = f.id_familia
-             WHERE s.estado = 'ACTIVO'
+             WHERE s.tipo_socio = 'PERSONA'
+               AND s.estado = 'ACTIVO'
                AND s.id_categoria IS NOT NULL
              ORDER BY s.tipo_socio, denominacion"
         )->fetchAll();
@@ -429,8 +421,7 @@ final class Cuotas
             'catalogos' => [
                 'categorias' => $categories,
                 'medios_pago' => $media,
-                'socios' => array_values(array_filter($partners, static fn(array $item): bool => $item['tipo_socio'] === 'PERSONA')),
-                'empresas' => array_values(array_filter($partners, static fn(array $item): bool => $item['tipo_socio'] === 'EMPRESA')),
+                'socios' => array_values($partners),
                 'anios' => $years,
                 'meses' => $months,
             ],
@@ -443,17 +434,13 @@ final class Cuotas
             "SELECT
                 s.id_socio, s.tipo_socio, s.estado AS estado_socio, s.fecha_alta,
                 s.id_categoria, s.id_medio_pago AS id_medio_pago_preferido,
-                CASE
-                    WHEN s.tipo_socio = 'EMPRESA' THEN se.razon_social
-                    ELSE TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, '')))
-                END AS denominacion,
-                CASE WHEN s.tipo_socio = 'EMPRESA' THEN se.cuit ELSE sp.dni END AS documento,
+                TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))) AS denominacion,
+                sp.dni AS documento,
                 c.nombre AS categoria, c.monto_cuota AS monto_actual,
                 f.id_familia, f.nombre AS familia,
                 fc.cantidad_integrantes
              FROM socios s
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
              LEFT JOIN familias_socios fs
                     ON fs.id_socio = s.id_socio
@@ -463,11 +450,12 @@ final class Cuotas
                    AND f.activo = 1
              LEFT JOIN (" . self::familyCountSql() . ") fc ON fc.id_familia = f.id_familia
              WHERE s.id_socio = ?
+               AND s.tipo_socio = 'PERSONA'
              LIMIT 1"
         );
         $principalStatement->execute([$partnerId]);
         $principalRow = $principalStatement->fetch();
-        if (!$principalRow) api_error('El socio o empresa seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+        if (!$principalRow) api_error('El socio seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
 
         $familyCount = (int)($principalRow['cantidad_integrantes'] ?? 0);
         $discountRules = self::discountRulesForDate($db, $paymentDate);
@@ -622,18 +610,14 @@ final class Cuotas
             "SELECT
                 s.id_socio, s.tipo_socio, s.estado AS estado_socio, s.fecha_alta,
                 s.id_categoria, s.id_medio_pago AS id_medio_pago_preferido,
-                CASE
-                    WHEN s.tipo_socio = 'EMPRESA' THEN se.razon_social
-                    ELSE TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, '')))
-                END AS denominacion,
-                CASE WHEN s.tipo_socio = 'EMPRESA' THEN se.cuit ELSE sp.dni END AS documento,
+                TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))) AS denominacion,
+                sp.dni AS documento,
                 c.nombre AS categoria, c.monto_cuota AS monto_actual,
                 f.id_familia, f.nombre AS familia,
                 fc.cantidad_integrantes,
                 p.id_pago, p.fecha_pago, p.monto, p.id_medio_pago, p.estado AS estado_pago
              FROM socios s
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
              LEFT JOIN familias_socios fs
                     ON fs.id_socio = s.id_socio
@@ -647,11 +631,12 @@ final class Cuotas
                    AND p.anio = ?
                    AND p.mes = ?
              WHERE s.id_socio = ?
+               AND s.tipo_socio = 'PERSONA'
              LIMIT 1"
         );
         $principalStatement->execute([$year, $month, $partnerId]);
         $principalRow = $principalStatement->fetch();
-        if (!$principalRow) api_error('El socio o empresa seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+        if (!$principalRow) api_error('El socio seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
 
         $familyCount = (int)($principalRow['cantidad_integrantes'] ?? 0);
         $discountRules = self::discountRulesForDate($db, $paymentDate);
@@ -837,7 +822,7 @@ final class Cuotas
             $normalized = [];
             foreach ($requested as $payment) {
                 if (!is_array($payment)) continue;
-                $partnerId = positive_id($payment['id_socio'] ?? null, 'socio o empresa');
+                $partnerId = positive_id($payment['id_socio'] ?? null, 'socio');
                 $year = self::validYear($payment['anio'] ?? null);
                 $month = self::validMonth($payment['mes'] ?? null);
                 $key = $partnerId . '-' . $year . '-' . $month;
@@ -864,7 +849,7 @@ final class Cuotas
                 $targets[] = self::targetFromCandidate($context['principal'], $payment['monto']);
             }
         } else {
-            $partnerId = positive_id($body['id_socio'] ?? null, 'socio o empresa');
+            $partnerId = positive_id($body['id_socio'] ?? null, 'socio');
             $year = self::validYear($body['anio'] ?? null);
             $month = self::validMonth($body['mes'] ?? null);
             $context = self::paymentContextData($db, $partnerId, $year, $month, $paymentDate);
@@ -979,7 +964,7 @@ final class Cuotas
         $familyPayment = $applyFamily && $familyData !== null && count($saved['lineas']) > 1;
 
         $receipt = [
-            'organizacion' => 'LALCEC',
+            'organizacion' => (string)env_value('APP_NAME', 'RH Negativo'),
             'codigo_operacion' => $operationCode,
             'estado' => 'PAGADO',
             'fecha_pago' => $paymentDate,
@@ -1036,7 +1021,7 @@ final class Cuotas
             api_error('Ese período ya figura como pagado o condonado.', 'PAGO_YA_REGISTRADO', 409);
         }
         if (($candidate['estado_socio'] ?? '') !== 'ACTIVO') {
-            api_error('No se puede registrar una cuota a un socio o empresa inactiva.', 'SOCIO_INACTIVO', 409);
+            api_error('No se puede registrar una cuota a un socio inactivo.', 'SOCIO_INACTIVO', 409);
         }
         if (($candidate['id_categoria'] ?? null) === null) {
             api_error('Asigná una categoría antes de registrar la cuota.', 'CATEGORIA_REQUERIDA', 409);
@@ -1116,7 +1101,7 @@ final class Cuotas
     private static function condonarPagoDatos(array $auth, array $body): array
     {
         $db = $auth['db'];
-        $partnerId = positive_id($body['id_socio'] ?? null, 'socio o empresa');
+        $partnerId = positive_id($body['id_socio'] ?? null, 'socio');
         $year = self::validYear($body['anio'] ?? null);
         $month = self::validMonth($body['mes'] ?? null);
         $condonationDate = valid_date(
@@ -1237,17 +1222,17 @@ final class Cuotas
                 p.id_pago, p.id_socio, p.mes, p.anio, p.fecha_pago, p.monto, p.id_medio_pago,
                 p.estado AS estado_pago,
                 s.tipo_socio, s.estado AS estado_socio, s.fecha_alta, s.id_categoria,
-                COALESCE(se.razon_social, CONCAT(sp.apellido, ', ', sp.nombre)) AS denominacion,
-                CASE WHEN s.tipo_socio = 'EMPRESA' THEN se.cuit ELSE sp.dni END AS documento,
+                CONCAT(sp.apellido, ', ', sp.nombre) AS denominacion,
+                sp.dni AS documento,
                 c.nombre AS categoria,
                 mp.nombre AS medio_pago
              FROM pagos p
              INNER JOIN socios s ON s.id_socio = p.id_socio
              LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN socios_empresas se ON se.id_socio = s.id_socio
              LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
              WHERE p.id_pago = ?
+               AND s.tipo_socio = 'PERSONA'
              LIMIT 1"
         );
         $statement->execute([$paymentId]);

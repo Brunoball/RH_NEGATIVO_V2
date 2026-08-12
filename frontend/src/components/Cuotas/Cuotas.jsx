@@ -52,8 +52,8 @@ const decimalInput = (value, maxIntegerDigits = 12, maxDecimals = 2) => {
 };
 
 const CUOTAS_EXPORT_COLUMNS = [
-  { key: "denominacion", label: "Socio / Empresa" },
-  { key: "documento", label: "DNI / CUIT" },
+  { key: "denominacion", label: "Socio" },
+  { key: "documento", label: "DNI" },
   { key: "categoria", label: "Categoría" },
   { key: "periodo", label: "Período" },
   { key: "estado_exportacion", label: "Estado" },
@@ -366,19 +366,11 @@ const CuotasTableRows = React.memo(function CuotasTableRows({
         <div className="mov-gridCell entity-main-cell">
           <strong>{item.denominacion || "SIN DENOMINACIÓN"}</strong>
           <small>
-            {tipo === "EMPRESA"
-              ? item.documento
-                ? `CUIT ${item.documento}`
-                : null
-              : [
+            {[
                   item.documento ? `DNI ${item.documento}` : null,
                   item.familia || null,
-                  item.estado_socio === "INACTIVO"
-                    ? "REGISTRO DADO DE BAJA"
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+                  item.estado_socio === "INACTIVO" ? "REGISTRO DADO DE BAJA" : null,
+                ].filter(Boolean).join(" · ")}
           </small>
         </div>
         <div className="mov-gridCell is-center">
@@ -488,7 +480,7 @@ export default function Cuotas() {
   const tableBodyRef = useRef(null);
   const pendingTableScrollRef = useRef(null);
   const totalsRequestId = useRef(0);
-  const [tipo, setTipo] = useState("PERSONA");
+  const tipo = "PERSONA";
   const [estado, setEstado] = useState("DEUDORES");
   const [buscar, setBuscar] = useState("");
   const [debouncedBuscar, setDebouncedBuscar] = useState("");
@@ -699,7 +691,7 @@ export default function Cuotas() {
     );
   }, [anio, catalogos.anios, visibleYearOptions]);
 
-  const partners = tipo === "EMPRESA" ? catalogos.empresas : catalogos.socios;
+  const partners = catalogos.socios || [];
   const selectedPartner = partners.find(
     (partner) => String(partner.id_socio) === String(paymentForm.id_socio),
   );
@@ -757,7 +749,7 @@ export default function Cuotas() {
   }, [exportRecords, filtros]);
 
   const exportFilterDescription = [
-    tipo === "EMPRESA" ? "Empresas" : "Socios",
+    "Socios",
     isPaid ? "Pagados" : isCondoned ? "Condonados" : "Adeudados",
     `Período: ${mes}/${anio}`,
     buscar ? `Búsqueda: ${buscar}` : null,
@@ -782,7 +774,7 @@ export default function Cuotas() {
     availableMonthIds.every((monthId) => selectedMonthIds.includes(monthId));
   const selectedItems = Object.values(selectedPayments);
   const selectedCount = selectedItems.length;
-  const entityLabel = tipo === "EMPRESA" ? "empresa" : "socio";
+  const entityLabel = "socio";
   const previewPaymentContext =
     paymentContext ||
     paymentPeriods[String(currentMonth)]?.context ||
@@ -1331,7 +1323,7 @@ export default function Cuotas() {
       if (!paymentForm.id_socio) {
         setFeedback({
           type: "error",
-          message: `Seleccioná un ${tipo === "EMPRESA" ? "empresa" : "socio"}.`,
+          message: "Seleccioná un socio.",
         });
         return;
       }
@@ -1616,11 +1608,6 @@ export default function Cuotas() {
     setDeleteRow,
   };
 
-  const setTypeFilter = (value) => {
-    setTipo(value);
-    setBuscar("");
-    clearMultipleSelection();
-  };
 
   const setYearFilter = (value) => {
     setAnio(value);
@@ -1633,18 +1620,6 @@ export default function Cuotas() {
   };
 
   const pageFilters = [
-    {
-      key: "tipo",
-      type: "tabs",
-      label: "Tipo",
-      ariaLabel: "Secciones de cuotas",
-      value: tipo,
-      onChange: setTypeFilter,
-      options: [
-        { value: "PERSONA", label: "Socios" },
-        { value: "EMPRESA", label: "Empresas" },
-      ],
-    },
     {
       key: "estado",
       type: "tabs",
@@ -1734,9 +1709,9 @@ export default function Cuotas() {
     },
   ];
 
-  const tableLabel = `Cuotas de ${tipo === "EMPRESA" ? "empresas" : "socios"} ${isPaid ? "pagadas" : isCondoned ? "condonadas" : "adeudadas"}`;
+  const tableLabel = `Cuotas de socios ${isPaid ? "pagadas" : isCondoned ? "condonadas" : "adeudadas"}`;
   const baseDebtColumns = [
-    tipo === "EMPRESA" ? "Empresa" : "Socio",
+    "Socio",
     "Categoría",
     "Período",
     "Importe",
@@ -1744,7 +1719,7 @@ export default function Cuotas() {
   ];
   const columns = isResolved
     ? [
-        tipo === "EMPRESA" ? "Empresa" : "Socio",
+        "Socio",
         "Categoría",
         "Período",
         "Estado",
@@ -1773,7 +1748,7 @@ export default function Cuotas() {
       <ModulePage
         className="cuotas-page"
         title="Cuotas"
-        description="Control mensual de cuotas de socios y empresas."
+        description="Control mensual de cuotas de socios."
         filters={pageFilters}
         tabsInTitle
         headLeftClassName="cuotas-header-row"
@@ -2080,7 +2055,7 @@ export default function Cuotas() {
         errorMessage="No se pudo condonar la cuota."
         details={[
           {
-            label: tipo === "EMPRESA" ? "Empresa" : "Socio",
+            label: "Socio",
             value: condoneRow?.denominacion,
           },
           { label: "Período", value: condoneRow?.periodo },
@@ -2104,7 +2079,7 @@ export default function Cuotas() {
         errorMessage={deleteRow?.estado === "CONDONADO" ? "No se pudo eliminar la condonación." : "No se pudo eliminar el pago."}
         details={[
           {
-            label: tipo === "EMPRESA" ? "Empresa" : "Socio",
+            label: "Socio",
             value: deleteRow?.denominacion,
           },
           { label: "Período", value: deleteRow?.periodo },
