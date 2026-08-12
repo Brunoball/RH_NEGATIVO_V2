@@ -1,0 +1,716 @@
+.config-usersSchemaNotice {
+  margin: 14px 20px 0;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  border-radius: 12px;
+  color: var(--balto-midnight);
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.config-usersStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.config-usersStat {
+  --config-usersStat-tone: var(--entity-modal-action, var(--balto-action));
+  position: relative;
+  min-width: 0;
+  min-height: 94px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  padding: 13px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--config-usersStat-tone) 22%,
+      var(--entity-modal-border, var(--border-color))
+    );
+  border-radius: var(--blue-inst-radius-lg, 16px);
+  color: var(--config-usersStat-tone);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--config-usersStat-tone) 12%, #fff) 0%,
+    #fff 75%
+  );
+  box-shadow: var(--mov-shadow-sm, 0 8px 22px rgb(15 23 42 / 0.08));
+}
+
+.config-usersStat::before {
+  position: absolute;
+  inset: 14px auto 14px 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: var(--config-usersStat-tone);
+  content: "";
+}
+
+.config-usersStat__icon {
+  z-index: 1;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: var(--blue-inst-radius, 12px);
+  color: var(--config-usersStat-tone);
+  background: color-mix(in srgb, currentColor 14%, #fff);
+  font-size: 13px;
+}
+
+.config-usersStat > div {
+  z-index: 1;
+  min-width: 0;
+}
+
+.config-usersStat small {
+  display: block;
+  color: color-mix(
+    in srgb,
+    var(--config-usersStat-tone) 76%,
+    var(--entity-modal-text, var(--gray-500))
+  );
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+}
+
+.config-usersStat strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--balto-midnight);
+  font-size: 18px;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.config-usersStat p {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--gray-500);
+  font-size: 10.5px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-usersStat__decoration {
+  display: none;
+}
+
+.config-usersStat--total {
+  --config-usersStat-tone: var(--entity-modal-action, var(--balto-action));
+}
+
+.config-usersStat--active {
+  --config-usersStat-tone: var(--success-600, #059669);
+}
+
+.config-usersStat--inactive {
+  --config-usersStat-tone: var(--entity-modal-danger, var(--danger-500));
+}
+
+.config-usersStat--admin {
+  --config-usersStat-tone: var(--secondary-600, #7c3aed);
+}
+
+.config-usersPanel {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.config-usersPanel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.config-usersPanel__toolbar > strong {
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.config-usersTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 13%, transparent);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.config-usersTabs button {
+  min-height: 32px;
+  padding: 6px 15px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--gray-600);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.config-usersTabs button.is-active {
+  color: var(--balto-action);
+  background: #fff;
+  box-shadow: 0 4px 12px -9px rgb(15 23 42 / 0.72);
+}
+
+.config-usersTable {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.config-usersTable__head,
+.config-usersTable__row,
+.config-usersTable__skeletonRow {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.35fr)
+    minmax(0, 1.45fr)
+    minmax(92px, 0.8fr)
+    minmax(88px, 0.65fr)
+    minmax(112px, 0.8fr)
+    minmax(106px, 0.65fr);
+  align-items: center;
+}
+
+.config-usersTable__head > *,
+.config-usersTable__row > *,
+.config-usersTable__skeletonRow > * {
+  min-width: 0;
+}
+
+.config-usersTable__head > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-usersTable__head > :nth-child(n + 3),
+.config-usersTable__row > :nth-child(n + 3),
+.config-usersTable__skeletonRow > :nth-child(n + 3) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.config-usersTable.has-y-scroll > .config-usersTable__head {
+  padding-right: calc(16px + var(--config-table-scrollbar-width, 0px));
+}
+
+.config-usersTable__head {
+  min-height: 44px;
+  padding: 0 16px;
+  color: #fff;
+  background: var(--balto-midnight);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.config-usersTable__body {
+  min-height: 180px;
+  max-height: calc(100vh - 400px);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.config-usersTable__row {
+  min-height: 68px;
+  padding: 9px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+  color: var(--balto-midnight);
+  background: #fff;
+  font-size: 11px;
+}
+
+.config-usersTable__skeletonRow {
+  min-height: 68px;
+  padding: 9px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+  background: #fff;
+}
+
+.config-usersTable__skeletonRow .mov-gridCell {
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.config-usersTable__row.is-inactive {
+  background: color-mix(in srgb, var(--gray-500) 3.5%, transparent);
+}
+
+.config-usersIdentity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.config-usersAvatar {
+  width: 39px;
+  height: 39px;
+  min-width: 39px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  background: var(--gradient-primary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.config-usersIdentity > div {
+  min-width: 0;
+}
+
+.config-usersIdentity strong {
+  display: block;
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-usersIdentity small {
+  display: block;
+  margin-top: 4px;
+  color: var(--balto-action);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.config-usersEmail {
+  overflow: hidden;
+  padding-right: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-usersEmail span,
+.config-usersCreated {
+  color: var(--gray-500);
+}
+
+.config-usersRole,
+.config-usersState {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+  border-radius: 999px;
+  color: var(--balto-action);
+  background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+  font-size: 9.5px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.config-usersRole--vista {
+  color: var(--gray-600);
+  border-color: color-mix(in srgb, var(--gray-600) 20%, transparent);
+  background: color-mix(in srgb, var(--gray-600) 7%, transparent);
+}
+
+.config-usersState {
+  color: var(--success-700);
+  border-color: color-mix(in srgb, var(--success-500) 24%, transparent);
+  background: color-mix(in srgb, var(--success-500) 8%, transparent);
+}
+
+.config-usersState i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.config-usersState.is-inactive {
+  color: var(--danger-600);
+  border-color: color-mix(in srgb, var(--danger-500) 21%, transparent);
+  background: color-mix(in srgb, var(--danger-500) 7%, transparent);
+}
+
+.config-usersActions {
+  max-width: 100%;
+  justify-content: center;
+  gap: 4px;
+}
+
+.config-usersTable__actionsHeading,
+.config-usersTable__actionsCell {
+  width: max-content;
+  max-width: 100%;
+  justify-self: center;
+}
+
+.config-usersTable__actionsHeading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.config-usersEmpty {
+  width: 100%;
+  min-width: 0;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: 26px;
+  color: var(--balto-text);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.config-usersModal .entity-modal__header h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.config-usersModal .entity-modal__header h2 > svg {
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+.config-usersForm .entity-floating-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.config-usersForm .entity-floating-field > span > svg {
+  width: 10px;
+  color: currentColor;
+}
+
+.config-usersForm__rolePicker {
+  min-width: 0;
+  grid-column: 1 / -1;
+  margin: 1px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.config-usersForm__rolePicker legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0;
+  color: color-mix(in srgb, var(--entity-modal-text) 88%, #000);
+  font-size: 10.5px;
+  font-weight: 720;
+  letter-spacing: 0.025em;
+}
+
+.config-usersForm__rolePicker legend svg {
+  color: var(--entity-modal-action);
+}
+
+.config-usersForm__roleOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.config-usersForm__roleOption {
+  position: relative;
+  min-width: 0;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 13px;
+  color: var(--entity-modal-text);
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color var(--entity-modal-transition),
+    background var(--entity-modal-transition),
+    box-shadow var(--entity-modal-transition),
+    transform var(--entity-modal-transition);
+}
+
+.config-usersForm__roleOption:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(
+    in srgb,
+    var(--entity-modal-action) 30%,
+    var(--entity-modal-border)
+  );
+  box-shadow: 0 8px 20px -18px rgb(15 23 42 / 0.55);
+}
+
+.config-usersForm__roleOption.is-selected {
+  border-color: color-mix(in srgb, var(--entity-modal-action) 48%, #fff);
+  background: color-mix(in srgb, var(--primary-color) 5%, #fff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 7%, transparent);
+}
+
+.config-usersForm__roleOption:has(input:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--entity-modal-action) 68%, #fff);
+  outline-offset: 2px;
+}
+
+.config-usersForm__roleOption:has(input:disabled) {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.config-usersForm__roleOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.config-usersForm__roleIcon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--entity-modal-action);
+  background: color-mix(in srgb, var(--primary-color) 9%, #fff);
+  font-size: 13px;
+}
+
+.config-usersForm__roleCopy {
+  min-width: 0;
+}
+
+.config-usersForm__roleCopy strong,
+.config-usersForm__roleCopy small {
+  display: block;
+}
+
+.config-usersForm__roleCopy strong {
+  color: var(--entity-modal-ink);
+  font-size: 11.5px;
+  font-weight: 720;
+}
+
+.config-usersForm__roleCopy small {
+  margin-top: 4px;
+  color: var(--entity-modal-text);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.config-usersForm__roleCheck {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 50%;
+  color: transparent;
+  background: #fff;
+  font-size: 9px;
+}
+
+.config-usersForm__roleOption.is-selected .config-usersForm__roleCheck {
+  border-color: var(--entity-modal-action);
+  color: #fff;
+  background: var(--entity-modal-action);
+}
+
+.config-usersForm__roleNotice {
+  display: block;
+  margin-top: 7px;
+  color: var(--entity-modal-text);
+  font-size: 9.5px;
+}
+
+.config-usersForm__passwordHelp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -3px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  color: var(--entity-modal-text);
+  background: color-mix(in srgb, var(--primary-color) 5%, #fff);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.config-usersForm__passwordHelp svg {
+  color: var(--entity-modal-action);
+  font-size: 10px;
+}
+
+@media (max-width: 1180px) {
+  .config-usersStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .config-usersStats {
+    grid-template-columns: 1fr;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .config-usersPanel__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .config-usersTabs {
+    width: 100%;
+  }
+
+  .config-usersTabs button {
+    flex: 1;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .config-usersTable {
+    padding: 10px 12px 12px;
+    background: color-mix(in srgb, var(--gray-50) 78%, #fff);
+  }
+
+  .config-usersTable__head {
+    display: none;
+  }
+
+  .config-usersTable__body,
+  .config-usersTable .mov-skeletonWrap {
+    gap: 9px;
+  }
+
+  .config-usersTable__row,
+  .config-usersTable__skeletonRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "identity actions"
+      "email email"
+      "role state"
+      "created created";
+    gap: 10px 12px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+    border-radius: 13px;
+    box-shadow: 0 8px 20px -22px rgb(15 23 42 / 0.5);
+  }
+
+  .config-usersTable__row > :nth-child(1),
+  .config-usersTable__skeletonRow > :nth-child(1) {
+    grid-area: identity;
+  }
+
+  .config-usersTable__row > :nth-child(2),
+  .config-usersTable__skeletonRow > :nth-child(2) {
+    grid-area: email;
+  }
+
+  .config-usersTable__row > :nth-child(3),
+  .config-usersTable__skeletonRow > :nth-child(3) {
+    grid-area: role;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .config-usersTable__row > :nth-child(4),
+  .config-usersTable__skeletonRow > :nth-child(4) {
+    grid-area: state;
+    justify-content: flex-end;
+    text-align: right;
+  }
+
+  .config-usersTable__row > :nth-child(5),
+  .config-usersTable__skeletonRow > :nth-child(5) {
+    grid-area: created;
+  }
+
+  .config-usersTable__row > :nth-child(6),
+  .config-usersTable__skeletonRow > :nth-child(6) {
+    grid-area: actions;
+  }
+
+  .config-usersTable__row [data-label]::before {
+    margin-right: 7px;
+    color: var(--gray-500);
+    content: attr(data-label) ":";
+    font-size: 8.5px;
+    font-weight: 760;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+  }
+
+  .config-usersTable__skeletonRow .mov-gridCell {
+    min-height: 24px;
+    padding: 0;
+  }
+
+  .config-usersTable__skeletonRow .mov-gridCell:first-child {
+    min-height: 42px;
+  }
+
+  .config-usersEmail,
+  .config-usersCreated {
+    padding: 0;
+    white-space: normal;
+  }
+
+  .config-usersActions {
+    align-self: start;
+  }
+
+  .config-usersEmpty {
+    min-height: 160px;
+    border: 1px dashed color-mix(in srgb, var(--text-primary) 14%, transparent);
+    border-radius: 13px;
+    background: #fff;
+  }
+
+  .config-usersForm__roleOptions {
+    grid-template-columns: 1fr;
+  }
+}

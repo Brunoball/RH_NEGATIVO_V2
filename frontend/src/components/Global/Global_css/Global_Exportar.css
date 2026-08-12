@@ -1,0 +1,592 @@
+.global-exportHistorial-overlay,
+.global-exportHistorial-overlay *,
+.global-exportHistorial-trigger {
+  box-sizing: border-box;
+}
+
+.global-exportHistorial-trigger:not(.mov-btn) {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--mov-border, #e2e8f0);
+  border-radius: 12px;
+  color: var(--balto-ink, #0f172a);
+  background: #fff;
+  box-shadow: var(--mov-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
+  font-size: 14px;
+  font-weight: 580;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform var(--mov-trans, 160ms ease),
+    box-shadow var(--mov-trans, 160ms ease),
+    background var(--mov-trans, 160ms ease),
+    border-color var(--mov-trans, 160ms ease),
+    opacity var(--mov-trans, 160ms ease);
+}
+
+.global-exportHistorial-trigger:not(.mov-btn):hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--balto-action, #f97316) 28%, var(--mov-border, #e2e8f0));
+  background: color-mix(in srgb, var(--balto-bg, #f8fafc) 70%, #fff);
+  box-shadow: var(--mov-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
+}
+
+.global-exportHistorial-trigger:not(.mov-btn):focus-visible {
+  outline: none;
+  box-shadow: var(--mov-focus, 0 0 0 4px rgb(249 115 22 / 0.14));
+}
+
+.global-exportHistorial-trigger:not(.mov-btn):disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@keyframes globalExportModalFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes globalExportModalPop {
+  from {
+    opacity: 0.96;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.global-exportHistorial-overlay {
+  --export-ink: var(--entity-modal-ink, var(--balto-ink, #0f172a));
+  --export-action: var(--entity-modal-action, var(--balto-action, #f97316));
+  --export-bg: var(--entity-modal-bg, var(--balto-bg, #f8fafc));
+  --export-text: var(--entity-modal-text, var(--balto-text, #475569));
+  --export-danger: var(--entity-modal-danger, var(--balto-danger, #ef4444));
+  --export-success: var(--balto-success, #10b981);
+  --export-border: var(--entity-modal-border, var(--mov-border, #e2e8f0));
+  --export-focus: var(--entity-modal-focus, var(--mov-focus, 0 0 0 4px rgb(249 115 22 / 0.14)));
+  --export-transition: var(--entity-modal-transition, var(--mov-trans, 160ms ease));
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  overflow: auto;
+  background: rgba(8, 16, 30, 0.56);
+  backdrop-filter: blur(2px);
+  animation: globalExportModalFade 0.1s ease-out;
+}
+
+.global-exportHistorial-modal {
+  width: min(680px, 100%);
+  max-height: calc(100dvh - 36px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--entity-modal-radius, 20px);
+  color: var(--export-ink);
+  background: var(--export-bg);
+  box-shadow: var(
+    --entity-modal-shadow,
+    0 32px 80px rgb(15 23 42 / 0.26), 0 2px 8px rgb(15 23 42 / 0.08)
+  );
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+  animation: globalExportModalPop 0.11s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.global-exportHistorial-header {
+  position: relative;
+  min-height: 70px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #fff;
+  background: var(--export-action);
+}
+
+.global-exportHistorial-header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.global-exportHistorial-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.global-exportHistorial-header p {
+  max-width: 560px;
+  margin: 5px 0 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12.5px;
+  font-weight: 430;
+  line-height: 1.35;
+}
+
+.global-exportHistorial-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  transition:
+    transform var(--export-transition),
+    background var(--export-transition),
+    border-color var(--export-transition),
+    opacity var(--export-transition);
+}
+
+.global-exportHistorial-close:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.global-exportHistorial-close:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
+.global-exportHistorial-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.global-exportHistorial-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 18px 20px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  background: linear-gradient(180deg, #fff 0%, var(--export-bg) 100%);
+}
+
+.global-exportHistorial-info {
+  --export-card-tone: var(--export-action);
+  position: relative;
+  min-width: 0;
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  overflow: hidden;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--export-card-tone) 22%, var(--export-border));
+  border-radius: var(--blue-inst-radius-lg, 18px);
+  color: var(--export-card-tone);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--export-card-tone) 12%, #fff) 0%,
+    #fff 75%
+  );
+  box-shadow: var(--mov-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
+}
+
+.global-exportHistorial-info::before,
+.global-exportHistorial-option::before {
+  position: absolute;
+  inset: 14px auto 14px 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: currentColor;
+  content: "";
+}
+
+.global-exportHistorial-infoIcon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: var(--blue-inst-radius, 12px);
+  background: color-mix(in srgb, currentColor 14%, #fff);
+  font-size: 15px;
+}
+
+.global-exportHistorial-infoBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.global-exportHistorial-infoBody > span {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--export-card-tone) 76%, var(--export-text));
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.global-exportHistorial-infoBody > strong {
+  overflow: hidden;
+  color: var(--export-ink);
+  font-size: clamp(20px, 2vw, 26px);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-exportHistorial-scope,
+.global-exportHistorial-note {
+  margin: 12px 0 0;
+  color: var(--export-text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.global-exportHistorial-note {
+  padding: 9px 11px;
+  border-radius: var(--blue-inst-radius, 12px);
+  background: color-mix(in srgb, var(--export-action) 7%, #fff);
+}
+
+.global-exportHistorial-note b,
+.global-exportHistorial-note strong {
+  color: var(--export-ink);
+  font-weight: 700;
+}
+
+.global-exportHistorial-groupTitle {
+  margin: 18px 2px 8px;
+  color: color-mix(in srgb, var(--export-text) 88%, #000);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.global-exportHistorial-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.global-exportHistorial-option {
+  --export-option-tone: var(--export-action);
+  position: relative;
+  min-width: 0;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  overflow: hidden;
+  padding: 13px 36px 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--export-option-tone) 22%, var(--export-border));
+  border-radius: var(--blue-inst-radius-lg, 18px);
+  color: var(--export-option-tone);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--export-option-tone) 12%, #fff) 0%,
+    #fff 75%
+  );
+  box-shadow: var(--mov-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
+  cursor: pointer;
+  transition:
+    transform var(--export-transition),
+    border-color var(--export-transition),
+    background var(--export-transition),
+    box-shadow var(--export-transition);
+}
+
+.global-exportHistorial-option[data-tone="excel"] {
+  --export-option-tone: var(--export-success);
+}
+
+.global-exportHistorial-option[data-tone="pdf"] {
+  --export-option-tone: var(--export-danger);
+}
+
+.global-exportHistorial-option::after {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--export-option-tone) 30%, transparent);
+  border-radius: 50%;
+  color: #fff;
+  background: var(--export-option-tone);
+  content: "\2713";
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0;
+  transform: scale(0.72);
+  transition:
+    opacity var(--export-transition),
+    transform var(--export-transition);
+}
+
+.global-exportHistorial-option:hover:not(:has(input:disabled)) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--export-option-tone) 36%, var(--export-border));
+  box-shadow: 0 11px 24px -19px color-mix(in srgb, var(--export-option-tone) 42%, transparent);
+}
+
+.global-exportHistorial-option.is-active {
+  border-color: color-mix(in srgb, var(--export-option-tone) 48%, var(--export-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--export-option-tone) 17%, #fff) 0%,
+    #fff 78%
+  );
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--export-option-tone) 11%, transparent),
+    0 10px 22px -18px color-mix(in srgb, var(--export-option-tone) 70%, transparent);
+}
+
+.global-exportHistorial-option.is-active::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.global-exportHistorial-option:focus-within {
+  border-color: color-mix(in srgb, var(--export-option-tone) 62%, #fff);
+  box-shadow: var(--export-focus);
+}
+
+.global-exportHistorial-option:has(input:disabled) {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.global-exportHistorial-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.global-exportHistorial-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: var(--blue-inst-radius, 12px);
+  color: var(--export-option-tone);
+  background: color-mix(in srgb, currentColor 14%, #fff);
+  font-size: 15px;
+}
+
+.global-exportHistorial-option > span:last-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.global-exportHistorial-option b {
+  overflow: hidden;
+  color: var(--export-ink);
+  font-size: 12.5px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.global-exportHistorial-option small {
+  color: var(--export-text);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.global-exportHistorial-options--scope .global-exportHistorial-option {
+  min-height: 104px;
+}
+
+.global-exportHistorial-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 13px 20px 16px;
+  border-top: 1px solid var(--export-border);
+  background: #fff;
+}
+
+.global-exportHistorial-action {
+  min-width: 112px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--export-border);
+  border-radius: 12px;
+  color: var(--export-ink);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 580;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform var(--export-transition),
+    box-shadow var(--export-transition),
+    background var(--export-transition),
+    border-color var(--export-transition),
+    opacity var(--export-transition);
+}
+
+.global-exportHistorial-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.global-exportHistorial-action:focus-visible {
+  outline: none;
+  box-shadow: var(--export-focus);
+}
+
+.global-exportHistorial-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.global-exportHistorial-action--secondary {
+  background: color-mix(in srgb, var(--export-bg) 65%, #fff);
+}
+
+.global-exportHistorial-action--secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--export-bg) 86%, #fff);
+  box-shadow: var(--mov-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
+}
+
+.global-exportHistorial-action--import {
+  min-width: 0;
+  margin-right: auto;
+  border-color: color-mix(in srgb, var(--export-action) 30%, var(--export-border));
+  color: var(--export-action);
+  background: color-mix(in srgb, var(--export-action) 8%, #fff);
+}
+
+.global-exportHistorial-action--import:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--export-action) 45%, var(--export-border));
+  background: color-mix(in srgb, var(--export-action) 13%, #fff);
+  box-shadow: 0 10px 22px -18px color-mix(in srgb, var(--export-action) 70%, transparent);
+}
+
+.global-exportHistorial-action--primary {
+  border-color: color-mix(in srgb, var(--export-action) 60%, #fff);
+  color: #fff;
+  background: var(--export-action);
+  box-shadow: 0 10px 22px rgb(249 115 22 / 0.18);
+}
+
+.global-exportHistorial-action--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--export-action) 88%, #000);
+  box-shadow: 0 14px 26px rgb(249 115 22 / 0.22);
+}
+
+@media (max-width: 720px) {
+  .global-exportHistorial-overlay {
+    padding: 10px;
+  }
+
+  .global-exportHistorial-modal {
+    max-height: calc(100dvh - 20px);
+    border-radius: 16px;
+  }
+
+  .global-exportHistorial-header {
+    min-height: 64px;
+    padding: 14px 16px;
+  }
+
+  .global-exportHistorial-body {
+    padding: 16px;
+  }
+
+  .global-exportHistorial-options {
+    grid-template-columns: 1fr;
+  }
+
+  .global-exportHistorial-footer {
+    padding: 12px 16px 15px;
+  }
+
+  .global-exportHistorial-action:not(.global-exportHistorial-action--import) {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+@media (max-width: 520px) {
+  .global-exportHistorial-footer {
+    flex-wrap: wrap;
+  }
+
+  .global-exportHistorial-action--import {
+    width: 100%;
+    margin-right: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .global-exportHistorial-overlay,
+  .global-exportHistorial-modal {
+    animation: none;
+  }
+
+  .global-exportHistorial-trigger,
+  .global-exportHistorial-close,
+  .global-exportHistorial-option,
+  .global-exportHistorial-option::after,
+  .global-exportHistorial-action {
+    transition: none;
+  }
+}
+
+.global-exportHistorial-modal.is-size-transitioning {
+  overflow: hidden !important;
+  will-change: height;
+}

@@ -1,0 +1,537 @@
+/* =========================================================
+   GESTIÓN DE SOCIOS — BASE GLOBAL DE MODALES
+   Contenedor, tipografía, colores, campos, acciones y responsive.
+   Los ajustes particulares permanecen junto a cada componente.
+   ========================================================= */
+
+:root {
+  --entity-modal-ink: var(--balto-ink, #0f172a);
+  --entity-modal-action: var(--balto-action, #f97316);
+  --entity-modal-bg: var(--balto-bg, #f8fafc);
+  --entity-modal-text: var(--balto-text, #475569);
+  --entity-modal-danger: var(--balto-danger, #ef4444);
+  --entity-modal-border: var(--mov-border, #e2e8f0);
+  --entity-modal-focus: var(--mov-focus, 0 0 0 4px rgb(249 115 22 / 0.14));
+  --entity-modal-transition: var(
+    --mov-trans,
+    160ms cubic-bezier(0.4, 0, 0.2, 1)
+  );
+  --entity-modal-radius: 20px;
+  --entity-modal-field-radius: 11px;
+  --entity-modal-shadow:
+    0 32px 80px rgb(15 23 42 / 0.26), 0 2px 8px rgb(15 23 42 / 0.08);
+}
+
+.entity-modal-overlay,
+.entity-modal-overlay * {
+  box-sizing: border-box;
+}
+
+@keyframes entityModalFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes entityModalPop {
+  from {
+    opacity: 0.96;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.entity-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  overflow: auto;
+  background: rgba(8, 16, 30, 0.56);
+  backdrop-filter: blur(2px);
+  animation: entityModalFade 0.1s ease-out;
+}
+
+.entity-modal {
+  width: min(580px, 100%);
+  max-height: calc(100dvh - 36px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--entity-modal-radius);
+  color: var(--entity-modal-ink);
+  background: var(--entity-modal-bg);
+  box-shadow: var(--entity-modal-shadow);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+  animation: entityModalPop 0.11s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.entity-modal--wide {
+  width: min(900px, 100%);
+}
+
+.entity-modal__header {
+  position: relative;
+  min-height: 70px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #fff;
+  background: var(--entity-modal-action);
+}
+
+.entity-modal__header::after {
+  content: none;
+}
+
+.entity-modal__header > div,
+.entity-modal__close {
+  position: relative;
+  z-index: 1;
+}
+
+.entity-modal__header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.entity-modal__header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.entity-modal__header p {
+  max-width: 720px;
+  margin: 5px 0 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12.5px;
+  font-weight: 430;
+  line-height: 1.35;
+}
+
+.entity-modal__close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  transition:
+    transform var(--entity-modal-transition),
+    background var(--entity-modal-transition),
+    border-color var(--entity-modal-transition),
+    opacity var(--entity-modal-transition);
+}
+
+.entity-modal__close:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.entity-modal__close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.entity-modal form {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.entity-modal__body {
+  min-height: 0;
+  flex: 1;
+  padding: 18px 20px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  background: linear-gradient(180deg, #fff 0%, var(--entity-modal-bg) 100%);
+}
+
+.entity-modal__body.is-loading {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.entity-modal__footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 13px 20px 16px;
+  border-top: 1px solid var(--entity-modal-border);
+  background: #fff;
+}
+
+.entity-modal__footer .mov-btn {
+  min-width: 112px;
+}
+
+.entity-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.entity-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 14px;
+}
+
+.entity-form__grid--single {
+  grid-template-columns: 1fr;
+}
+
+.entity-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entity-field--wide {
+  grid-column: 1 / -1;
+}
+
+.entity-field > span,
+.entity-modalities legend,
+.entity-checks legend {
+  color: color-mix(in srgb, var(--entity-modal-text) 88%, #000);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.entity-field input,
+.entity-field select,
+.entity-field textarea,
+.entity-modal-input,
+.entity-modality-fields input {
+  width: 100%;
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: var(--entity-modal-field-radius);
+  outline: none;
+  color: var(--entity-modal-ink);
+  background: color-mix(in srgb, var(--entity-modal-bg) 48%, #fff);
+  transition:
+    border-color var(--entity-modal-transition),
+    box-shadow var(--entity-modal-transition),
+    background var(--entity-modal-transition);
+}
+
+.entity-field textarea {
+  min-height: 82px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.entity-field input:focus,
+.entity-field select:focus,
+.entity-field textarea:focus,
+.entity-modal-input:focus,
+.entity-modality-fields input:focus {
+  border-color: color-mix(in srgb, var(--entity-modal-action) 62%, #fff);
+  box-shadow: var(--entity-modal-focus);
+  background: #fff;
+}
+
+.entity-field input:disabled,
+.entity-field select:disabled,
+.entity-field textarea:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.entity-field input[type="date"] {
+  cursor: pointer;
+}
+
+.entity-field input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.entity-checks,
+.entity-modalities {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--entity-modal-bg) 42%, #fff);
+}
+
+.entity-checks legend,
+.entity-modalities legend {
+  padding: 0 6px;
+  color: var(--entity-modal-ink);
+}
+
+.entity-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.entity-checks > label,
+.entity-check-option {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 10px;
+  color: var(--entity-modal-text);
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 560;
+  transition:
+    color var(--entity-modal-transition),
+    border-color var(--entity-modal-transition),
+    background var(--entity-modal-transition);
+}
+
+.entity-checks > label:hover,
+.entity-check-option:hover {
+  border-color: color-mix(in srgb, var(--entity-modal-action) 34%, #fff);
+}
+
+.entity-checks > label.is-selected,
+.entity-check-option.is-selected {
+  color: var(--entity-modal-action);
+  border-color: color-mix(in srgb, var(--entity-modal-action) 38%, #fff);
+  background: color-mix(in srgb, var(--entity-modal-action) 9%, #fff);
+}
+
+.entity-checks label:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.entity-checks input[type="checkbox"],
+.entity-modalities input[type="checkbox"] {
+  accent-color: var(--entity-modal-action);
+}
+
+.entity-help {
+  width: 100%;
+  margin: 6px 0;
+  color: var(--entity-modal-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.entity-confirm-text {
+  margin: 0;
+  color: var(--entity-modal-text);
+  font-size: 13px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+/* Patrones compartidos por otros módulos del sistema. */
+.entity-modalities__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.entity-modalities article {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.entity-modalities article.is-selected {
+  border-color: color-mix(in srgb, var(--entity-modal-action) 38%, #fff);
+  box-shadow: 0 8px 20px -18px
+    color-mix(in srgb, var(--entity-modal-action) 65%, transparent);
+}
+
+.entity-modality-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.entity-modality-toggle strong {
+  color: var(--entity-modal-ink);
+  font-size: 13px;
+}
+
+.entity-modalities article > small {
+  display: block;
+  margin-top: 8px;
+  color: var(--entity-modal-text);
+  font-size: 11px;
+}
+
+.entity-modality-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 11px;
+}
+
+.entity-modality-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.entity-modality-fields span {
+  color: var(--entity-modal-text);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.entity-modality-fields input {
+  min-height: 38px;
+  padding: 7px 9px;
+}
+
+.entity-history {
+  display: grid;
+  gap: 10px;
+}
+
+.entity-history article {
+  padding: 12px 13px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--entity-modal-bg) 42%, #fff);
+}
+
+.entity-history article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.entity-history strong {
+  color: var(--entity-modal-ink);
+  font-size: 17px;
+}
+
+.entity-history span,
+.entity-history small {
+  color: var(--entity-modal-text);
+  font-size: 11px;
+}
+
+.entity-history p {
+  margin: 8px 0 5px;
+  color: var(--entity-modal-ink);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+@media (max-width: 720px) {
+  .entity-modal-overlay {
+    padding: 10px;
+  }
+
+  .entity-modal {
+    max-height: calc(100dvh - 20px);
+    border-radius: 16px;
+  }
+
+  .entity-modal__header {
+    min-height: 64px;
+    padding: 14px 16px;
+  }
+
+  .entity-modal__body {
+    padding: 16px;
+  }
+
+  .entity-modal__footer {
+    padding: 12px 16px 15px;
+  }
+
+  .entity-form__grid,
+  .entity-modalities__grid,
+  .entity-modality-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-field--wide {
+    grid-column: auto;
+  }
+
+  .entity-modal__footer .mov-btn {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entity-modal-overlay,
+  .entity-modal {
+    animation: none;
+  }
+}
+
+/* =========================================================
+   TRANSICIÓN GLOBAL DE TAMAÑO
+   useAnimatedModalSize agrega esta clase sólo durante el cambio de alto.
+   ========================================================= */
+.entity-modal.is-size-transitioning,
+.gdel-modal.is-size-transitioning,
+.global-exportHistorial-modal.is-size-transitioning {
+  overflow: hidden !important;
+  will-change: height;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entity-modal,
+  .gdel-modal,
+  .global-exportHistorial-modal {
+    animation-duration: 0.01ms !important;
+  }
+}

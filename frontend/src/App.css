@@ -1,0 +1,7 @@
+.app-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  color: var(--balto-text);
+  background: var(--balto-bg);
+}

@@ -1,0 +1,52 @@
+/* Ajustes exclusivos de los modales de Categorías. La base vive en Global. */
+.categorias-modal--form.entity-modal {
+  width: min(820px, 100%);
+}
+
+.categorias-modal--form .entity-modal__body,
+.categorias-modal--discount .entity-modal__body {
+  padding: 14px 20px 18px;
+  background: linear-gradient(180deg, #fff 0%, #fdfbf7 100%);
+}
+
+.categorias-modal--form .entity-modal__footer,
+.categorias-modal--discount .entity-modal__footer {
+  padding-top: 12px;
+}
+
+.categorias-modal__form {
+  gap: 0;
+}
+
+.categorias-price-panel__body {
+  align-items: start;
+}
+
+.categorias-modal--discount.entity-modal {
+  width: min(780px, 100%);
+}
+
+.categorias-discount-form .entity-form-panel {
+  margin-top: 0;
+}
+
+.categorias-discount-panel__body {
+  gap: 13px;
+  align-items: start;
+}
+
+.categorias-info-modal.entity-modal {
+  width: min(820px, 100%);
+}
+
+.categorias-info-content {
+  display: grid;
+  gap: 13px;
+}
+
+@media (max-width: 720px) {
+  .categorias-modal--form .entity-modal__body,
+  .categorias-modal--discount .entity-modal__body {
+    padding: 10px 13px 14px;
+  }
+}

@@ -1,0 +1,50 @@
+/* Medidas y alineaciones exclusivas de la tabla de Familias. */
+.familias-grid {
+  grid-template-columns:
+    minmax(0, 1.15fr)
+    minmax(0, 1.55fr)
+    minmax(0, 1.8fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.7fr);
+  width: 100%;
+  min-width: 0;
+}
+
+.familias-table,
+.familias-table .entity-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.familias-table .entity-table-wrap {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.familias-grid > .mov-gridCell--head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.familias-grid .mov-actionsInline {
+  max-width: 100%;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.familias-grid > :nth-child(4),
+.familias-grid > :nth-child(5) {
+  justify-content: center;
+  text-align: center;
+}
+
+@media (max-width: 1040px) {
+  .familias-table .entity-table-wrap {
+    overflow-x: auto;
+  }
+
+  .familias-grid {
+    min-width: 820px;
+  }
+}

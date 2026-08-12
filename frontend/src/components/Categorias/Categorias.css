@@ -1,0 +1,110 @@
+/* Medidas y alineaciones exclusivas de las tablas de Categorías. */
+.categorias-grid {
+  grid-template-columns:
+    minmax(0, 0.62fr)
+    minmax(0, 1.8fr)
+    minmax(0, 0.82fr)
+    minmax(0, 0.52fr)
+    minmax(0, 0.78fr)
+    minmax(0, 0.82fr);
+  width: 100%;
+  min-width: 0;
+}
+
+.categorias-grid > :not(:nth-child(2)):not(:nth-child(3)) {
+  justify-content: center;
+  text-align: center;
+}
+
+.categorias-grid > :nth-child(2) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.categorias-grid > :nth-child(3) {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.categorias-money-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+.categorias-discountsGrid {
+  grid-template-columns:
+    minmax(0, 0.72fr)
+    minmax(0, 1.1fr)
+    minmax(0, 0.5fr)
+    minmax(0, 0.9fr)
+    minmax(0, 1.65fr)
+    minmax(0, 0.52fr)
+    minmax(0, 0.52fr);
+  width: 100%;
+  min-width: 0;
+}
+
+.categorias-discountsGrid--history {
+  grid-template-columns:
+    minmax(0, 0.78fr)
+    minmax(0, 1.2fr)
+    minmax(0, 0.58fr)
+    minmax(0, 1fr)
+    minmax(0, 1.9fr)
+    minmax(0, 0.62fr);
+}
+
+.categorias-discountsGrid > :not(:nth-child(5)) {
+  justify-content: center;
+  text-align: center;
+}
+
+.categorias-discountsGrid > :nth-child(5) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.categorias-table,
+.categorias-discountsTable,
+.categorias-table .entity-table-wrap,
+.categorias-discountsTable .entity-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.categorias-table .entity-table-wrap,
+.categorias-discountsTable .entity-table-wrap {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.categorias-grid > .mov-gridCell--head,
+.categorias-discountsGrid > .mov-gridCell--head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categorias-grid .mov-actionsInline,
+.categorias-discountsGrid .mov-actionsInline {
+  max-width: 100%;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.categorias-discount-vigencia {
+  display: grid;
+  gap: 2px;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 1080px) {
+  .categorias-table .entity-table-wrap,
+  .categorias-discountsTable .entity-table-wrap {
+    overflow-x: auto;
+  }
+
+  .categorias-grid,
+  .categorias-discountsGrid {
+    min-width: 980px;
+  }
+}

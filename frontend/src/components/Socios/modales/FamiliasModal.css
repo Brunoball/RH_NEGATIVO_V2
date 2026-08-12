@@ -1,0 +1,714 @@
+/* =========================================================
+   Familias — estilos propios de sus modales.
+   La base visual vive en Global/Global_css/Global_Modals.css.
+   ========================================================= */
+
+.familias-modal--form.entity-modal {
+  width: min(880px, 100%);
+}
+
+.familias-modal--state.entity-modal {
+  width: min(520px, 100%);
+}
+
+.familias-modal--form .entity-modal__body {
+  padding: 14px 20px 18px;
+  background: linear-gradient(
+    180deg,
+    var(--surface-color) 0%,
+    var(--primary-50) 100%
+  );
+}
+
+.familias-modal--form .entity-modal__footer {
+  padding-top: 12px;
+}
+
+.familias-modal__form {
+  gap: 0;
+}
+
+.familias-form-panel__body--details,
+.familias-form-panel__body--members {
+  display: grid;
+  gap: 14px;
+}
+
+.familias-form-panel__body--details .entity-floating-field:first-child {
+  max-width: 520px;
+}
+
+.familias-modal__search-row {
+  min-width: 0;
+}
+
+.familias-modal__member-search input {
+  min-height: 42px;
+}
+
+.familias-modal__members {
+  display: block;
+  padding: 12px;
+  border-color: var(--border-color);
+  background: color-mix(in srgb, var(--primary-50) 66%, var(--surface-color));
+}
+
+.familias-modal__members legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--entity-modal-ink);
+  font-size: 10.5px;
+}
+
+.familias-modal__members legend svg {
+  color: var(--entity-modal-action);
+}
+
+.familias-modal__member-list {
+  max-height: 276px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 4px 2px 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.familias-modal__member-list > .familias-modal__member {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr);
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px -13px rgb(15 23 42 / 0.38);
+}
+
+.familias-modal__member input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  appearance: none;
+  display: grid;
+  place-content: center;
+  border: 1.5px solid var(--gray-400);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color var(--entity-modal-transition),
+    background var(--entity-modal-transition),
+    box-shadow var(--entity-modal-transition);
+}
+
+.familias-modal__member input[type="checkbox"]::before {
+  content: "";
+  width: 8px;
+  height: 5px;
+  margin-top: -2px;
+  border-bottom: 2px solid #fff;
+  border-left: 2px solid #fff;
+  opacity: 0;
+  transform: rotate(-45deg) scale(0.7);
+  transition:
+    opacity var(--entity-modal-transition),
+    transform var(--entity-modal-transition);
+}
+
+.familias-modal__member input[type="checkbox"]:checked {
+  border-color: var(--entity-modal-action);
+  background: var(--entity-modal-action);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-500) 12%, transparent);
+}
+
+.familias-modal__member input[type="checkbox"]:checked::before {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1);
+}
+
+.familias-modal__member input[type="checkbox"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--entity-modal-action) 45%, #fff);
+  outline-offset: 2px;
+}
+
+.familias-modal__member-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.familias-modal__member-copy strong,
+.familias-modal__member-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.familias-modal__member-copy strong {
+  color: var(--entity-modal-ink);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.familias-modal__member-copy small {
+  color: var(--entity-modal-text);
+  font-size: 10.5px;
+  font-weight: 520;
+}
+
+.familias-modal__member.is-selected .familias-modal__member-copy strong {
+  color: var(--entity-modal-action);
+}
+
+.familias-modal__member:has(input:disabled) {
+  border-style: dashed;
+  background: var(--gray-50);
+  box-shadow: none;
+}
+
+.familias-modal__member input:disabled {
+  cursor: not-allowed;
+}
+
+.familias-modal__empty {
+  grid-column: 1 / -1;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--entity-modal-text);
+  text-align: center;
+}
+
+.familias-modal__empty strong {
+  color: var(--entity-modal-ink);
+  font-size: 12px;
+}
+
+.familias-modal__empty span {
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .familias-modal--form .entity-modal__body {
+    padding: 10px 13px 14px;
+  }
+
+  .familias-modal__member-list {
+    max-height: 220px;
+    grid-template-columns: 1fr;
+  }
+}
+
+.familias-form-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--entity-modal-action) 22%, #fff);
+  border-radius: 12px;
+  color: var(--entity-modal-text);
+  background: color-mix(in srgb, var(--entity-modal-action) 6%, #fff);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.familias-form-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--entity-modal-action);
+}
+
+.familias-selected-members {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.familias-selected-members > header {
+  display: grid;
+  gap: 2px;
+}
+
+.familias-selected-members > header strong {
+  color: var(--entity-modal-ink);
+  font-size: 12px;
+}
+
+.familias-selected-members > header span {
+  color: var(--entity-modal-text);
+  font-size: 10.5px;
+}
+
+.familias-selected-members__list {
+  display: grid;
+  gap: 7px;
+}
+
+.familias-selected-member {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 1.25fr) auto minmax(110px, 0.8fr) minmax(132px, 0.85fr)
+    minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.familias-selected-member.is-holder {
+  border-color: color-mix(in srgb, var(--entity-modal-action) 42%, #fff);
+  background: color-mix(in srgb, var(--entity-modal-action) 5%, #fff);
+}
+
+.familias-selected-member__identity {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.familias-selected-member__identity strong,
+.familias-selected-member__identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.familias-selected-member__identity strong {
+  color: var(--entity-modal-ink);
+  font-size: 11.5px;
+}
+
+.familias-selected-member__identity small {
+  color: var(--entity-modal-text);
+  font-size: 10px;
+}
+
+.familias-holder-toggle {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 9px;
+  color: var(--entity-modal-text);
+  background: #fff;
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    color var(--entity-modal-transition),
+    border-color var(--entity-modal-transition),
+    background var(--entity-modal-transition),
+    box-shadow var(--entity-modal-transition),
+    transform var(--entity-modal-transition);
+}
+
+.familias-holder-toggle:hover {
+  color: var(--entity-modal-action);
+  border-color: color-mix(in srgb, var(--entity-modal-action) 42%, #fff);
+  background: color-mix(in srgb, var(--entity-modal-action) 4%, #fff);
+}
+
+.familias-holder-toggle:has(input:checked) {
+  color: var(--entity-modal-action);
+  border-color: color-mix(in srgb, var(--entity-modal-action) 42%, #fff);
+  background: color-mix(in srgb, var(--entity-modal-action) 8%, #fff);
+  box-shadow: 0 4px 12px -10px color-mix(in srgb, var(--entity-modal-action) 55%, transparent);
+}
+
+.familias-holder-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: 0 0 17px;
+  border: 1.5px solid var(--gray-400);
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color var(--entity-modal-transition),
+    background var(--entity-modal-transition),
+    box-shadow var(--entity-modal-transition);
+}
+
+.familias-holder-toggle input::before {
+  content: "";
+  width: 7px;
+  height: 4px;
+  margin-top: -2px;
+  border-bottom: 2px solid #fff;
+  border-left: 2px solid #fff;
+  opacity: 0;
+  transform: rotate(-45deg) scale(0.7);
+  transition:
+    opacity var(--entity-modal-transition),
+    transform var(--entity-modal-transition);
+}
+
+.familias-holder-toggle input:checked {
+  border-color: var(--entity-modal-action);
+  background: var(--entity-modal-action);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-500) 12%, transparent);
+}
+
+.familias-holder-toggle input:checked::before {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1);
+}
+
+.familias-holder-toggle input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--entity-modal-action) 45%, #fff);
+  outline-offset: 2px;
+}
+
+.familias-member-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 9px;
+  color: var(--entity-modal-ink);
+  background: #fff;
+  font-size: 10.5px;
+}
+
+.familias-member-input:focus {
+  outline: none;
+  border-color: var(--entity-modal-action);
+  box-shadow: var(--entity-modal-focus);
+}
+
+.familias-member-remove {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--entity-modal-danger) 30%, #fff);
+  border-radius: 9px;
+  color: var(--entity-modal-danger);
+  background: color-mix(in srgb, var(--entity-modal-danger) 5%, #fff);
+  font-size: 9.5px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.familias-unlink-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--entity-modal-danger) 25%, #fff);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--entity-modal-danger) 5%, #fff);
+}
+
+.familias-unlink-panel > strong {
+  color: var(--entity-modal-danger);
+  font-size: 12px;
+}
+
+.familias-unlink-panel > p {
+  margin: 0;
+  color: var(--entity-modal-text);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.familias-info-modal.entity-modal {
+  width: min(900px, 100%);
+}
+
+@media (max-width: 900px) {
+  .familias-selected-member {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .familias-member-input,
+  .familias-member-input--observation {
+    grid-column: 1 / -1;
+  }
+
+  .familias-member-remove {
+    justify-self: end;
+  }
+}
+
+/* ===== Selector de integrantes en dos listas ===== */
+.familias-modal--form.entity-modal {
+  width: min(1080px, 100%);
+}
+
+.familias-form-panel__body--members {
+  height: clamp(330px, calc(100vh - 330px), 460px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.familias-members-layout {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+}
+
+.familias-members-column {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--entity-modal-border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.familias-members-column--current {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.familias-members-column__header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.familias-members-column__header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.familias-members-column__header strong {
+  color: var(--entity-modal-ink);
+  font-size: 12px;
+}
+
+.familias-members-column__header span:not(.familias-members-count) {
+  color: var(--entity-modal-text);
+  font-size: 10.5px;
+}
+
+.familias-members-count {
+  min-width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--entity-modal-action);
+  background: color-mix(in srgb, var(--entity-modal-action) 10%, #fff);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.familias-modal__member-list--available,
+.familias-selected-members__list {
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+.familias-modal__member-list--available {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.familias-add-members-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--entity-modal-action);
+  border-radius: 10px;
+  color: #fff;
+  background: var(--entity-modal-action);
+  font-size: 10.5px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: opacity var(--entity-modal-transition), transform var(--entity-modal-transition);
+}
+
+.familias-add-members-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.familias-add-members-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.familias-selected-members__list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.familias-selected-member {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+  padding: 10px;
+}
+
+.familias-selected-member__top {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.familias-selected-member__fields {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(100px, 0.8fr) minmax(132px, 0.9fr) minmax(150px, 1.2fr);
+  gap: 7px;
+}
+
+.familias-member-remove {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 9px;
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .familias-form-panel__body--members {
+    height: auto;
+    overflow: visible;
+  }
+
+  .familias-members-layout {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .familias-modal__member-list--available,
+  .familias-selected-members__list {
+    max-height: 270px;
+  }
+}
+
+@media (max-width: 620px) {
+  .familias-selected-member__fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.familias-modal--form .entity-modal__body:has(.familias-members-layout) {
+  overflow: hidden;
+}
+
+/* Avatar con inicial, replicado de la estética de Cooperadora. */
+.familias-member-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--entity-modal-action);
+  background: color-mix(in srgb, var(--entity-modal-action) 12%, #fff);
+  border: 1px solid color-mix(in srgb, var(--entity-modal-action) 22%, #fff);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.familias-modal__member {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.familias-selected-member__top {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+/* CrudModal ubica footerStart antes de Cancelar; con auto queda pegado al grupo de acciones. */
+.familias-modal--form .entity-modal__footer-start {
+  margin-left: auto;
+}
+
+.familias-footer-add-members {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Corrección de alineación: checkbox, avatar y datos permanecen en la misma fila. */
+.familias-modal__member-list--available > .familias-modal__member {
+  grid-template-columns: 19px 34px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  min-height: 58px;
+}
+
+.familias-modal__member-list--available > .familias-modal__member .familias-member-avatar,
+.familias-modal__member-list--available > .familias-modal__member .familias-modal__member-copy {
+  min-width: 0;
+  align-self: center;
+}
+
+/* Socios ya vinculados a otra familia: visibles, pero claramente no seleccionables. */
+.familias-modal__member-list--available > .familias-modal__member.is-disabled {
+  cursor: not-allowed;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--gray-300) 78%, #fff);
+  background: color-mix(in srgb, var(--gray-100) 82%, #fff);
+  box-shadow: none;
+  opacity: 0.72;
+}
+
+.familias-modal__member-list--available > .familias-modal__member.is-disabled:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--gray-300) 78%, #fff);
+  background: color-mix(in srgb, var(--gray-100) 82%, #fff);
+}
+
+.familias-modal__member.is-disabled input[type="checkbox"] {
+  border-color: var(--gray-300);
+  background: var(--gray-100);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.familias-modal__member.is-disabled .familias-member-avatar {
+  color: var(--gray-500);
+  border-color: var(--gray-200);
+  background: var(--gray-100);
+}
+
+.familias-modal__member.is-disabled .familias-modal__member-copy strong {
+  color: var(--gray-600);
+}
+
+.familias-modal__member.is-disabled .familias-modal__member-copy small {
+  color: var(--gray-500);
+}

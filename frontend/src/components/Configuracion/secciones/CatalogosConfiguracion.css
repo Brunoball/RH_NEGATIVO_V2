@@ -1,0 +1,585 @@
+.config-catalogStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.config-catalogStat {
+  --config-catalogStat-tone: var(--entity-modal-action, var(--balto-action));
+  position: relative;
+  min-width: 0;
+  min-height: 94px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  padding: 13px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--config-catalogStat-tone) 22%,
+      var(--entity-modal-border, var(--border-color))
+    );
+  border-radius: var(--blue-inst-radius-lg, 16px);
+  color: var(--config-catalogStat-tone);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--config-catalogStat-tone) 12%, #fff) 0%,
+    #fff 75%
+  );
+  box-shadow: var(--mov-shadow-sm, 0 8px 22px rgb(15 23 42 / 0.08));
+}
+
+.config-catalogStat::before {
+  position: absolute;
+  inset: 14px auto 14px 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: var(--config-catalogStat-tone);
+  content: "";
+}
+
+.config-catalogStat__icon {
+  z-index: 1;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: var(--blue-inst-radius, 12px);
+  color: var(--config-catalogStat-tone);
+  background: color-mix(in srgb, currentColor 14%, #fff);
+  font-size: 13px;
+}
+
+.config-catalogStat > div {
+  z-index: 1;
+  min-width: 0;
+}
+
+.config-catalogStat small {
+  display: block;
+  color: color-mix(
+    in srgb,
+    var(--config-catalogStat-tone) 76%,
+    var(--entity-modal-text, var(--gray-500))
+  );
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+}
+
+.config-catalogStat strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--balto-midnight);
+  font-size: 18px;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.config-catalogStat p {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--gray-500);
+  font-size: 10.5px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-catalogStat--total {
+  --config-catalogStat-tone: var(--entity-modal-action, var(--balto-action));
+}
+
+.config-catalogStat--active {
+  --config-catalogStat-tone: var(--success-600, #059669);
+}
+
+.config-catalogStat--inactive {
+  --config-catalogStat-tone: var(--entity-modal-danger, var(--danger-500));
+}
+
+.config-catalogStat--usage {
+  --config-catalogStat-tone: var(--secondary-600, #7c3aed);
+}
+
+.config-catalogPanel {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
+.config-catalogPanel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.config-catalogPanel__toolbar > strong {
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.config-catalogTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 13%, transparent);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.config-catalogTabs button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 15px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--gray-600);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 680;
+  cursor: pointer;
+  transition:
+    color var(--mov-trans),
+    background var(--mov-trans),
+    box-shadow var(--mov-trans);
+}
+
+.config-catalogTabs button svg {
+  font-size: 10px;
+}
+
+.config-catalogTabs button.is-active {
+  color: var(--balto-action);
+  background: color-mix(in srgb, var(--primary-color) 6%, #fff);
+  box-shadow: 0 4px 12px -9px rgb(15 23 42 / 0.72);
+}
+
+.config-catalogTable {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.config-catalogTable__head,
+.config-catalogTable__row,
+.config-catalogTable__skeletonRow {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.7fr)
+    minmax(150px, 0.9fr)
+    minmax(100px, 0.65fr)
+    minmax(92px, 0.55fr);
+  align-items: center;
+}
+
+.config-catalogTable__head > *,
+.config-catalogTable__row > *,
+.config-catalogTable__skeletonRow > * {
+  min-width: 0;
+}
+
+.config-catalogTable__head > :nth-child(2),
+.config-catalogTable__head > :nth-child(3),
+.config-catalogTable__head > :nth-child(4),
+.config-catalogTable__row > :nth-child(2),
+.config-catalogTable__row > :nth-child(3),
+.config-catalogTable__row > :nth-child(4),
+.config-catalogTable__skeletonRow > :nth-child(2),
+.config-catalogTable__skeletonRow > :nth-child(3),
+.config-catalogTable__skeletonRow > :nth-child(4) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.config-catalogTable.has-y-scroll > .config-catalogTable__head {
+  padding-right: calc(16px + var(--config-table-scrollbar-width, 0px));
+}
+
+.config-catalogTable__head {
+  min-height: 44px;
+  padding: 0 16px;
+  color: #fff;
+  background: var(--balto-midnight);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.config-catalogTable__head > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-catalogTable__body {
+  min-height: 180px;
+  max-height: calc(100vh - 400px);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.config-catalogTable__row {
+  min-height: 68px;
+  padding: 9px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+  color: var(--balto-midnight);
+  background: #fff;
+  font-size: 11px;
+}
+
+.config-catalogTable__row.is-inactive {
+  background: color-mix(in srgb, var(--gray-500) 3.5%, transparent);
+}
+
+.config-catalogTable__skeletonRow {
+  min-height: 68px;
+  padding: 9px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-primary) 9%, transparent);
+  background: #fff;
+}
+
+.config-catalogTable__skeletonRow .mov-gridCell {
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.config-catalogIdentity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.config-catalogIdentity__icon {
+  width: 39px;
+  height: 39px;
+  min-width: 39px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  background: var(--gradient-primary);
+  font-size: 12px;
+}
+
+.config-catalogIdentity > div {
+  min-width: 0;
+}
+
+.config-catalogIdentity strong {
+  display: block;
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-catalogIdentity small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--gray-500);
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.config-catalogUsage {
+  gap: 7px;
+  color: var(--gray-500);
+}
+
+.config-catalogUsage strong {
+  min-width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 18%, transparent);
+  border-radius: 8px;
+  color: var(--balto-action);
+  background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+  font-size: 10px;
+}
+
+.config-catalogUsage span {
+  overflow: hidden;
+  font-size: 9.5px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-catalogState {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--success-500) 24%, transparent);
+  border-radius: 999px;
+  color: var(--success-700);
+  background: color-mix(in srgb, var(--success-500) 8%, transparent);
+  font-size: 9.5px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.config-catalogState i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.config-catalogState.is-inactive {
+  color: var(--danger-600);
+  border-color: color-mix(in srgb, var(--danger-500) 21%, transparent);
+  background: color-mix(in srgb, var(--danger-500) 7%, transparent);
+}
+
+.config-catalogActions {
+  max-width: 100%;
+  justify-content: center;
+  gap: 4px;
+}
+
+.config-catalogTable__actionsHeading,
+.config-catalogTable__actionsCell {
+  width: max-content;
+  max-width: 100%;
+  justify-self: center;
+}
+
+.config-catalogActions__readonly {
+  color: var(--gray-500);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.config-catalogEmpty {
+  width: 100%;
+  min-width: 0;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: 26px;
+  color: var(--balto-text);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.config-catalogModal .entity-modal__header h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.config-catalogModal .entity-modal__header h2 > svg {
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+.config-catalogForm .entity-floating-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.config-catalogForm .entity-floating-field > span > svg {
+  width: 10px;
+  color: currentColor;
+}
+
+.config-catalogForm__help {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  color: var(--entity-modal-text);
+  background: color-mix(in srgb, var(--primary-color) 5%, #fff);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.config-catalogForm__help svg {
+  color: var(--entity-modal-action);
+  font-size: 10px;
+}
+
+@media (max-width: 1180px) {
+  .config-catalogStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .config-catalogStats {
+    grid-template-columns: 1fr;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .config-catalogPanel__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .config-catalogTabs {
+    width: 100%;
+  }
+
+  .config-catalogTabs button {
+    min-width: 0;
+    flex: 1;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .config-catalogTable {
+    padding: 10px 12px 12px;
+    background: color-mix(in srgb, var(--gray-50) 78%, #fff);
+  }
+
+  .config-catalogTable__head {
+    display: none;
+  }
+
+  .config-catalogTable__body,
+  .config-catalogTable .mov-skeletonWrap {
+    gap: 9px;
+  }
+
+  .config-catalogTable__row,
+  .config-catalogTable__skeletonRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "identity actions"
+      "usage state";
+    gap: 11px 12px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+    border-radius: 13px;
+    box-shadow: 0 8px 20px -22px rgb(15 23 42 / 0.5);
+  }
+
+  .config-catalogTable__row > :nth-child(1),
+  .config-catalogTable__skeletonRow > :nth-child(1) {
+    grid-area: identity;
+  }
+
+  .config-catalogTable__row > :nth-child(2),
+  .config-catalogTable__skeletonRow > :nth-child(2) {
+    grid-area: usage;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .config-catalogTable__row > :nth-child(3),
+  .config-catalogTable__skeletonRow > :nth-child(3) {
+    grid-area: state;
+    justify-content: flex-end;
+    text-align: right;
+  }
+
+  .config-catalogTable__row > :nth-child(4),
+  .config-catalogTable__skeletonRow > :nth-child(4) {
+    grid-area: actions;
+  }
+
+  .config-catalogTable__row [data-label]::before {
+    margin-right: 7px;
+    color: var(--gray-500);
+    content: attr(data-label) ":";
+    font-size: 8.5px;
+    font-weight: 760;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+  }
+
+  .config-catalogTable__skeletonRow .mov-gridCell {
+    min-height: 24px;
+    padding: 0;
+  }
+
+  .config-catalogTable__skeletonRow .mov-gridCell:first-child {
+    min-height: 42px;
+  }
+
+  .config-catalogUsage {
+    min-width: 0;
+  }
+
+  .config-catalogUsage span {
+    white-space: normal;
+  }
+
+  .config-catalogActions {
+    align-self: start;
+  }
+
+  .config-catalogEmpty {
+    min-height: 160px;
+    border: 1px dashed color-mix(in srgb, var(--text-primary) 14%, transparent);
+    border-radius: 13px;
+    background: #fff;
+  }
+}
+
+@media (max-width: 520px) {
+  .config-catalogTabs {
+    align-items: stretch;
+    flex-direction: column;
+    border-radius: 14px;
+  }
+
+  .config-catalogTabs button {
+    width: 100%;
+  }
+
+  .config-catalogPanel__toolbar > strong {
+    text-align: center;
+  }
+}

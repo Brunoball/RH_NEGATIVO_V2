@@ -1,0 +1,60 @@
+/* Indicador de carga reutilizable para modales, paneles y bloques de contenido. */
+.global-loader {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 24px;
+  color: var(--entity-modal-text, var(--balto-text, #475569));
+  text-align: center;
+}
+
+.global-loader--modal {
+  min-height: clamp(250px, 38vh, 350px);
+}
+
+.global-loader--compact {
+  min-height: 74px;
+  padding: 14px;
+}
+
+.global-loader__spinner {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 3px;
+  border: 2.5px solid color-mix(
+    in srgb,
+    var(--entity-modal-action, var(--primary-color, #f97316)) 16%,
+    transparent
+  );
+  border-top-color: var(--entity-modal-action, var(--primary-color, #f97316));
+  border-radius: 50%;
+  animation: globalLoaderSpin 0.72s linear infinite;
+}
+
+.global-loader strong {
+  color: var(--entity-modal-ink, var(--balto-ink, #0f172a));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.global-loader > span:last-child:not(.global-loader__spinner) {
+  max-width: 420px;
+  color: var(--entity-modal-text, var(--balto-text, #475569));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@keyframes globalLoaderSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .global-loader__spinner {
+    animation-duration: 1.4s;
+  }
+}
