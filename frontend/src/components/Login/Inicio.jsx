@@ -7,7 +7,7 @@ import { saveSession } from "../_shared/auth/session";
 import logoRh from "../../imagenes/Logo_rh_sf.png";
 import "./inicio.css";
 
-const APP_NAME = "RH Negativo";
+const APP_NAME = "Círculo RH Negativo";
 const REMEMBERED_ACCOUNT_KEY = "rh_negativo_recordar_cuenta";
 
 function loadRememberedAccount() {
@@ -90,20 +90,24 @@ export default function Inicio() {
         <section className="ini_brand-panel">
           <div className="ini_brand-glow" aria-hidden="true" />
           <div className="ini_brand-content">
-            <div className="ini_brand-logo--placeholder" aria-label="RH Negativo">
+            <div className="ini_brand-logo--placeholder" aria-label={APP_NAME}>
               <div className="brand-mark brand-mark--rh" aria-hidden="true">
                 <img src={logoRh} alt="" />
               </div>
               <div className="brand-word">
-                <strong className="brand-word-title">RH Negativo</strong>
+                <strong className="brand-word-title" aria-label={APP_NAME}>
+                  Círculo RH
+                  <br aria-hidden="true" />
+                  Negativo
+                </strong>
                 <span>Sistema de gestión</span>
               </div>
             </div>
             <div className="ini_brand-copy">
               <h2>Administración simple y centralizada</h2>
               <p>
-                Accedé al sistema de RH Negativo con una sesión segura y control
-                de accesos centralizado.
+                Accedé a {APP_NAME} con una sesión segura y control de accesos
+                centralizado.
               </p>
             </div>
           </div>

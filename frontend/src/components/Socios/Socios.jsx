@@ -161,6 +161,73 @@ function countAdvanced(filters) {
   return Object.values(filters).filter((value) => String(value || "").trim()).length;
 }
 
+function findOptionLabel(options, value, valueKey = "value", labelKey = "label") {
+  return (
+    options.find((option) => String(option?.[valueKey]) === String(value))?.[labelKey] ||
+    String(value)
+  );
+}
+
+function buildAdvancedFilterChips(filters, catalogs) {
+  return [
+    filters.letra
+      ? { key: "letra", label: "Inicial", value: filters.letra }
+      : null,
+    filters.grupo_sanguineo
+      ? {
+          key: "grupo_sanguineo",
+          label: "Tipo de sangre",
+          value: findOptionLabel(
+            catalogs.grupos_sanguineos || [],
+            filters.grupo_sanguineo,
+            "id_grupo_sanguineo",
+            "nombre",
+          ),
+        }
+      : null,
+    filters.estado
+      ? {
+          key: "estado",
+          label: "Estado",
+          value: findOptionLabel(
+            catalogs.estados || [],
+            filters.estado,
+            "id_estado",
+            "nombre",
+          ),
+        }
+      : null,
+    filters.deuda
+      ? {
+          key: "deuda",
+          label: "Deudas / pagos",
+          value: findOptionLabel(DEBT_OPTIONS, filters.deuda),
+        }
+      : null,
+    filters.ultimo_contacto
+      ? {
+          key: "ultimo_contacto",
+          label: "Último contacto",
+          value: findOptionLabel(CONTACT_OPTIONS, filters.ultimo_contacto),
+        }
+      : null,
+    filters.ingreso_desde
+      ? {
+          key: "ingreso_desde",
+          label: "Ingreso desde",
+          value: formatDate(filters.ingreso_desde),
+        }
+      : null,
+    filters.ingreso_hasta
+      ? {
+          key: "ingreso_hasta",
+          label: "Ingreso hasta",
+          value: formatDate(filters.ingreso_hasta),
+        }
+      : null,
+  ].filter(Boolean);
+}
+
 function selectFirstActive(items, key, preferredName = "") {
   const preferred = preferredName
     ? items?.find(
@@ -450,6 +517,33 @@ function AdvancedFilters({ filters, catalogs, onChange, onReset }) {
   );
 }
 
+function ActiveFilterChips({ chips, onRemove }) {
+  if (!chips.length) return null;
+
+  return (
+    <section className="socios-activeFilters" aria-label="Filtros avanzados activos">
+      <span className="socios-activeFilters__label">Filtros activos</span>
+      <div className="socios-activeFilters__list">
+        {chips.map((chip) => (
+          <span className="socios-activeFilterChip" key={chip.key}>
+            <span>
+              {chip.label}: <strong>{chip.value}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(chip.key)}
+              aria-label={`Eliminar filtro ${chip.label}: ${chip.value}`}
+              title={`Eliminar filtro ${chip.label}`}
+            >
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function BirthdayContactCard({ items, onView, onClose, writable }) {
   const [index, setIndex] = useState(0);
   const [closing, setClosing] = useState(false);
@@ -540,7 +634,6 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
         <span className={`socios-statusChip ${item.vigente ? "is-active" : "is-inactive"}`}>
           {item.vigente ? (item.estado || "ACTIVO") : "BAJA"}
         </span>
-        <small>{item.categoria || "SIN CATEGORÍA"}</small>
       </div>
       <div className="mov-gridCell is-center">
         <span className={`socios-debtChip ${Number(item.meses_adeudados) ? "is-due" : "is-ok"}`}>
@@ -897,6 +990,10 @@ export default function Socios() {
 
   const totalPages = Number(paginacion?.total_paginas || 0);
   const pages = useMemo(() => paginationItems(page, totalPages), [page, totalPages]);
+  const activeAdvancedFilters = useMemo(
+    () => buildAdvancedFilterChips(advanced, catalogos),
+    [advanced, catalogos],
+  );
 
   useEffect(() => {
     if (!loading && totalPages > 0 && page > totalPages) setPage(totalPages);
@@ -923,6 +1020,11 @@ export default function Socios() {
 
   const setAdvancedFilters = useCallback((value) => {
     setAdvanced(value);
+    setPage(1);
+  }, []);
+
+  const removeAdvancedFilter = useCallback((key) => {
+    setAdvanced((current) => ({ ...current, [key]: "" }));
     setPage(1);
   }, []);
 
@@ -1154,8 +1256,10 @@ export default function Socios() {
     <>
       <ModulePage
         title="Socios"
+        className="socios-page"
         filters={pageFilters}
         tabsInTitle
+        headFiltersInActions
         headFiltersClassName="socios-headFilters"
         primaryActionLabel="Nuevo socio"
         onPrimaryAction={openNew}
@@ -1204,19 +1308,25 @@ export default function Socios() {
           <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
         </GlobalDivTable>
 
-        {Number(paginacion?.total || 0) > 0 ? (
-          <nav className="socios-pagination" aria-label="Paginación de socios">
+        {Number(paginacion?.total || 0) > 0 || activeAdvancedFilters.length ? (
+          <footer className="socios-pagination">
             <p className="socios-pagination__summary">
-              Mostrando <strong>{paginacion.desde}</strong>–<strong>{paginacion.hasta}</strong> de <strong>{paginacion.total}</strong> socios
+              Mostrando <strong>{paginacion?.desde || 0}</strong>–<strong>{paginacion?.hasta || 0}</strong> de <strong>{paginacion?.total || 0}</strong> socios
             </p>
-            <div className="socios-pagination__controls">
-              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1}>Anterior</button>
-              {pages.map((value) => typeof value === "number" ? (
-                <button type="button" key={value} className={value === page ? "is-active" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)} disabled={loading}>{value}</button>
-              ) : <span className="socios-pagination__ellipsis" key={value}>…</span>)}
-              <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={loading || totalPages === 0 || page >= totalPages}>Siguiente</button>
-            </div>
-          </nav>
+            <ActiveFilterChips
+              chips={activeAdvancedFilters}
+              onRemove={removeAdvancedFilter}
+            />
+            {Number(paginacion?.total || 0) > 0 ? (
+              <nav className="socios-pagination__controls" aria-label="Paginación de socios">
+                <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1}>Anterior</button>
+                {pages.map((value) => typeof value === "number" ? (
+                  <button type="button" key={value} className={value === page ? "is-active" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)} disabled={loading}>{value}</button>
+                ) : <span className="socios-pagination__ellipsis" key={value}>…</span>)}
+                <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={loading || totalPages === 0 || page >= totalPages}>Siguiente</button>
+              </nav>
+            ) : null}
+          </footer>
         ) : null}
       </ModulePage>
 

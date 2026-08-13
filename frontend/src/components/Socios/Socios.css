@@ -1,11 +1,32 @@
-.socios-headFilters {
+.socios-page .module-card__head {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: flex-end;
+  justify-content: stretch;
+  column-gap: 14px;
+}
+
+.socios-page .module-card__headLeft {
+  display: block;
+  width: max-content;
+}
+
+.socios-page .module-card__actions {
+  width: auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.socios-page .module-card__actions > .socios-headFilters {
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
   justify-self: end;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   gap: 10px;
-  width: max-content;
-  max-width: 100%;
+  width: auto;
+  max-width: none;
   min-width: 0;
 }
 
@@ -73,17 +94,6 @@
   border: 1px solid #cfd8e8;
   background: #f8fafc;
   color: #334155;
-}
-
-.socios-statusCell {
-  gap: 5px;
-}
-
-.socios-statusCell small {
-  display: block;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 700;
 }
 
 .socios-statusChip.is-active {
@@ -368,6 +378,84 @@
 
 .socios-filterReset:hover {
   background: #eff6ff;
+}
+
+/* Chips de los filtros avanzados activos, dentro de la barra inferior. */
+.socios-activeFilters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: 1 1 280px;
+  justify-content: center;
+  gap: 7px 9px;
+  min-width: 0;
+}
+
+.socios-activeFilters__label {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.socios-activeFilters__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.socios-activeFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  max-width: 100%;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 4px 3px 11px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.socios-activeFilterChip > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.socios-activeFilterChip strong {
+  color: #1d4ed8;
+  font-weight: 900;
+}
+
+.socios-activeFilterChip button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.socios-activeFilterChip button:hover,
+.socios-activeFilterChip button:focus-visible {
+  background: #dbeafe;
+  color: #1e3a8a;
+  outline: none;
 }
 
 /* Aviso 18-23 años */
@@ -666,7 +754,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
   min-height: 58px;
   border-top: 1px solid #e6edf5;
   padding: 10px 15px;
@@ -674,6 +762,7 @@
 }
 
 .socios-pagination__summary {
+  flex: 0 0 auto;
   margin: 0;
   color: #64748b;
   font-size: 11px;
@@ -686,6 +775,7 @@
 .socios-pagination__controls {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 5px;
 }
 
@@ -721,21 +811,34 @@
 }
 
 @media (max-width: 1250px) {
-  .socios-headFilters {
-    flex-wrap: wrap;
-  }
-
   .socios-filterMenu {
     right: -34px;
   }
 }
 
+@media (max-width: 1020px) {
+  .socios-page .module-card__head {
+    grid-template-columns: 1fr;
+  }
+
+  .socios-page .module-card__headLeft {
+    width: 100%;
+  }
+
+  .socios-page .module-card__actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
 @media (max-width: 780px) {
-  .socios-headFilters {
+  .socios-page .module-card__actions > .socios-headFilters {
     display: grid;
     grid-template-columns: 1fr;
+    flex: 1 1 100%;
     justify-self: stretch;
     width: 100%;
+    max-width: 100%;
   }
 
   .socios-headFilters .module-filter--search,
@@ -751,6 +854,20 @@
     left: 12px;
     width: auto;
     max-height: calc(100vh - 105px);
+  }
+
+  .socios-activeFilters {
+    align-items: flex-start;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .socios-activeFilters__label {
+    flex-basis: 100%;
+  }
+
+  .socios-activeFilters__list {
+    justify-content: flex-start;
   }
 
   .socios-birthdayCard {
