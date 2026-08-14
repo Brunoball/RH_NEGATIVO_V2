@@ -431,6 +431,37 @@
   color: currentColor;
 }
 
+
+.config-catalogField {
+  min-width: 0;
+}
+
+.config-catalogField .entity-floating-field {
+  width: 100%;
+}
+
+.config-catalogField__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 5px 2px 0;
+  color: var(--gray-500);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.config-catalogField__meta span {
+  min-width: 0;
+}
+
+.config-catalogField__meta strong {
+  flex: 0 0 auto;
+  color: var(--gray-600);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .config-catalogForm__help {
   display: flex;
   align-items: center;

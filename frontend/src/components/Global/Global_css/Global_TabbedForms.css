@@ -245,6 +245,25 @@
   font-weight: 750;
 }
 
+/*
+ * Respaldo para controles no controlados o actualizados directamente por el
+ * DOM. Va separado para conservar la regla base en navegadores sin :has().
+ */
+@supports selector(:has(*)) {
+  .entity-floating-field:has(> select) > span,
+  .entity-floating-field:has(> input:not([type="checkbox"]):not([type="hidden"]):not([type="radio"]):not(:placeholder-shown)) > span,
+  .entity-floating-field:has(> textarea:not(:placeholder-shown)) > span {
+    top: 0;
+    left: 10px;
+    padding: 0 5px;
+    transform: translateY(-50%);
+    color: var(--entity-modal-action);
+    background: #fff;
+    font-size: 9.5px;
+    font-weight: 750;
+  }
+}
+
 .entity-floating-field > input:focus,
 .entity-floating-field > select:focus,
 .entity-floating-field > textarea:focus {

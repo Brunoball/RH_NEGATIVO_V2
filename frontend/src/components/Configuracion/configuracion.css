@@ -521,7 +521,7 @@
 
 /* LALCEC V2: accesos principales de configuración. */
 .config-accessGrid--compact {
-  grid-template-columns: repeat(3, minmax(260px, 390px));
+  grid-template-columns: repeat(2, minmax(280px, 430px));
   justify-content: start;
   align-content: start;
 }

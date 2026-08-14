@@ -169,13 +169,18 @@ export default function Dashboard() {
       value: estado.socios_con_familia,
       detail: `${Number(socios.con_familia || 0)} de ${Number(socios.personas_activas || 0)} personas activas`,
     },
-    {
+  ];
+
+  // Algunas instalaciones de RH Negativo no tienen aún el campo de
+  // recordatorios. No mostramos un 0% engañoso cuando esa fuente no existe.
+  if (summary.fuentes?.recordatorios_disponibles !== false) {
+    statusItems.push({
       icon: faBell,
       label: "Recordatorios habilitados",
       value: estado.socios_con_recordatorio,
       detail: `${Number(socios.con_recordatorio || 0)} socios reciben aviso de pago`,
-    },
-  ];
+    });
+  }
 
   return (
     <section className="admin-dashboard">

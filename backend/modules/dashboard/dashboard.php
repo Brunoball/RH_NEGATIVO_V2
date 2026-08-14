@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+/** Dashboard compatible con los esquemas histórico y RH Negativo V2. */
 final class Dashboard
 {
     public static function resumen(): never
@@ -12,374 +13,188 @@ final class Dashboard
     private static function resumenDatos(PDO $db): array
     {
         $today = new DateTimeImmutable('today');
-        $monthStart = $today->modify('first day of this month');
-        $monthEnd = $monthStart->modify('+1 month');
-        $currentYear = (int)$today->format('Y');
-        $currentMonth = (int)$today->format('n');
+        $start = $today->modify('first day of this month');
+        $end = $start->modify('+1 month');
+        $year = (int)$today->format('Y');
+        $month = (int)$today->format('n');
+        $modern = self::columnExists($db, 'socios', 'vigente');
+        $activeWhere = $modern ? 'vigente = 1' : "tipo_socio = 'PERSONA' AND estado = 'ACTIVO'";
+        $activeSocioWhere = $modern ? 's.vigente = 1' : "s.tipo_socio = 'PERSONA' AND s.estado = 'ACTIVO'";
+        $inactiveWhere = $modern ? 'vigente = 0' : "tipo_socio = 'PERSONA' AND estado = 'INACTIVO'";
+        $dateColumn = self::columnExists($db, 'socios', 'fecha_ingreso') ? 'fecha_ingreso' : 'fecha_alta';
 
-        $activePartners = self::count($db, "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO'");
-        $inactivePartners = self::count($db, "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'INACTIVO'");
-        $activePeople = self::count(
-            $db,
-            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO'"
-        );
-        $newPartners = self::count(
-            $db,
-            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND fecha_alta >= ? AND fecha_alta < ?",
-            [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
-        );
-        $activeFamilies = self::count($db, 'SELECT COUNT(*) FROM familias WHERE activo = 1');
-        $peopleWithFamily = self::count(
-            $db,
-            "SELECT COUNT(*)
-             FROM socios s
-             WHERE s.tipo_socio = 'PERSONA'
-               AND s.estado = 'ACTIVO'
-               AND EXISTS (
-                    SELECT 1
-                    FROM familias_socios fs
-                    INNER JOIN familias f
-                        ON f.id_familia = fs.id_familia
-                       AND f.activo = 1
-                    WHERE fs.id_socio = s.id_socio
-                      AND fs.fecha_desvinculacion IS NULL
-               )"
-        );
-        $withCategory = self::count(
-            $db,
-            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO' AND id_categoria IS NOT NULL"
-        );
-        $withReminder = self::count(
-            $db,
-            "SELECT COUNT(*) FROM socios WHERE tipo_socio = 'PERSONA' AND estado = 'ACTIVO' AND enviar_recordatorio = 1"
-        );
-        $activeCategories = self::count($db, 'SELECT COUNT(*) FROM categorias WHERE activo = 1');
+        $active = self::safeCount($db, "SELECT COUNT(*) FROM socios WHERE {$activeWhere}");
+        $inactive = self::safeCount($db, "SELECT COUNT(*) FROM socios WHERE {$inactiveWhere}");
+        $new = self::safeCount($db, "SELECT COUNT(*) FROM socios WHERE {$activeWhere} AND {$dateColumn} >= ? AND {$dateColumn} < ?", [$start->format('Y-m-d'), $end->format('Y-m-d')]);
+        $withCategory = self::columnExists($db, 'socios', 'id_categoria')
+            ? self::safeCount($db, "SELECT COUNT(*) FROM socios WHERE {$activeWhere} AND id_categoria IS NOT NULL") : 0;
+        $withReminder = self::columnExists($db, 'socios', 'enviar_recordatorio')
+            ? self::safeCount($db, "SELECT COUNT(*) FROM socios WHERE {$activeWhere} AND enviar_recordatorio = 1") : 0;
 
-        $expectedCurrent = self::count(
-            $db,
-            "SELECT COUNT(*)
-             FROM socios
-             WHERE tipo_socio = 'PERSONA'
-               AND estado = 'ACTIVO'
-               AND id_categoria IS NOT NULL
-               AND (fecha_alta IS NULL OR fecha_alta < ?)",
-            [$monthEnd->format('Y-m-d')]
-        );
-        $resolvedCurrent = self::count(
-            $db,
-            "SELECT COUNT(DISTINCT p.id_socio)
-             FROM pagos p
-             INNER JOIN socios s ON s.id_socio = p.id_socio
-             WHERE p.anio = ?
-               AND p.mes = ?
-               AND s.tipo_socio = 'PERSONA'
-               AND s.estado = 'ACTIVO'
-               AND s.id_categoria IS NOT NULL",
-            [$currentYear, $currentMonth]
-        );
-        $paidCurrent = self::count(
-            $db,
-            "SELECT COUNT(DISTINCT p.id_socio)
-             FROM pagos p
-             INNER JOIN socios s ON s.id_socio = p.id_socio
-             WHERE p.anio = ?
-               AND p.mes = ?
-               AND p.estado = 'PAGADO'
-               AND s.tipo_socio = 'PERSONA'
-               AND s.estado = 'ACTIVO'
-               AND s.id_categoria IS NOT NULL",
-            [$currentYear, $currentMonth]
-        );
-        $condonedCurrent = max(0, $resolvedCurrent - $paidCurrent);
-        $pendingCurrent = max(0, $expectedCurrent - $resolvedCurrent);
+        [$familyTable, $familyLink] = self::familyTables($db);
+        $families = $familyTable === null ? 0 : self::safeCount($db, "SELECT COUNT(*) FROM `{$familyTable}`" . (self::columnExists($db, $familyTable, 'activo') ? ' WHERE activo = 1' : ''));
+        $withFamily = $familyLink === null ? 0 : self::safeCount($db, "SELECT COUNT(DISTINCT s.id_socio) FROM socios s INNER JOIN `{$familyLink}` fs ON fs.id_socio = s.id_socio WHERE {$activeSocioWhere}");
 
-        $paymentOperations = self::count(
-            $db,
-            "SELECT COUNT(*) FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio WHERE s.tipo_socio = 'PERSONA' AND p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?",
-            [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
-        );
-        $paymentsWithoutAmount = self::count(
-            $db,
-            "SELECT COUNT(*) FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio WHERE s.tipo_socio = 'PERSONA' AND p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ? AND monto IS NULL",
-            [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
-        );
-        $partnerIncome = self::sum(
-            $db,
-            "SELECT COALESCE(SUM(p.monto), 0) FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio WHERE s.tipo_socio = 'PERSONA' AND p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?",
-            [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
-        );
-
-        $contableAvailable = self::tableExists($db, 'contable_ingresos')
-            && self::tableExists($db, 'contable_egresos');
-        $otherIncome = $contableAvailable
-            ? self::optionalSum(
-                $db,
-                "SELECT COALESCE(SUM(importe), 0)
-                 FROM contable_ingresos
-                 WHERE estado = 'ACTIVO' AND fecha >= ? AND fecha < ?",
-                [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
-            )
-            : 0.0;
-        $expenses = $contableAvailable
-            ? self::optionalSum(
-                $db,
-                "SELECT COALESCE(SUM(importe), 0)
-                 FROM contable_egresos
-                 WHERE estado = 'ACTIVO' AND fecha >= ? AND fecha < ?",
-                [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')]
-            )
-            : 0.0;
-        $income = $partnerIncome + $otherIncome;
-
-        $stateActivity = self::stateActivity($db, $monthStart, $monthEnd);
+        $payments = self::currentPayments($db, $year, $month);
+        $expected = $withCategory > 0 ? $withCategory : $active;
+        $resolved = min($expected, $payments['pagadas'] + $payments['condonadas']);
+        $partnerIncome = self::safeSum($db, "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ?", [$start->format('Y-m-d'), $end->format('Y-m-d')]);
+        $otherIncome = self::accountingSum($db, 'contable_ingresos', $start, $end);
+        $expenses = self::accountingSum($db, 'contable_egresos', $start, $end);
 
         return [
-            'periodo' => [
-                'fecha' => $today->format('Y-m-d'),
-                'anio' => $currentYear,
-                'mes' => $currentMonth,
-                'mes_nombre' => self::monthName($currentMonth),
-            ],
+            'periodo' => ['fecha' => $today->format('Y-m-d'), 'anio' => $year, 'mes' => $month, 'mes_nombre' => self::monthName($month)],
             'socios' => [
-                'activos' => $activePartners,
-                'inactivos' => $inactivePartners,
-                'personas_activas' => $activePeople,
-                'altas_mes' => $newPartners,
-                'con_familia' => $peopleWithFamily,
-                'sin_familia' => max(0, $activePeople - $peopleWithFamily),
-                'con_categoria' => $withCategory,
-                'sin_categoria' => max(0, $activePartners - $withCategory),
-                'con_recordatorio' => $withReminder,
-                'sin_recordatorio' => max(0, $activePartners - $withReminder),
+                'activos' => $active, 'inactivos' => $inactive, 'personas_activas' => $active,
+                'altas_mes' => $new, 'con_familia' => $withFamily, 'sin_familia' => max(0, $active - $withFamily),
+                'con_categoria' => $withCategory, 'sin_categoria' => max(0, $active - $withCategory),
+                'con_recordatorio' => $withReminder, 'sin_recordatorio' => max(0, $active - $withReminder),
             ],
-            'familias' => [
-                'activas' => $activeFamilies,
-            ],
-            'categorias' => [
-                'activas' => $activeCategories,
-                'distribucion' => self::categoryDistribution($db),
-            ],
+            'familias' => ['activas' => $families],
+            'categorias' => ['activas' => self::activeCategories($db), 'distribucion' => self::categoryDistribution($db, $activeSocioWhere)],
             'cuotas' => [
-                'esperadas_mes' => $expectedCurrent,
-                'pagadas_mes' => $paidCurrent,
-                'condonadas_mes' => $condonedCurrent,
-                'pendientes_mes' => $pendingCurrent,
-                'cumplimiento_mes' => self::percentage($resolvedCurrent, $expectedCurrent),
-                'cobros_registrados_mes' => $paymentOperations,
-                'cobros_sin_importe_mes' => $paymentsWithoutAmount,
+                'esperadas_mes' => $expected, 'pagadas_mes' => $payments['pagadas'],
+                'condonadas_mes' => $payments['condonadas'], 'pendientes_mes' => max(0, $expected - $resolved),
+                'cumplimiento_mes' => self::percentage($resolved, $expected),
+                'cobros_registrados_mes' => $payments['operaciones'], 'cobros_sin_importe_mes' => $payments['sin_importe'],
             ],
             'contable' => [
-                'ingresos_socios_mes' => self::money($partnerIncome),
-                'otros_ingresos_mes' => self::money($otherIncome),
-                'ingresos_mes' => self::money($income),
-                'egresos_mes' => self::money($expenses),
-                'saldo_mes' => self::money($income - $expenses),
+                'ingresos_socios_mes' => self::money($partnerIncome), 'otros_ingresos_mes' => self::money($otherIncome),
+                'ingresos_mes' => self::money($partnerIncome + $otherIncome), 'egresos_mes' => self::money($expenses),
+                'saldo_mes' => self::money($partnerIncome + $otherIncome - $expenses),
             ],
             'estado' => [
-                'socios_con_familia' => self::percentage($peopleWithFamily, $activePeople),
-                'socios_con_categoria' => self::percentage($withCategory, $activePartners),
-                'socios_con_recordatorio' => self::percentage($withReminder, $activePartners),
+                'socios_con_familia' => self::percentage($withFamily, $active),
+                'socios_con_categoria' => self::percentage($withCategory, $active),
+                'socios_con_recordatorio' => self::percentage($withReminder, $active),
             ],
             'actividad' => [
-                'altas_mes' => $newPartners,
-                'bajas_mes' => $stateActivity['bajas'],
-                'reactivaciones_mes' => $stateActivity['reactivaciones'],
-                'cobros_mes' => $paymentOperations,
+                'altas_mes' => $new, 'bajas_mes' => self::stateEvents($db, 'BAJA', $start, $end),
+                'reactivaciones_mes' => self::stateEvents($db, 'REACTIVACION', $start, $end), 'cobros_mes' => $payments['operaciones'],
             ],
-            'serie_cuotas' => self::monthlyPaymentSeries($db, $monthStart->modify('-5 months'), $monthEnd),
-            'pagos_recientes' => self::recentPayments($db),
+            'serie_cuotas' => self::paymentSeries($db, $start->modify('-5 months'), $end),
+            'pagos_recientes' => [],
             'fuentes' => [
-                'contable_disponible' => $contableAvailable,
-                'importes_legacy_incompletos' => $paymentsWithoutAmount > 0,
+                'contable_disponible' => self::tableExists($db, 'contable_ingresos') && self::tableExists($db, 'contable_egresos'),
+                'importes_legacy_incompletos' => $payments['sin_importe'] > 0,
+                'recordatorios_disponibles' => self::columnExists($db, 'socios', 'enviar_recordatorio'),
             ],
         ];
     }
 
-    private static function stateActivity(PDO $db, DateTimeImmutable $start, DateTimeImmutable $end): array
+    private static function currentPayments(PDO $db, int $year, int $month): array
     {
-        if (!self::tableExists($db, 'socios_historial_estados')) {
-            return ['bajas' => 0, 'reactivaciones' => 0];
+        if (self::columnExists($db, 'pagos', 'anio') && self::columnExists($db, 'pagos', 'id_mes')) {
+            $where = 'anio = ? AND id_mes = ?'; $params = [$year, $month];
+        } elseif (self::columnExists($db, 'pagos', 'anio') && self::columnExists($db, 'pagos', 'mes')) {
+            $where = 'anio = ? AND mes = ?'; $params = [$year, $month];
+        } elseif (self::columnExists($db, 'pagos', 'anio_aplicado') && self::columnExists($db, 'pagos', 'id_periodo')) {
+            $where = 'anio_aplicado = ? AND id_periodo IN (?, 7)'; $params = [$year, (int)ceil($month / 2)];
+        } else {
+            $periodStart = new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month));
+            $where = 'fecha_pago >= ? AND fecha_pago < ?'; $params = [$periodStart->format('Y-m-d'), $periodStart->modify('+1 month')->format('Y-m-d')];
         }
-
-        $statement = $db->prepare(
-            "SELECT
-                SUM(CASE WHEN tipo_evento = 'BAJA' THEN 1 ELSE 0 END) AS bajas,
-                SUM(CASE WHEN tipo_evento = 'REACTIVACION' THEN 1 ELSE 0 END) AS reactivaciones
-             FROM socios_historial_estados she
-             INNER JOIN socios s ON s.id_socio = she.id_socio
-             WHERE s.tipo_socio = 'PERSONA'
-               AND COALESCE(she.fecha_efectiva, DATE(she.creado_en)) >= ?
-               AND COALESCE(she.fecha_efectiva, DATE(she.creado_en)) < ?"
-        );
-        $statement->execute([$start->format('Y-m-d'), $end->format('Y-m-d')]);
-        $row = $statement->fetch() ?: [];
-
-        return [
-            'bajas' => (int)($row['bajas'] ?? 0),
-            'reactivaciones' => (int)($row['reactivaciones'] ?? 0),
-        ];
+        $rows = self::safeRows($db, "SELECT estado, COUNT(DISTINCT id_socio) AS socios, COUNT(*) AS operaciones, SUM(monto IS NULL) AS sin_importe FROM pagos WHERE {$where} GROUP BY estado", $params);
+        $result = ['pagadas' => 0, 'condonadas' => 0, 'operaciones' => 0, 'sin_importe' => 0];
+        foreach ($rows as $row) {
+            $state = strtoupper((string)($row['estado'] ?? ''));
+            if ($state === 'PAGADO') $result['pagadas'] += (int)$row['socios'];
+            if ($state === 'CONDONADO') $result['condonadas'] += (int)$row['socios'];
+            if (in_array($state, ['PAGADO', 'CONDONADO'], true)) {
+                $result['operaciones'] += (int)$row['operaciones'];
+                $result['sin_importe'] += (int)$row['sin_importe'];
+            }
+        }
+        return $result;
     }
 
-    private static function monthlyPaymentSeries(PDO $db, DateTimeImmutable $start, DateTimeImmutable $end): array
+    private static function paymentSeries(PDO $db, DateTimeImmutable $start, DateTimeImmutable $end): array
     {
-        $startKey = ((int)$start->format('Y') * 100) + (int)$start->format('n');
-        $lastMonth = $end->modify('-1 month');
-        $endKey = ((int)$lastMonth->format('Y') * 100) + (int)$lastMonth->format('n');
-
-        $statement = $db->prepare(
-            "SELECT p.anio, p.mes, COUNT(*) AS pagadas, COALESCE(SUM(p.monto), 0) AS importe
-             FROM pagos p
-             INNER JOIN socios s ON s.id_socio = p.id_socio
-             WHERE s.tipo_socio = 'PERSONA'
-               AND p.estado = 'PAGADO'
-               AND (p.anio * 100 + p.mes) BETWEEN ? AND ?
-             GROUP BY p.anio, p.mes"
-        );
-        $statement->execute([$startKey, $endKey]);
-
+        $rows = self::safeRows($db, "SELECT YEAR(fecha_pago) AS anio, MONTH(fecha_pago) AS mes, COUNT(*) AS pagadas, COALESCE(SUM(monto), 0) AS importe FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ? GROUP BY YEAR(fecha_pago), MONTH(fecha_pago)", [$start->format('Y-m-d'), $end->format('Y-m-d')]);
         $indexed = [];
-        foreach ($statement->fetchAll() as $row) {
-            $key = sprintf('%04d-%02d', (int)$row['anio'], (int)$row['mes']);
-            $indexed[$key] = [
-                'pagadas' => (int)$row['pagadas'],
-                'importe' => (float)$row['importe'],
-            ];
-        }
-
+        foreach ($rows as $row) $indexed[sprintf('%04d-%02d', $row['anio'], $row['mes'])] = $row;
         $series = [];
         for ($cursor = $start; $cursor < $end; $cursor = $cursor->modify('+1 month')) {
-            $key = $cursor->format('Y-m');
-            $values = $indexed[$key] ?? ['pagadas' => 0, 'importe' => 0.0];
-            $month = (int)$cursor->format('n');
-            $series[] = [
-                'periodo' => $key,
-                'anio' => (int)$cursor->format('Y'),
-                'mes' => $month,
-                'etiqueta' => substr(self::monthName($month), 0, 3),
-                'pagadas' => $values['pagadas'],
-                'importe' => self::money($values['importe']),
-            ];
+            $key = $cursor->format('Y-m'); $row = $indexed[$key] ?? [];
+            $series[] = ['periodo' => $key, 'anio' => (int)$cursor->format('Y'), 'mes' => (int)$cursor->format('n'),
+                'etiqueta' => substr(self::monthName((int)$cursor->format('n')), 0, 3),
+                'pagadas' => (int)($row['pagadas'] ?? 0), 'importe' => self::money((float)($row['importe'] ?? 0))];
         }
-
         return $series;
     }
 
-    private static function categoryDistribution(PDO $db): array
+    private static function categoryDistribution(PDO $db, string $activeSocioWhere): array
     {
-        $statement = $db->query(
-            "SELECT
-                COALESCE(c.nombre, 'SIN CATEGORÍA') AS categoria,
-                COUNT(*) AS cantidad
-             FROM socios s
-             LEFT JOIN categorias c ON c.id_categoria = s.id_categoria
-             WHERE s.tipo_socio = 'PERSONA'
-               AND s.estado = 'ACTIVO'
-             GROUP BY s.id_categoria, c.nombre
-             ORDER BY cantidad DESC, categoria ASC
-             LIMIT 8"
-        );
-
-        return array_map(
-            static fn(array $row): array => [
-                'categoria' => (string)$row['categoria'],
-                'cantidad' => (int)$row['cantidad'],
-            ],
-            $statement->fetchAll()
-        );
+        $table = self::categoryTable($db);
+        if ($table === null || !self::columnExists($db, 'socios', 'id_categoria')) return [];
+        $rows = self::safeRows($db, "SELECT COALESCE(c.nombre, 'SIN CATEGORÍA') AS categoria, COUNT(*) AS cantidad FROM socios s LEFT JOIN `{$table}` c ON c.id_categoria = s.id_categoria WHERE {$activeSocioWhere} GROUP BY s.id_categoria, c.nombre ORDER BY cantidad DESC LIMIT 8");
+        return array_map(static fn(array $row): array => ['categoria' => (string)$row['categoria'], 'cantidad' => (int)$row['cantidad']], $rows);
     }
 
-    private static function recentPayments(PDO $db): array
+    private static function activeCategories(PDO $db): int
     {
-        $statement = $db->query(
-            "SELECT
-                p.id_pago,
-                p.id_socio,
-                p.anio,
-                p.mes,
-                p.fecha_pago,
-                p.monto,
-                COALESCE(mp.nombre, 'SIN MEDIO') AS medio_pago,
-                TRIM(CONCAT(COALESCE(sp.apellido, ''), ', ', COALESCE(sp.nombre, ''))) AS socio
-             FROM pagos p
-             INNER JOIN socios s ON s.id_socio = p.id_socio
-             LEFT JOIN socios_personas sp ON sp.id_socio = s.id_socio
-             LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
-             WHERE s.tipo_socio = 'PERSONA'
-               AND p.estado = 'PAGADO'
-             ORDER BY p.fecha_pago DESC, p.creado_en DESC, p.id_pago DESC
-             LIMIT 8"
-        );
+        $table = self::categoryTable($db);
+        if ($table === null) return 0;
+        return self::safeCount($db, "SELECT COUNT(*) FROM `{$table}`" . (self::columnExists($db, $table, 'activo') ? ' WHERE activo = 1' : ''));
+    }
 
-        return array_map(
-            static fn(array $row): array => [
-                'id_pago' => (int)$row['id_pago'],
-                'id_socio' => (int)$row['id_socio'],
-                'socio' => (string)$row['socio'],
-                'periodo' => sprintf('%02d/%04d', (int)$row['mes'], (int)$row['anio']),
-                'mes_nombre' => self::monthName((int)$row['mes']),
-                'fecha_pago' => (string)$row['fecha_pago'],
-                'monto' => $row['monto'] === null ? null : self::money((float)$row['monto']),
-                'medio_pago' => (string)$row['medio_pago'],
-            ],
-            $statement->fetchAll()
-        );
+    private static function categoryTable(PDO $db): ?string
+    {
+        if (self::tableExists($db, 'categoria')) return 'categoria';
+        if (self::tableExists($db, 'categorias')) return 'categorias';
+        return null;
+    }
+
+    private static function familyTables(PDO $db): array
+    {
+        $family = self::tableExists($db, 'familias') ? 'familias' : null;
+        $link = self::tableExists($db, 'familias_socios') ? 'familias_socios' : (self::tableExists($db, 'familia_socios') ? 'familia_socios' : null);
+        return [$family, $link];
+    }
+
+    private static function stateEvents(PDO $db, string $event, DateTimeImmutable $start, DateTimeImmutable $end): int
+    {
+        if (!self::tableExists($db, 'socios_historial_estados')) return 0;
+        $date = self::columnExists($db, 'socios_historial_estados', 'fecha_evento') ? 'fecha_evento' : 'creado_en';
+        return self::safeCount($db, "SELECT COUNT(*) FROM socios_historial_estados WHERE tipo_evento = ? AND {$date} >= ? AND {$date} < ?", [$event, $start->format('Y-m-d'), $end->format('Y-m-d')]);
+    }
+
+    private static function accountingSum(PDO $db, string $table, DateTimeImmutable $start, DateTimeImmutable $end): float
+    {
+        if (!self::tableExists($db, $table)) return 0.0;
+        $active = self::columnExists($db, $table, 'estado') ? " AND estado = 'ACTIVO'" : '';
+        return self::safeSum($db, "SELECT COALESCE(SUM(importe), 0) FROM `{$table}` WHERE fecha >= ? AND fecha < ?{$active}", [$start->format('Y-m-d'), $end->format('Y-m-d')]);
     }
 
     private static function tableExists(PDO $db, string $table): bool
-    {
-        static $cache = [];
-        $cacheKey = spl_object_id($db) . ':' . $table;
-        if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
+    { return self::safeCount($db, 'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]) > 0; }
 
-        $statement = $db->prepare(
-            'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
-        );
-        $statement->execute([$table]);
-        $cache[$cacheKey] = (int)$statement->fetchColumn() > 0;
-        return $cache[$cacheKey];
+    private static function columnExists(PDO $db, string $table, string $column): bool
+    { return self::safeCount($db, 'SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, $column]) > 0; }
+
+    private static function safeRows(PDO $db, string $sql, array $params = []): array
+    {
+        try { $statement = $db->prepare($sql); $statement->execute($params); return $statement->fetchAll() ?: []; }
+        catch (Throwable $error) { error_log('[dashboard] ' . $error->getMessage()); return []; }
     }
 
-    private static function count(PDO $db, string $sql, array $params = []): int
+    private static function safeCount(PDO $db, string $sql, array $params = []): int
     {
-        $statement = $db->prepare($sql);
-        $statement->execute($params);
-        return (int)$statement->fetchColumn();
+        try { $statement = $db->prepare($sql); $statement->execute($params); return (int)$statement->fetchColumn(); }
+        catch (Throwable $error) { error_log('[dashboard] ' . $error->getMessage()); return 0; }
     }
 
-    private static function sum(PDO $db, string $sql, array $params = []): float
+    private static function safeSum(PDO $db, string $sql, array $params = []): float
     {
-        $statement = $db->prepare($sql);
-        $statement->execute($params);
-        return (float)$statement->fetchColumn();
+        try { $statement = $db->prepare($sql); $statement->execute($params); return (float)$statement->fetchColumn(); }
+        catch (Throwable $error) { error_log('[dashboard] ' . $error->getMessage()); return 0.0; }
     }
 
-    private static function optionalSum(PDO $db, string $sql, array $params = []): float
-    {
-        try {
-            return self::sum($db, $sql, $params);
-        } catch (Throwable $error) {
-            error_log('Dashboard: no se pudo leer un total opcional. ' . $error->getMessage());
-            return 0.0;
-        }
-    }
-
-    private static function money(float $value): string
-    {
-        return number_format($value, 2, '.', '');
-    }
-
-    private static function percentage(int $part, int $total): int
-    {
-        if ($total <= 0) return 0;
-        return max(0, min(100, (int)round(($part / $total) * 100)));
-    }
-
+    private static function money(float $value): string { return number_format($value, 2, '.', ''); }
+    private static function percentage(int $part, int $total): int { return $total <= 0 ? 0 : max(0, min(100, (int)round(($part / $total) * 100))); }
     private static function monthName(int $month): string
     {
-        return [
-            1 => 'ENERO', 2 => 'FEBRERO', 3 => 'MARZO', 4 => 'ABRIL',
-            5 => 'MAYO', 6 => 'JUNIO', 7 => 'JULIO', 8 => 'AGOSTO',
-            9 => 'SEPTIEMBRE', 10 => 'OCTUBRE', 11 => 'NOVIEMBRE', 12 => 'DICIEMBRE',
-        ][$month] ?? '';
+        return [1 => 'ENERO', 2 => 'FEBRERO', 3 => 'MARZO', 4 => 'ABRIL', 5 => 'MAYO', 6 => 'JUNIO',
+            7 => 'JULIO', 8 => 'AGOSTO', 9 => 'SEPTIEMBRE', 10 => 'OCTUBRE', 11 => 'NOVIEMBRE', 12 => 'DICIEMBRE'][$month] ?? '';
     }
 }

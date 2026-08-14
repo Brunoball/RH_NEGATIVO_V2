@@ -366,7 +366,8 @@
 .mov-tableWrap {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   max-height: calc(100vh - 250px);
   min-height: calc(100vh - 250px);
 }

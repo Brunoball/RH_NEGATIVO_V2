@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faAddressBook,
@@ -43,6 +44,7 @@ import {
   EntityTabs,
   FloatingField,
 } from "../Global/Formularios/TabbedForm";
+import { openNativePicker } from "../Global/Formularios/nativePicker";
 import {
   addressInput,
   addressNumberInput,
@@ -176,7 +178,7 @@ function buildAdvancedFilterChips(filters, catalogs) {
     filters.grupo_sanguineo
       ? {
           key: "grupo_sanguineo",
-          label: "Tipo de sangre",
+          label: "T.S.",
           value: findOptionLabel(
             catalogs.grupos_sanguineos || [],
             filters.grupo_sanguineo,
@@ -200,7 +202,7 @@ function buildAdvancedFilterChips(filters, catalogs) {
     filters.deuda
       ? {
           key: "deuda",
-          label: "Deudas / pagos",
+          label: "Pagos",
           value: findOptionLabel(DEBT_OPTIONS, filters.deuda),
         }
       : null,
@@ -228,21 +230,16 @@ function buildAdvancedFilterChips(filters, catalogs) {
   ].filter(Boolean);
 }
 
-function selectFirstActive(items, key, preferredName = "") {
-  const preferred = preferredName
-    ? items?.find(
-        (item) =>
-          item.activo &&
-          String(item.nombre || "").toUpperCase() === preferredName.toUpperCase(),
-      )
-    : null;
-  return String((preferred || items?.find((item) => item.activo))?.[key] || "");
+function selectOnlyActive(items, key) {
+  const activeItems = (items || []).filter((item) => item.activo !== false);
+  return activeItems.length === 1 ? String(activeItems[0]?.[key] || "") : "";
 }
 
 function emptyForm(catalogs = {}) {
   return {
     id_socio: "",
     nombre: "",
+    apellido: "",
     dni: "",
     fecha_nacimiento: "",
     id_grupo_sanguineo: "",
@@ -252,17 +249,38 @@ function emptyForm(catalogs = {}) {
     telefono_fijo: "",
     domicilio_cobro: "",
     fecha_ingreso: localToday(),
-    id_estado: selectFirstActive(catalogs.estados, "id_estado", "ACTIVO"),
-    id_categoria: selectFirstActive(catalogs.categorias, "id_categoria"),
-    id_cobrador: selectFirstActive(catalogs.cobradores, "id_cobrador"),
+    id_estado: "",
+    id_categoria: selectOnlyActive(catalogs.categorias, "id_categoria"),
+    id_cobrador: "",
     observaciones: "",
   };
 }
 
+function splitPersonFullName(item) {
+  const rawName = String(item?.nombre || "").trim();
+  const rawLastName = String(item?.apellido || "").trim();
+
+  if (rawLastName) {
+    return { nombre: rawName, apellido: rawLastName };
+  }
+
+  const parts = rawName.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return { nombre: rawName, apellido: "" };
+  }
+
+  return {
+    nombre: parts.slice(0, -1).join(" "),
+    apellido: parts.at(-1) || "",
+  };
+}
+
 function formFromItem(item) {
+  const personName = splitPersonFullName(item);
   return {
     id_socio: item.id_socio,
-    nombre: item.nombre || "",
+    nombre: personName.nombre,
+    apellido: personName.apellido,
     dni: item.dni || "",
     fecha_nacimiento: item.fecha_nacimiento || "",
     id_grupo_sanguineo: item.id_grupo_sanguineo
@@ -293,6 +311,17 @@ function debtLabel(months) {
   const count = Number(months || 0);
   if (count <= 0) return "AL DÍA";
   return `DEBE ${count} ${count === 1 ? "MES" : "MESES"}`;
+}
+
+function statusChipTone(item) {
+  const status = String(item?.estado || "").trim().toLocaleUpperCase("es-AR");
+  const isPassive =
+    !item?.vigente ||
+    status.includes("PASIV") ||
+    status.includes("INACTIV") ||
+    status === "BAJA";
+
+  return isPassive ? "is-inactive" : "is-active";
 }
 
 const EXPORT_COLUMNS = [
@@ -437,7 +466,7 @@ function AdvancedFilters({ filters, catalogs, onChange, onReset }) {
           </AccordionSection>
 
           <AccordionSection
-            title="Deudas / pagos"
+            title="Pagos"
             active={section === "debt"}
             onToggle={() => toggle("debt")}
           >
@@ -472,6 +501,7 @@ function AdvancedFilters({ filters, catalogs, onChange, onReset }) {
                   type="date"
                   value={filters.ingreso_desde}
                   max={filters.ingreso_hasta || localToday()}
+                  onClick={openNativePicker}
                   onChange={(event) => update("ingreso_desde", event.target.value)}
                 />
               </label>
@@ -482,6 +512,7 @@ function AdvancedFilters({ filters, catalogs, onChange, onReset }) {
                   value={filters.ingreso_hasta}
                   min={filters.ingreso_desde || undefined}
                   max={localToday()}
+                  onClick={openNativePicker}
                   onChange={(event) => update("ingreso_hasta", event.target.value)}
                 />
               </label>
@@ -522,7 +553,6 @@ function ActiveFilterChips({ chips, onRemove }) {
 
   return (
     <section className="socios-activeFilters" aria-label="Filtros avanzados activos">
-      <span className="socios-activeFilters__label">Filtros activos</span>
       <div className="socios-activeFilters__list">
         {chips.map((chip) => (
           <span className="socios-activeFilterChip" key={chip.key}>
@@ -547,13 +577,14 @@ function ActiveFilterChips({ chips, onRemove }) {
 function BirthdayContactCard({ items, onView, onClose, writable }) {
   const [index, setIndex] = useState(0);
   const [closing, setClosing] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (!items.length) setIndex(0);
     else if (index >= items.length) setIndex(Math.max(0, items.length - 1));
   }, [items.length, index]);
 
-  if (!items.length) return null;
+  if (!items.length || typeof document === "undefined") return null;
   const item = items[index];
   const move = (direction) => {
     setIndex((current) => (current + direction + items.length) % items.length);
@@ -569,47 +600,64 @@ function BirthdayContactCard({ items, onView, onClose, writable }) {
     }
   };
 
-  return (
-    <aside className="socios-birthdayCard" aria-label="Socios para contactar de 18 a 23 años">
-      <header>
-        <span className="socios-birthdayCard__icon" aria-hidden="true"><FontAwesomeIcon icon={faCakeCandles} /></span>
-        <div>
-          <small>SOCIOS PARA CONTACTAR</small>
-          <strong>18 a 23 años</strong>
+  return createPortal(
+    <aside
+      className={`socios-birthdayDrawer${open ? " is-open" : ""}`}
+      aria-label="Socios para contactar de 18 a 23 años"
+    >
+      <button
+        type="button"
+        className="socios-birthdayDrawer__toggle"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-label={open ? "Cerrar avisos de cumpleaños" : "Abrir avisos de cumpleaños"}
+        title={open ? "Cerrar avisos de cumpleaños" : `${items.length} ${items.length === 1 ? "socio para contactar" : "socios para contactar"}`}
+      >
+        <FontAwesomeIcon icon={open ? faChevronRight : faCakeCandles} />
+      </button>
+
+      <div className="socios-birthdayCard">
+        <header>
+          <span className="socios-birthdayCard__icon" aria-hidden="true"><FontAwesomeIcon icon={faCakeCandles} /></span>
+          <div>
+            <small>SOCIOS PARA CONTACTAR</small>
+            <strong>18 a 23 años</strong>
+          </div>
+          <span className="socios-birthdayCard__counter">{index + 1}/{items.length}</span>
+          {writable ? (
+            <button
+              type="button"
+              className="socios-birthdayCard__close"
+              onClick={close}
+              disabled={closing}
+              title="Marcar aviso como gestionado este año"
+            >
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          ) : null}
+        </header>
+        <div className="socios-birthdayCard__body">
+          <strong className="socios-birthdayCard__name">{item.nombre}</strong>
+          <p>Tiene <b>{item.edad} años</b>. Podés contactarlo para actualizar sus datos o hacer seguimiento.</p>
+          <div className="socios-birthdayCard__meta">
+            <span>ID <b>{item.id_socio}</b></span>
+            <span>NAC. <b>{formatDate(item.fecha_nacimiento)}</b></span>
+          </div>
         </div>
-        <span className="socios-birthdayCard__counter">{index + 1}/{items.length}</span>
-        {writable ? (
-          <button
-            type="button"
-            className="socios-birthdayCard__close"
-            onClick={close}
-            disabled={closing}
-            title="Marcar aviso como gestionado este año"
-          >
-            <FontAwesomeIcon icon={faXmark} />
+        <footer>
+          <button type="button" className="socios-birthdayCard__nav" onClick={() => move(-1)} disabled={items.length < 2}>
+            <FontAwesomeIcon icon={faChevronLeft} />
           </button>
-        ) : null}
-      </header>
-      <div className="socios-birthdayCard__body">
-        <strong className="socios-birthdayCard__name">{item.nombre}</strong>
-        <p>Tiene <b>{item.edad} años</b>. Podés contactarlo para actualizar sus datos o hacer seguimiento.</p>
-        <div className="socios-birthdayCard__meta">
-          <span>ID <b>{item.id_socio}</b></span>
-          <span>NAC. <b>{formatDate(item.fecha_nacimiento)}</b></span>
-        </div>
+          <button type="button" className="socios-birthdayCard__view" onClick={() => onView(item)}>
+            <FontAwesomeIcon icon={faEye} /> Ver socio
+          </button>
+          <button type="button" className="socios-birthdayCard__nav" onClick={() => move(1)} disabled={items.length < 2}>
+            <FontAwesomeIcon icon={faChevronRight} />
+          </button>
+        </footer>
       </div>
-      <footer>
-        <button type="button" className="socios-birthdayCard__nav" onClick={() => move(-1)} disabled={items.length < 2}>
-          <FontAwesomeIcon icon={faChevronLeft} />
-        </button>
-        <button type="button" className="socios-birthdayCard__view" onClick={() => onView(item)}>
-          <FontAwesomeIcon icon={faEye} /> Ver socio
-        </button>
-        <button type="button" className="socios-birthdayCard__nav" onClick={() => move(1)} disabled={items.length < 2}>
-          <FontAwesomeIcon icon={faChevronRight} />
-        </button>
-      </footer>
-    </aside>
+    </aside>,
+    document.body
   );
 }
 
@@ -620,18 +668,18 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
       role="row"
       key={item.id_socio}
     >
+      <div className="mov-gridCell is-strong is-center socios-idCell">{item.id_socio}</div>
       <div className="mov-gridCell entity-main-cell">
         <strong>{item.nombre}</strong>
         <small>
-          {[item.domicilio, item.numero].filter(Boolean).join(" ") || `ID ${item.id_socio}`}
+          {[item.domicilio, item.numero].filter(Boolean).join(" ") || "SIN DOMICILIO"}
         </small>
       </div>
-      <div className="mov-gridCell is-strong is-center">{item.dni || "—"}</div>
       <div className="mov-gridCell is-center">
         <span className="socios-bloodChip">{item.grupo_sanguineo || "SIN DATO"}</span>
       </div>
       <div className="mov-gridCell socios-statusCell is-center">
-        <span className={`socios-statusChip ${item.vigente ? "is-active" : "is-inactive"}`}>
+        <span className={`socios-statusChip ${statusChipTone(item)}`}>
           {item.vigente ? (item.estado || "ACTIVO") : "BAJA"}
         </span>
       </div>
@@ -693,14 +741,24 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
 
       <EntityTabPane active={activeTab === FORM_TAB_PERSONAL} disableWhenInactive>
         <EntityFormPanel tabValue={FORM_TAB_PERSONAL} idPrefix="socios-form" title="Identificación y contacto" icon={faUser}>
-          <FloatingField label="Nombre completo *" wide active={activeValue("nombre")}>
+          <FloatingField label="Nombre *" active={activeValue("nombre")}>
             <input
               value={form.nombre}
-              maxLength={100}
-              onChange={(event) => set("nombre", personNameInput(event.target.value, 100))}
+              maxLength={50}
+              onChange={(event) => set("nombre", personNameInput(event.target.value, 50))}
               required
               placeholder=" "
-              autoComplete="name"
+              autoComplete="given-name"
+            />
+          </FloatingField>
+          <FloatingField label="Apellido *" active={activeValue("apellido")}>
+            <input
+              value={form.apellido}
+              maxLength={50}
+              onChange={(event) => set("apellido", personNameInput(event.target.value, 50))}
+              required
+              placeholder=" "
+              autoComplete="family-name"
             />
           </FloatingField>
           <FloatingField label="DNI" active={activeValue("dni")}>
@@ -721,7 +779,7 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
           </FloatingField>
           <FloatingField label="Grupo sanguíneo" active>
             <select value={form.id_grupo_sanguineo} onChange={(event) => set("id_grupo_sanguineo", event.target.value)}>
-              <option value="">SIN INFORMAR</option>
+              <option value="">NO SELECCIONADO</option>
               {(catalogs.grupos_sanguineos || []).map((item) => (
                 <option key={item.id_grupo_sanguineo} value={item.id_grupo_sanguineo}>{item.nombre}</option>
               ))}
@@ -778,7 +836,7 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
           </FloatingField>
           <FloatingField label="Estado" active={activeValue("id_estado")}>
             <select value={form.id_estado} onChange={(event) => set("id_estado", event.target.value)}>
-              <option value="">SIN INFORMAR</option>
+              <option value="">NO SELECCIONADO</option>
               {(catalogs.estados || []).map((item) => (
                 <option key={item.id_estado} value={item.id_estado}>{item.nombre}{item.activo ? "" : " (INACTIVO)"}</option>
               ))}
@@ -786,7 +844,7 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
           </FloatingField>
           <FloatingField label="Categoría *" active={activeValue("id_categoria")}>
             <select value={form.id_categoria} onChange={(event) => set("id_categoria", event.target.value)} required>
-              <option value="">SELECCIONAR</option>
+              <option value="">NO SELECCIONADO</option>
               {(catalogs.categorias || []).map((item) => (
                 <option key={item.id_categoria} value={item.id_categoria}>{item.nombre}{item.activo ? "" : " (INACTIVA)"}</option>
               ))}
@@ -794,7 +852,7 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
           </FloatingField>
           <FloatingField label="Cobrador *" active={activeValue("id_cobrador")}>
             <select value={form.id_cobrador} onChange={(event) => set("id_cobrador", event.target.value)} required>
-              <option value="">SELECCIONAR</option>
+              <option value="">NO SELECCIONADO</option>
               {(catalogs.cobradores || []).map((item) => (
                 <option key={item.id_cobrador} value={item.id_cobrador}>{item.nombre}{item.activo ? "" : " (INACTIVO)"}</option>
               ))}
@@ -859,22 +917,25 @@ function ContactsPanel({ contacts, writable, saving, onSave }) {
             </button>
           </div>
           <div className="socios-contactForm__grid">
-            <label>
-              <span>Fecha *</span>
+            <FloatingField label="Fecha *" active>
               <input type="date" value={form.fecha_contacto} max={localToday()} onChange={(event) => setForm((current) => ({ ...current, fecha_contacto: event.target.value }))} required />
-            </label>
-            <label>
-              <span>Resultado *</span>
+            </FloatingField>
+            <FloatingField label="Resultado *" active>
               <select value={form.estado_contacto} onChange={(event) => setForm((current) => ({ ...current, estado_contacto: event.target.value }))} required>
                 <option value="CONTACTADO">CONTACTADO</option>
                 <option value="PENDIENTE">PENDIENTE</option>
                 <option value="NO_CONTACTADO">NO CONTACTADO</option>
               </select>
-            </label>
-            <label className="is-wide">
-              <span>Detalle</span>
+            </FloatingField>
+            <FloatingField
+              label="Detalle"
+              wide
+              textarea
+              active={Boolean(form.detalle_contacto)}
+              placeholderOnFloat
+            >
               <textarea value={form.detalle_contacto} maxLength={4000} rows={3} onChange={(event) => setForm((current) => ({ ...current, detalle_contacto: upperLimitedText(event.target.value, 4000) }))} placeholder="OBSERVACIÓN DE LA LLAMADA, MENSAJE O GESTIÓN..." />
-            </label>
+            </FloatingField>
           </div>
         </div>
       ) : null}
@@ -915,7 +976,7 @@ function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
         ]}
       />
       <div className="entity-info-grid">
-        <InfoSection title="Pagos de cuotas" icon={faReceipt} badge={payments.length}>
+        <InfoSection title="Pagos de cuotas" icon={faReceipt} badge={payments.length} className="socios-paymentHistory">
           {payments.length ? payments.map((payment) => (
             <InfoRow
               key={payment.id_pago}
@@ -926,7 +987,7 @@ function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
             />
           )) : <InfoEmpty>No hay pagos de cuotas registrados.</InfoEmpty>}
         </InfoSection>
-        <InfoSection title="Inscripción" icon={faIdCard} badge={registrationPayments.length}>
+        <InfoSection title="Inscripción" icon={faIdCard} badge={registrationPayments.length} className="socios-registrationHistory">
           {registrationPayments.length ? registrationPayments.map((payment) => (
             <InfoRow
               key={payment.id_inscripcion}
@@ -1074,9 +1135,12 @@ export default function Socios() {
 
   const save = async (event) => {
     event.preventDefault();
-    if (!form.nombre.trim()) {
+    if (!form.nombre.trim() || !form.apellido.trim()) {
       setFormTab(FORM_TAB_PERSONAL);
-      setFeedback({ type: "warning", message: "Completá el nombre del socio. Los datos cargados se conservaron." });
+      setFeedback({
+        type: "warning",
+        message: "Completá nombre y apellido del socio. Los datos cargados se conservaron.",
+      });
       return;
     }
     if (form.dni && dniInput(form.dni).length !== 8) {
@@ -1096,7 +1160,12 @@ export default function Socios() {
     }
     setSaving(true);
     try {
-      const response = await sociosApi.guardar({ ...form });
+      const { apellido, ...payload } = form;
+      payload.nombre = [form.nombre, apellido]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ");
+      const response = await sociosApi.guardar(payload);
       setFeedback({ type: "success", message: response.mensaje || "Socio guardado correctamente." });
       setFormOpen(false);
       await refresh();
@@ -1254,7 +1323,8 @@ export default function Socios() {
 
   return (
     <>
-      <ModulePage
+      <section className="socios-sectionShell">
+        <ModulePage
         title="Socios"
         className="socios-page"
         filters={pageFilters}
@@ -1289,11 +1359,11 @@ export default function Socios() {
           loadingLabel="Cargando socios..."
           skeletonRows={7}
           columns={[
+            { label: "ID", align: "center" },
             "Socio",
-            { label: "DNI", align: "center" },
             { label: "Sangre", align: "center" },
             { label: "Estado", align: "center" },
-            { label: "Deudas / pagos", align: "center" },
+            { label: "Pagos", align: "center" },
             "Último contacto",
             { label: "Acciones", align: "center" },
           ]}
@@ -1328,7 +1398,9 @@ export default function Socios() {
             ) : null}
           </footer>
         ) : null}
-      </ModulePage>
+        </ModulePage>
+
+      </section>
 
       <BirthdayContactCard
         items={birthdayItems || []}

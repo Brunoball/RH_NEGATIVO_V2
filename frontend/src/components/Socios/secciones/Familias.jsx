@@ -244,10 +244,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
           tag="Nombre obligatorio"
           bodyClassName="familias-form-panel__body--details"
         >
-          <FloatingField
-            label="Nombre de la familia *"
-            active={Boolean(form.nombre)}
-          >
+          <FloatingField label="Nombre de la familia *">
             <input
               value={form.nombre}
               onChange={(event) =>
@@ -261,11 +258,7 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
               autoFocus
             />
           </FloatingField>
-          <FloatingField
-            label="Observaciones"
-            active={Boolean(form.descripcion)}
-            textarea
-          >
+          <FloatingField label="Observaciones" textarea>
             <textarea
               value={form.descripcion}
               onChange={(event) =>
@@ -307,13 +300,12 @@ function FamilyForm({ form, setForm, catalog, activeTab, onTabChange, pendingMem
 
               <FloatingField
                 label="Buscar socio por nombre, DNI o categoría"
-                active={Boolean(memberSearch)}
                 className="familias-modal__member-search"
               >
                 <input
                   type="search"
                   value={memberSearch}
-                  onInput={(event) => setMemberSearch(event.currentTarget.value)}
+                  onChange={(event) => setMemberSearch(event.currentTarget.value)}
                   placeholder=" "
                   autoComplete="off"
                 />
@@ -563,7 +555,7 @@ export default function Familias() {
       setFormTab(FORM_TAB_DETAILS);
       setFeedback({
         type: "error",
-        message: "Completá el nombre de la familia.",
+        message: "Completá el nombre de la familia. Los datos cargados se conservaron.",
       });
       return;
     }
@@ -571,7 +563,7 @@ export default function Familias() {
       setFormTab(FORM_TAB_MEMBERS);
       setFeedback({
         type: "error",
-        message: "Seleccioná al menos un integrante para la familia.",
+        message: "Seleccioná al menos un integrante para la familia. Los datos cargados se conservaron.",
       });
       return;
     }
@@ -592,7 +584,18 @@ export default function Familias() {
       setFeedback({ type: "success", message: response.mensaje });
       void cargar();
     } catch (requestError) {
-      setFeedback({ type: "error", message: requestError.message });
+      const field = requestError?.data?.detalles?.campo || "";
+      if (["nombre", "descripcion", "observaciones"].includes(field)) {
+        setFormTab(FORM_TAB_DETAILS);
+      } else if (
+        ["integrantes", "id_socio", "desde", "fecha_desvinculacion"].includes(field)
+      ) {
+        setFormTab(FORM_TAB_MEMBERS);
+      }
+      setFeedback({
+        type: "error",
+        message: `${requestError.message || "No se pudo guardar la familia."} Los datos cargados se conservaron.`,
+      });
     } finally {
       setSaving(false);
     }
@@ -841,6 +844,7 @@ export default function Familias() {
         submitLabel={form.id_familia ? "Guardar cambios" : "Crear familia"}
         modalClassName="familias-modal familias-modal--form"
         closeOnBackdrop={false}
+        autoUppercaseInputs={false}
         wide
         footerStart={formTab === FORM_TAB_MEMBERS ? (
           <button

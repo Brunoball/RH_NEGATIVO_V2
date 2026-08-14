@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
 import { apiPost } from "../_shared/api/apiClient";
 import { saveSession } from "../_shared/auth/session";
-import logoRh from "../../imagenes/Logo_rh_sf.png";
+import bannerRh from "../../imagenes/Rh_banner.png";
 import "./inicio.css";
 
 const APP_NAME = "Círculo RH Negativo";
@@ -17,17 +17,20 @@ function loadRememberedAccount() {
       return null;
     }
 
-    return { usuario: account.usuario };
+    return {
+      usuario: account.usuario,
+      contrasena: typeof account?.contrasena === "string" ? account.contrasena : "",
+    };
   } catch {
     return null;
   }
 }
 
-function saveRememberedAccount(usuario) {
+function saveRememberedAccount(usuario, contrasena) {
   try {
     localStorage.setItem(
       REMEMBERED_ACCOUNT_KEY,
-      JSON.stringify({ usuario }),
+      JSON.stringify({ usuario, contrasena }),
     );
   } catch {
     // El login continúa aunque el navegador bloquee el almacenamiento local.
@@ -46,7 +49,7 @@ export default function Inicio() {
   const navigate = useNavigate();
   const [rememberedAccount] = useState(loadRememberedAccount);
   const [usuario, setUsuario] = useState(rememberedAccount?.usuario || "");
-  const [contrasena, setContrasena] = useState("");
+  const [contrasena, setContrasena] = useState(rememberedAccount?.contrasena || "");
   const [recordarCuenta, setRecordarCuenta] = useState(Boolean(rememberedAccount));
   const [visible, setVisible] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -71,7 +74,7 @@ export default function Inicio() {
       });
 
       if (recordarCuenta) {
-        saveRememberedAccount(usuario.trim());
+        saveRememberedAccount(usuario.trim(), contrasena);
       } else {
         clearRememberedAccount();
       }
@@ -90,19 +93,12 @@ export default function Inicio() {
         <section className="ini_brand-panel">
           <div className="ini_brand-glow" aria-hidden="true" />
           <div className="ini_brand-content">
-            <div className="ini_brand-logo--placeholder" aria-label={APP_NAME}>
-              <div className="brand-mark brand-mark--rh" aria-hidden="true">
-                <img src={logoRh} alt="" />
-              </div>
-              <div className="brand-word">
-                <strong className="brand-word-title" aria-label={APP_NAME}>
-                  Círculo RH
-                  <br aria-hidden="true" />
-                  Negativo
-                </strong>
-                <span>Sistema de gestión</span>
-              </div>
-            </div>
+            <img
+              className="ini_brand-banner"
+              src={bannerRh}
+              alt={APP_NAME}
+              draggable="false"
+            />
             <div className="ini_brand-copy">
               <h2>Administración simple y centralizada</h2>
               <p>
@@ -170,7 +166,7 @@ export default function Inicio() {
                       if (!checked) clearRememberedAccount();
                     }}
                   />
-                  <span>Recordar cuenta</span>
+                  <span>Recordar cuenta y contraseña</span>
                 </label>
               </div>
 

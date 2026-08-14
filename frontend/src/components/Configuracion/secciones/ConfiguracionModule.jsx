@@ -120,7 +120,7 @@ const CATALOG_META = {
     deletedFieldLabel: "período",
     fields: [
       { key: "nombre", label: "Nombre", type: "text", maxLength: 50, sanitizer: "catalog" },
-      { key: "meses", label: "Meses / descripción", type: "text", maxLength: 50, sanitizer: "catalog" },
+      { key: "meses", label: "Meses / descripción", type: "text", sanitizer: "catalog", unlimited: true },
     ],
     secondary: (item) => item.meses || "Sin descripción de meses",
   },
@@ -144,6 +144,11 @@ const sanitizeCatalogField = (field, value) => {
     );
   }
 
+  if (field.unlimited && field.sanitizer === "catalog") {
+    return upper(value)
+      .replace(/[^A-ZÁÉÍÓÚÜÑÇ0-9\s+&./\-]/g, "")
+      .replace(/ {2,}/g, " ");
+  }
   if (field.sanitizer === "letters") {
     return upperLettersOnly(value, field.maxLength || 160);
   }
@@ -151,6 +156,30 @@ const sanitizeCatalogField = (field, value) => {
     return upperBloodGroup(value, field.maxLength || 10);
   }
   return upperCatalogName(value, field.maxLength || 160);
+};
+
+const getCatalogFieldRule = (field) => {
+  if (field.type === "decimal") {
+    return `Hasta ${field.maxIntegerDigits ?? 10} dígitos enteros y ${field.maxDecimals ?? 2} decimales`;
+  }
+  if (field.sanitizer === "letters") {
+    return "Solo letras, espacios, apóstrofe, punto y guion";
+  }
+  if (field.sanitizer === "blood") {
+    return "Letras, números y signos + y -";
+  }
+  return "Letras, números, espacios y signos + & . / -";
+};
+
+const getCatalogFieldCounter = (field, value) => {
+  const currentLength = String(value ?? "").length;
+  if (field.unlimited) {
+    return `${currentLength} caracteres · sin límite`;
+  }
+  if (field.type === "decimal") {
+    return `${currentLength} / ${field.maxLength ?? 13}`;
+  }
+  return `${currentLength} / ${field.maxLength ?? 160}`;
 };
 
 function AccessCard({
@@ -202,74 +231,14 @@ function ConfigurationHome() {
       path: "/configuracion/usuarios",
     },
     {
-      id: "categoria",
-      title: "Categorías",
-      description: "Administrá las categorías de socios y sus importes mensual y anual.",
+      id: "catalogos",
+      title: "Catálogos y parámetros",
+      description: "Administrá categorías, cobradores, estados, grupos sanguíneos, medios de pago y períodos.",
       icon: faSliders,
-      status: "Tabla maestra",
-      area: "Socios / cuotas",
-      detail: "Nombre, montos y vigencia",
+      status: "6 catálogos",
+      area: "Socios y pagos",
+      detail: "Altas, edición y vigencia",
       path: "/configuracion/catalogos?lista=categoria",
-    },
-    {
-      id: "cobrador",
-      title: "Cobradores",
-      description: "Administrá las opciones de cobrador disponibles en la ficha de cada socio.",
-      icon: faUsers,
-      status: "Tabla maestra",
-      area: "Socios",
-      detail: "Altas, edición y bajas",
-      path: "/configuracion/catalogos?lista=cobrador",
-    },
-    {
-      id: "estado",
-      title: "Estados",
-      description: "Configurá los estados administrativos utilizados para clasificar socios.",
-      icon: faPowerOff,
-      status: "Tabla maestra",
-      area: "Socios",
-      detail: "Estados e historial",
-      path: "/configuracion/catalogos?lista=estado",
-    },
-    {
-      id: "grupo_sanguineo",
-      title: "Grupos sanguíneos",
-      description: "Administrá los grupos y factores sanguíneos disponibles en socios.",
-      icon: faGear,
-      status: "Tabla maestra",
-      area: "Socios",
-      detail: "Grupo y factor",
-      path: "/configuracion/catalogos?lista=grupo_sanguineo",
-    },
-    {
-      id: "medios_pago",
-      title: "Medios de pago",
-      description: "Administrá los medios disponibles para cuotas e inscripciones.",
-      icon: faMoneyBillTransfer,
-      status: "Tabla maestra",
-      area: "Pagos",
-      detail: "Cuotas e inscripciones",
-      path: "/configuracion/catalogos?lista=medios_pago",
-    },
-    {
-      id: "periodo",
-      title: "Períodos",
-      description: "Configurá los períodos de cuota y los meses que representa cada uno.",
-      icon: faCalculator,
-      status: "Tabla maestra",
-      area: "Cuotas",
-      detail: "Períodos y meses",
-      path: "/configuracion/catalogos?lista=periodo",
-    },
-    {
-      id: "contable",
-      title: "Contable",
-      description: "Administrá las listas que aparecen en los selectores de otros ingresos y egresos.",
-      icon: faCalculator,
-      status: "5 listas",
-      area: "Contabilidad",
-      detail: "Proveedores, categorías y conceptos",
-      path: "/configuracion/contable",
     },
   ];
 
@@ -283,8 +252,8 @@ function ConfigurationHome() {
           <small>CONFIGURACIÓN DEL SISTEMA</small>
           <strong>Administración y configuración general</strong>
           <p>
-            Gestioná usuarios, roles y los catálogos vinculados con socios,
-            pagos y Contabilidad.
+            Gestioná usuarios, roles y los catálogos generales vinculados con
+            socios y pagos.
           </p>
         </div>
       </header>
@@ -741,35 +710,45 @@ function CatalogsPanel() {
       >
         <div className="entity-form config-catalogForm">
           <div className="entity-form__grid entity-form__grid--single">
-            {meta.fields.map((field, index) => (
-              <FloatingField
-                key={field.key}
-                label={
-                  <>
-                    <FontAwesomeIcon icon={meta.icon} aria-hidden="true" />
-                    {field.label} *
-                  </>
-                }
-                active={String(form[field.key] ?? "").trim() !== ""}
-              >
-                <input
-                  type="text"
-                  inputMode={field.type === "decimal" ? "decimal" : undefined}
-                  value={form[field.key] ?? ""}
-                  placeholder=" "
-                  onKeyDown={field.type === "decimal" ? preventInvalidDecimalKey : undefined}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]: sanitizeCatalogField(field, event.target.value),
-                    }))
-                  }
-                  maxLength={field.maxLength}
-                  required
-                  autoFocus={index === 0}
-                />
-              </FloatingField>
-            ))}
+            {meta.fields.map((field, index) => {
+              const fieldValue = form[field.key] ?? "";
+              const helpId = `catalog-field-${activeList}-${field.key}-help`;
+              return (
+                <div className="config-catalogField" key={field.key}>
+                  <FloatingField
+                    label={
+                      <>
+                        <FontAwesomeIcon icon={meta.icon} aria-hidden="true" />
+                        {field.label} *
+                      </>
+                    }
+                    active={String(fieldValue).trim() !== ""}
+                  >
+                    <input
+                      type="text"
+                      inputMode={field.type === "decimal" ? "decimal" : undefined}
+                      value={fieldValue}
+                      placeholder=" "
+                      aria-describedby={helpId}
+                      onKeyDown={field.type === "decimal" ? preventInvalidDecimalKey : undefined}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          [field.key]: sanitizeCatalogField(field, event.target.value),
+                        }))
+                      }
+                      maxLength={field.maxLength}
+                      required
+                      autoFocus={index === 0}
+                    />
+                  </FloatingField>
+                  <div className="config-catalogField__meta" id={helpId}>
+                    <span>{getCatalogFieldRule(field)}</span>
+                    <strong>{getCatalogFieldCounter(field, fieldValue)}</strong>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <p className="config-catalogForm__help">
             <FontAwesomeIcon icon={faSliders} aria-hidden="true" />

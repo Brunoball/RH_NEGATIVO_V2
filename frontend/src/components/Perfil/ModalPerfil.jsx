@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGear, faXmark } from "@fortawesome/free-solid-svg-icons";
+import logoRh from "../../imagenes/Logo_rh_sf.png";
 import "./ModalPerfil.css";
 
 function firstValue(...values) {
@@ -44,7 +45,7 @@ export default function ModalPerfil({
   open,
   onClose,
   usuario,
-  logoSrc,
+  logoSrc = logoRh,
   onConfigRequest,
 }) {
   const closeButtonRef = useRef(null);

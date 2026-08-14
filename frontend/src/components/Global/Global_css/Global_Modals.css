@@ -280,11 +280,24 @@
   cursor: not-allowed;
 }
 
-.entity-field input[type="date"] {
+.entity-modal input:is(
+  [type="date"],
+  [type="datetime-local"],
+  [type="month"],
+  [type="time"],
+  [type="week"]
+) {
+  position: relative;
   cursor: pointer;
 }
 
-.entity-field input[type="date"]::-webkit-calendar-picker-indicator {
+.entity-modal input:is(
+  [type="date"],
+  [type="datetime-local"],
+  [type="month"],
+  [type="time"],
+  [type="week"]
+)::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 0.72;
 }

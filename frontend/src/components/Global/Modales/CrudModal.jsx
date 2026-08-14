@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import GlobalLoader from "../GlobalLoader";
+import { openNativePicker } from "../Formularios/nativePicker";
 import useAnimatedModalSize from "./useAnimatedModalSize";
 import "../Global_css/Global_Modals.css";
 
@@ -38,25 +39,6 @@ function uppercaseModalTextField(event) {
   if (field.value !== upperValue) field.value = upperValue;
 }
 
-function openDatePickerFromInput(event) {
-  const input = event.target;
-  if (
-    !(input instanceof HTMLInputElement) ||
-    input.type !== "date" ||
-    input.disabled ||
-    input.readOnly ||
-    typeof input.showPicker !== "function"
-  ) {
-    return;
-  }
-
-  try {
-    input.showPicker();
-  } catch {
-    input.focus();
-  }
-}
-
 export default function CrudModal({
   open,
   title,
@@ -78,7 +60,10 @@ export default function CrudModal({
   footerStart = null,
   modalClassName = "",
   closeOnBackdrop = true,
-  autoUppercaseInputs = true,
+  // Los formularios controlados deben normalizar el texto dentro de su
+  // onChange. Mutar el valor del DOM durante input puede dejar el estado React
+  // desactualizado y hacer que el contenido vuelva atrás en el próximo render.
+  autoUppercaseInputs = false,
 }) {
   const modalRef = useRef(null);
   const modalIdRef = useRef(Symbol("crud-modal"));
@@ -148,7 +133,7 @@ export default function CrudModal({
         </header>
         <form
           onSubmit={onSubmit}
-          onClick={openDatePickerFromInput}
+          onClick={openNativePicker}
           onInputCapture={autoUppercaseInputs ? uppercaseModalTextField : undefined}
         >
           <div

@@ -40,10 +40,11 @@
 
 @media (max-width: 1040px) {
   .familias-table .entity-table-wrap {
-    overflow-x: auto;
+    overflow-x: hidden;
   }
 
   .familias-grid {
-    min-width: 700px;
+    width: 100%;
+    min-width: 0;
   }
 }

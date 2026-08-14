@@ -5,6 +5,51 @@ import "../Global_css/Global_TabbedForms.css";
 const tabId = (prefix, value) =>
   `${prefix}-${String(value).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
+const ALWAYS_FLOATING_INPUT_TYPES = new Set([
+  "color",
+  "date",
+  "datetime-local",
+  "file",
+  "month",
+  "range",
+  "time",
+  "week",
+]);
+
+const NON_FLOATING_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "hidden",
+  "image",
+  "radio",
+  "reset",
+  "submit",
+]);
+
+function findFloatingControl(children) {
+  return React.Children.toArray(children).find(
+    (child) =>
+      React.isValidElement(child) &&
+      typeof child.type === "string" &&
+      ["input", "select", "textarea"].includes(child.type),
+  );
+}
+
+function controlNeedsFloatingLabel(control) {
+  if (!control) return false;
+
+  if (control.type === "select") return true;
+
+  const inputType = String(control.props.type || "text").toLowerCase();
+  if (NON_FLOATING_INPUT_TYPES.has(inputType)) return false;
+  if (ALWAYS_FLOATING_INPUT_TYPES.has(inputType)) return true;
+
+  const value = control.props.value ?? control.props.defaultValue;
+  if (Array.isArray(value)) return value.length > 0;
+
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
 export function EntityTabs({
   tabs,
   value,
@@ -124,6 +169,8 @@ export function EntityTabPane({
   disableWhenInactive = false,
   className = "",
 }) {
+  // El panel nunca se desmonta al cambiar de pestaña. Sólo cambia su estado
+  // visible/deshabilitado para conservar valores nativos y estado local.
   const content = disableWhenInactive ? (
     <fieldset
       className="entity-tab-pane__fieldset"
@@ -156,9 +203,12 @@ export function FloatingField({
   className = "",
   children,
 }) {
+  const control = findFloatingControl(children);
+  const isActive = Boolean(active) || controlNeedsFloatingLabel(control);
+
   return (
     <label
-      className={`entity-field entity-floating-field ${wide ? "entity-field--wide" : ""} ${textarea ? "is-textarea" : ""} ${active ? "is-active" : ""} ${placeholderOnFloat ? "has-placeholder-on-float" : ""} ${className}`.trim()}
+      className={`entity-field entity-floating-field ${wide ? "entity-field--wide" : ""} ${textarea ? "is-textarea" : ""} ${isActive ? "is-active" : ""} ${placeholderOnFloat ? "has-placeholder-on-float" : ""} ${className}`.trim()}
     >
       {children}
       <span>{label}</span>
