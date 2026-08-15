@@ -217,16 +217,18 @@
 
 .cuotas-grid--debt {
   grid-template-columns:
+    72px
     minmax(280px, 1.8fr)
     minmax(130px, 0.82fr)
     minmax(130px, 0.82fr)
     minmax(140px, 0.9fr)
     minmax(100px, 0.58fr);
-  min-width: 880px;
+  min-width: 952px;
 }
 
 .cuotas-grid--paid {
   grid-template-columns:
+    72px
     minmax(270px, 1.7fr)
     minmax(125px, 0.78fr)
     minmax(125px, 0.78fr)
@@ -235,46 +237,59 @@
     minmax(130px, 0.82fr)
     minmax(120px, 0.75fr)
     minmax(100px, 0.56fr);
-  min-width: 1160px;
+  min-width: 1232px;
 }
 
 .cuotas-grid--selecting {
   grid-template-columns:
     44px
+    72px
     minmax(280px, 1.8fr)
     minmax(130px, 0.82fr)
     minmax(130px, 0.82fr)
     minmax(140px, 0.9fr);
-  min-width: 850px;
+  min-width: 922px;
 }
 
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
-  > .mov-gridCell--head:nth-child(2),
+  > .mov-gridCell--head:nth-child(1),
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
   > .mov-gridCell--head:nth-child(3),
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
-  > .mov-gridCell--head:nth-child(5),
-.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(2),
+  > .mov-gridCell--head:nth-child(4),
+.cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
+  > .mov-gridCell--head:nth-child(6),
+.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(1),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(3),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(4),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(5),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(6),
-.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(8),
+.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(7),
+.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(9),
 .cuotas-grid--selecting.mov-gridTable--head
-  > .mov-gridCell--head:nth-child(3),
+  > .mov-gridCell--head:nth-child(1),
 .cuotas-grid--selecting.mov-gridTable--head
-  > .mov-gridCell--head:nth-child(4) {
+  > .mov-gridCell--head:nth-child(2),
+.cuotas-grid--selecting.mov-gridTable--head
+  > .mov-gridCell--head:nth-child(4),
+.cuotas-grid--selecting.mov-gridTable--head
+  > .mov-gridCell--head:nth-child(5) {
   justify-content: center;
   text-align: center;
 }
 
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
-  > .mov-gridCell--head:nth-child(4),
-.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(7),
+  > .mov-gridCell--head:nth-child(5),
+.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(8),
 .cuotas-grid--selecting.mov-gridTable--head
-  > .mov-gridCell--head:nth-child(5) {
+  > .mov-gridCell--head:nth-child(6) {
   justify-content: flex-end;
   text-align: right;
+}
+
+.cuotas-id-cell {
+  color: var(--color-text-strong, #0f172a);
+  font-variant-numeric: tabular-nums;
 }
 
 .cuotas-payment-state {
@@ -327,6 +342,20 @@
 .cuotas-money-cell .cuotas-discount-note {
   width: 100%;
   text-align: right;
+}
+
+.cuotas-period-cell {
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cuotas-period-cell small {
+  display: block;
+  color: var(--success-700, #15803d);
+  font-size: 0.61rem;
+  font-weight: 850;
+  letter-spacing: 0.035em;
+  line-height: 1.15;
 }
 
 .cuotas-category-chip {
@@ -1170,6 +1199,51 @@ html[data-theme="oscuro"] .cuotas-batch-list > header,
 html[data-theme="oscuro"] .cuotas-batch-list input,
 html[data-theme="oscuro"] .cuotas-batch-list select {
   background: color-mix(in srgb, var(--balto-bg) 88%, #fff 12%);
+}
+
+/*
+ * En Cuotas, una eliminación común se presenta sin un bloque de alarma.
+ * El rojo queda reservado al icono y a la acción destructiva. Si el registro
+ * pertenece a Contado Anual, el modal cambia a amarillo para advertir que se
+ * quitará la cobertura completa, incluso al abrirlo desde un bimestre.
+ */
+.gdel-modal.cuotas-delete-modal .gdel-title--danger,
+.gdel-modal.cuotas-delete-modal .gdel-body {
+  color: #111827;
+}
+
+.gdel-modal.cuotas-delete-modal--annual {
+  border-top-color: #f59e0b;
+}
+
+.gdel-modal.cuotas-delete-modal--annual .gdel-icon--danger {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.gdel-modal.cuotas-delete-modal--annual .gdel-note {
+  border-color: #fde68a;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.gdel-modal.cuotas-delete-modal--annual .gdel-btn--solid-danger {
+  background: #d97706;
+}
+
+.gdel-modal.cuotas-delete-modal--annual .gdel-btn--solid-danger:hover:not(:disabled) {
+  background: #b45309;
+}
+
+html[data-theme="oscuro"] .gdel-modal.cuotas-delete-modal .gdel-title--danger,
+html[data-theme="oscuro"] .gdel-modal.cuotas-delete-modal .gdel-body {
+  color: var(--balto-ink, #f8fafc);
+}
+
+html[data-theme="oscuro"] .gdel-modal.cuotas-delete-modal--annual .gdel-note {
+  border-color: color-mix(in srgb, #f59e0b 48%, var(--mov-border));
+  color: #fcd34d;
+  background: color-mix(in srgb, #f59e0b 13%, var(--balto-bg));
 }
 
 html[data-theme="oscuro"] .cuotas-selection-toast {

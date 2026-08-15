@@ -631,7 +631,7 @@
   top: calc(100% + 7px);
   right: 0;
   z-index: 30;
-  width: 94px;
+  width: 132px;
   display: grid;
   gap: 4px;
   padding: 6px;
@@ -669,8 +669,33 @@
 }
 
 .cuotas-add-year {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px !important;
   border-style: dashed;
-  background: #fff;
+  background: var(--balto-bg, #fff);
+}
+
+.cuotas-add-year > svg {
+  color: var(--balto-action);
+}
+
+.cuotas-add-year > span {
+  text-align: left;
+}
+
+.cuotas-add-year > small {
+  color: var(--balto-text);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.cuotas-year-chip__menu > .cuotas-add-year:hover > svg,
+.cuotas-year-chip__menu > .cuotas-add-year:hover > small {
+  color: #fff;
 }
 
 .cuotas-month-grid {

@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 
+const APP_TIME_ZONE = process.env.PW_TIMEZONE || 'America/Argentina/Cordoba';
+
 let suffixSequence = 0;
 const digitAssignments = new Map();
 const usedDigitsByLength = new Map();
@@ -73,15 +75,29 @@ function lettersFromSuffix(suffix, length = 18) {
   return result;
 }
 
+function dateIsoInAppTimeZone(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function todayIso() {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 10);
+  return dateIsoInAppTimeZone(new Date());
+}
+
+function addDaysIso(days) {
+  const amount = Number(days);
+  if (!Number.isFinite(amount)) throw new TypeError('La cantidad de días debe ser numérica.');
+  return dateIsoInAppTimeZone(new Date(Date.now() + Math.trunc(amount) * 86400000));
 }
 
 function normalizeUiText(value) {
   return String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-module.exports = { digitsFromSuffix, lettersFromSuffix, normalizeUiText, todayIso, uniqueSuffix };
+module.exports = { addDaysIso, dateIsoInAppTimeZone, digitsFromSuffix, lettersFromSuffix, normalizeUiText, todayIso, uniqueSuffix };

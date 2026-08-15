@@ -9,8 +9,8 @@ function rowByText(page, text) {
 }
 
 function addDays(iso, days) {
-  const date = new Date(`${iso}T12:00:00`);
-  date.setDate(date.getDate() + days);
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 

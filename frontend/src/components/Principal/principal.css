@@ -477,7 +477,8 @@ body.pp-lockScroll{ overflow:hidden !important; }
   transform:translateZ(0);
   backface-visibility:hidden;
 }
-.pp-sidebar:hover{
+.pp-sidebar:hover,
+.pp-sidebar:focus-within{
   width:var(--pp-side-expanded);
 }
 
@@ -592,7 +593,8 @@ body.pp-lockScroll{ overflow:hidden !important; }
   white-space:nowrap;
   will-change:opacity, transform;
 }
-.pp-sidebar:hover .pp-brand__text{
+.pp-sidebar:hover .pp-brand__text,
+.pp-sidebar:focus-within .pp-brand__text{
   opacity:1;
   transform:translate3d(0,0,0);
 }
@@ -623,7 +625,8 @@ body.pp-lockScroll{ overflow:hidden !important; }
   min-height:0;
   overflow:hidden;
 }
-.pp-sidebar:hover .pp-nav{
+.pp-sidebar:hover .pp-nav,
+.pp-sidebar:focus-within .pp-nav{
   overflow-y:auto;
   overflow-x:hidden;
 }
@@ -686,7 +689,8 @@ body.pp-lockScroll{ overflow:hidden !important; }
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.pp-sidebar:hover .pp-nav__label{
+.pp-sidebar:hover .pp-nav__label,
+.pp-sidebar:focus-within .pp-nav__label{
   opacity:1;
   transform:translate3d(0,0,0);
 }
@@ -802,7 +806,7 @@ body.pp-lockScroll{ overflow:hidden !important; }
     animation:none;
   }
 
-  .pp-sidebar:not(:hover) .pp-navGroup.has-sub.is-open .pp-navSub{
+  .pp-sidebar:not(:hover):not(:focus-within) .pp-navGroup.has-sub.is-open .pp-navSub{
     max-height:0 !important;
     opacity:0 !important;
     visibility:hidden !important;
@@ -906,7 +910,9 @@ body.pp-lockScroll{ overflow:hidden !important; }
   font-size:14px;
 }
 .pp-sidebar:hover .pp-sidebarAction__label,
-.pp-sidebar:hover .pp-logout__label{
+.pp-sidebar:hover .pp-logout__label,
+.pp-sidebar:focus-within .pp-sidebarAction__label,
+.pp-sidebar:focus-within .pp-logout__label{
   opacity:1;
   transform:translate3d(0,0,0);
 }

@@ -20,6 +20,10 @@ const privateRoutes = [
   '/socios/familias',
   '/categorias',
   '/categorias/descuentos',
+  '/cuotas',
+  '/configuracion',
+  '/configuracion/usuarios',
+  '/configuracion/catalogos',
   '/ruta-inexistente',
 ];
 
@@ -165,6 +169,35 @@ test.describe('Login y sesión', () => {
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
     }
+  });
+
+  test('API valida la sesión actual del runner autenticado y logout invalida una sesión independiente', async ({ request }) => {
+    const result = await apiResult(request, 'auth_usuario_actual');
+    expect(result.status).toBe(200);
+    expect(result.body?.usuario?.rol).toBe('admin');
+    expect(result.body?.usuario?.id).toBeTruthy();
+    expect(result.body?.organizacion).toBeTruthy();
+
+    const { username, password } = readTestCredentials();
+    const login = await apiResult(request, 'auth_login', {
+      method: 'POST',
+      data: { usuario: username, contrasena: password },
+      session: null,
+    });
+    expect(login.status).toBe(200);
+    const secondarySession = {
+      token: login.body.token,
+      expira_en: login.body.expira_en,
+      usuario: login.body.usuario,
+      organizacion: login.body.organizacion,
+    };
+
+    const logout = await apiResult(request, 'auth_logout', {
+      method: 'POST', data: {}, session: secondarySession,
+    });
+    expect(logout.status).toBe(200);
+    const expired = await apiResult(request, 'auth_usuario_actual', { session: secondarySession });
+    expect(expired.status).toBe(401);
   });
 
   test('API valida campos, credenciales largas y bloqueo por 5 intentos', async () => {

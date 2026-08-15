@@ -6,8 +6,8 @@ declare(strict_types=1);
  *
  * Reglas de aislamiento usadas por los tests actuales:
  * - usuarios:              pw_e2e_*
- * - socios:                PW E2E SOCIO *
- * - familias:              PW E2E FAM *
+ * - socios:                PW E2E SOCIO * / PW EEE SOCIO *
+ * - familias:              PW E2E FAM * / PW EEE FAM *
  * - categorias:            PW EE CAT * (el formulario de categorías elimina dígitos)
  * - descuentos familiares: descripcion PW E2E DESC *
  * - logins inválidos:      usuario pw_e2e_*
@@ -37,33 +37,67 @@ final class TestingCleanup
         api_success(self::cleanup($auth['db']), 'Limpieza final de Playwright completada.');
     }
 
+    /**
+     * Compatibilidad con instalaciones antiguas que todavía tengan un trigger
+     * BEFORE DELETE sobre socios.
+     *
+     * El esquema actual permite la eliminación definitiva desde el backend y
+     * no necesita ningún trigger especial para Playwright. Por eso la ausencia
+     * de trigger es el estado normal y NO debe bloquear la suite.
+     *
+     * Si queda instalado un trigger antiguo que usa SIGNAL para impedir DELETE
+     * y no contiene la excepción explícita para los socios E2E, detenemos la
+     * limpieza antes de abrir la transacción para no dejar una corrida a medias.
+     */
     private static function assertSocioDeleteGuardSupportsE2E(PDO $db): void
     {
-        $statement = $db->prepare(
-            "SELECT TRIGGER_NAME, ACTION_STATEMENT
-             FROM information_schema.TRIGGERS
-             WHERE TRIGGER_SCHEMA = DATABASE()
-               AND EVENT_OBJECT_TABLE = 'socios'
-               AND EVENT_MANIPULATION = 'DELETE'
-               AND ACTION_TIMING = 'BEFORE'"
-        );
-        $statement->execute();
-        $triggers = $statement->fetchAll(PDO::FETCH_ASSOC);
-
-        foreach ($triggers as $trigger) {
-            $definition = strtoupper((string)($trigger['ACTION_STATEMENT'] ?? ''));
-            if (str_contains($definition, 'PW E2E SOCIO')) {
-                return;
-            }
+        try {
+            $statement = $db->prepare(
+                "SELECT TRIGGER_NAME, ACTION_STATEMENT
+                 FROM information_schema.TRIGGERS
+                 WHERE TRIGGER_SCHEMA = DATABASE()
+                   AND EVENT_OBJECT_TABLE = 'socios'
+                   AND EVENT_MANIPULATION = 'DELETE'
+                   AND ACTION_TIMING = 'BEFORE'"
+            );
+            $statement->execute();
+            $triggers = $statement->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $schemaError) {
+            // La limpieza ya está aislada por IDs obtenidos únicamente desde
+            // prefijos PW E2E. No hacemos depender los tests de permisos sobre
+            // information_schema si la base no expone los triggers.
+            error_log('[e2e_cleanup][triggers] ' . $schemaError->getMessage());
+            return;
         }
 
+        // Sin BEFORE DELETE: esquema RH Negativo V2 actual. Continuar.
+        if ($triggers === []) return;
+
+        $blocking = [];
+        foreach ($triggers as $trigger) {
+            $definition = strtoupper((string)($trigger['ACTION_STATEMENT'] ?? ''));
+            $name = (string)($trigger['TRIGGER_NAME'] ?? 'trigger_sin_nombre');
+
+            // Un trigger que no hace SIGNAL no es, por sí solo, una protección
+            // que impida la limpieza. Si hace SIGNAL, debe contemplar ambos
+            // marcadores de socios E2E que usa la suite actual/legacy.
+            if (!str_contains($definition, 'SIGNAL')
+                || (str_contains($definition, 'PW E2E SOCIO') && str_contains($definition, 'PW EEE SOCIO'))) {
+                continue;
+            }
+            $blocking[] = $name;
+        }
+
+        if ($blocking === []) return;
+
         api_error(
-            'La protección de DELETE de socios todavía no permite la limpieza aislada de Playwright.',
+            'Existe una protección antigua de DELETE de socios incompatible con la limpieza E2E.',
             'E2E_GUARD_SOCIOS_DESACTUALIZADO',
             409,
             [
-                'accion' => 'Ejecutá una sola vez backend/modules/testing_cleanup/001_trg_socios_e2e_cleanup.sql en la base usada por los tests.',
-                'seguridad' => 'El cambio mantiene bloqueado el DELETE de socios reales y habilita únicamente nombres PW E2E SOCIO %.',
+                'triggers_bloqueantes' => $blocking,
+                'accion' => 'Quitá o actualizá únicamente el trigger antiguo que bloquea DELETE. El esquema actual de RH Negativo V2 no requiere un trigger especial para Playwright.',
+                'seguridad' => 'e2e_cleanup selecciona y elimina exclusivamente registros identificados por prefijos Playwright explícitos definidos por la suite.',
             ]
         );
     }
@@ -83,6 +117,11 @@ final class TestingCleanup
             'precios_historicos' => 0,
             'categorias' => 0,
             'descuentos_familiares' => 0,
+            'cobradores' => 0,
+            'estados' => 0,
+            'grupos_sanguineos' => 0,
+            'medios_pago' => 0,
+            'periodos' => 0,
             'sesiones' => 0,
             'login_auditoria' => 0,
             'auditoria' => 0,
@@ -99,12 +138,14 @@ final class TestingCleanup
             $testSocios = self::ids(
                 $db,
                 "SELECT id_socio FROM socios
-                 WHERE nombre LIKE 'PW E2E SOCIO %'"
+                 WHERE nombre LIKE 'PW E2E SOCIO %'
+                    OR nombre LIKE 'PW EEE SOCIO %'"
             );
             $testFamilies = self::ids(
                 $db,
                 "SELECT id_familia FROM familias
-                 WHERE nombre_familia LIKE 'PW E2E FAM %'"
+                 WHERE nombre_familia LIKE 'PW E2E FAM %'
+                    OR nombre_familia LIKE 'PW EEE FAM %'"
             );
             $testCategories = self::ids(
                 $db,
@@ -119,6 +160,31 @@ final class TestingCleanup
                 )
                 : [];
 
+            $testCollectors = self::ids(
+                $db,
+                "SELECT id_cobrador FROM cobrador WHERE nombre LIKE 'PW E2E COB %'"
+            );
+            $testStates = self::ids(
+                $db,
+                "SELECT id_estado FROM estado
+                 WHERE nombre LIKE 'PW E2E EST %'
+                    OR nombre LIKE 'PW EE EST %'"
+            );
+            $testBloodGroups = self::ids(
+                $db,
+                "SELECT id_grupo_sanguineo FROM grupo_sanguineo
+                 WHERE nombre LIKE 'PWE2E-%' OR nombre LIKE 'PWE2E+%'"
+            );
+            $testPaymentMethods = self::ids(
+                $db,
+                "SELECT id_medio_pago FROM medios_pago WHERE nombre LIKE 'PW E2E MED %'"
+            );
+            $testPeriods = self::ids(
+                $db,
+                "SELECT id_periodo FROM periodo
+                 WHERE id_periodo > 7 AND nombre LIKE 'PW E2E PER %'"
+            );
+
             // Guardamos las referencias de auditoría ANTES de borrar las entidades.
             // También se elimina toda auditoría generada por el usuario temporal E2E,
             // lo que cubre incluso entidades que el propio test ya eliminó definitivamente.
@@ -128,15 +194,20 @@ final class TestingCleanup
                 'categoria' => $testCategories,
                 'categorias' => $testCategories, // compatibilidad con auditorías antiguas
                 'descuentos_familiares' => $testDiscounts,
+                'cobrador' => $testCollectors,
+                'estado' => $testStates,
+                'grupo_sanguineo' => $testBloodGroups,
+                'medios_pago' => $testPaymentMethods,
+                'periodo' => $testPeriods,
                 'sis_usuarios' => $testUsers,
             ];
 
-            $auditTableColumn = self::columnExists($db, 'auditoria', 'tabla_afectada')
-                ? 'tabla_afectada'
-                : (self::columnExists($db, 'auditoria', 'tabla') ? 'tabla' : null);
-            $auditUserColumn = self::columnExists($db, 'auditoria', 'id_usuario_master')
-                ? 'id_usuario_master'
-                : (self::columnExists($db, 'auditoria', 'id_usuario') ? 'id_usuario' : null);
+            $auditTableColumn = self::columnExists($db, 'auditoria', 'tabla')
+                ? 'tabla'
+                : null;
+            $auditUserColumn = self::columnExists($db, 'auditoria', 'id_usuario')
+                ? 'id_usuario'
+                : null;
 
             if ($auditTableColumn !== null && self::columnExists($db, 'auditoria', 'id_registro')) {
                 foreach ($auditReferences as $table => $ids) {
@@ -249,7 +320,45 @@ final class TestingCleanup
                 );
             }
 
-            // 5) Sesiones, auditoría de login y usuario administrador temporal.
+            // 5) Catálogos auxiliares creados por Configuración E2E. Una corrida
+            // interrumpida no debe dejar opciones activas que contaminen Cuotas o
+            // futuros tests. Solo se borran IDs con prefijo Playwright y sin usos.
+            $safeCollectors = self::withoutReferences($db, $testCollectors, [
+                ['socios', 'id_cobrador'],
+            ]);
+            $safeStates = self::withoutReferences($db, $testStates, [
+                ['socios', 'id_estado'],
+                ['socios_historial_estados', 'id_estado_anterior'],
+                ['socios_historial_estados', 'id_estado_nuevo'],
+            ]);
+            $safeBloodGroups = self::withoutReferences($db, $testBloodGroups, [
+                ['socios', 'id_grupo_sanguineo'],
+            ]);
+            $safePaymentMethods = self::withoutReferences($db, $testPaymentMethods, [
+                ['pagos', 'id_medio_pago'],
+                ['pagos_inscripcion', 'id_medio_pago'],
+            ]);
+            $safePeriods = self::withoutReferences($db, $testPeriods, [
+                ['pagos', 'id_periodo'],
+            ]);
+
+            $counts['cobradores'] += self::deleteByIds($db, 'cobrador', 'id_cobrador', $safeCollectors);
+            $counts['estados'] += self::deleteByIds($db, 'estado', 'id_estado', $safeStates);
+            $counts['grupos_sanguineos'] += self::deleteByIds($db, 'grupo_sanguineo', 'id_grupo_sanguineo', $safeBloodGroups);
+            $counts['medios_pago'] += self::deleteByIds($db, 'medios_pago', 'id_medio_pago', $safePaymentMethods);
+            $counts['periodos'] += self::deleteByIds($db, 'periodo', 'id_periodo', $safePeriods);
+
+            foreach ([
+                'cobradores' => array_values(array_diff($testCollectors, $safeCollectors)),
+                'estados' => array_values(array_diff($testStates, $safeStates)),
+                'grupos_sanguineos' => array_values(array_diff($testBloodGroups, $safeBloodGroups)),
+                'medios_pago' => array_values(array_diff($testPaymentMethods, $safePaymentMethods)),
+                'periodos' => array_values(array_diff($testPeriods, $safePeriods)),
+            ] as $key => $blockedIds) {
+                if ($blockedIds !== []) $skipped[$key . '_en_uso'] = $blockedIds;
+            }
+
+            // 6) Sesiones, auditoría de login y usuario administrador temporal.
             // Se borra al final para que el request de cleanup ya haya sido autenticado.
             $counts['sesiones'] += self::deleteByIds($db, 'sis_sesiones', 'idUsuario', $testUsers);
             $counts['login_auditoria'] += self::deleteByIds(
@@ -280,10 +389,15 @@ final class TestingCleanup
             'omitidos_por_seguridad' => $skipped,
             'criterio' => [
                 'usuarios' => 'pw_e2e_*',
-                'socios' => 'PW E2E SOCIO *',
-                'familias' => 'PW E2E FAM *',
+                'socios' => 'PW E2E SOCIO * / PW EEE SOCIO *',
+                'familias' => 'PW E2E FAM * / PW EEE FAM *',
                 'categorias' => 'PW EE CAT *',
                 'descuentos' => 'PW E2E DESC *',
+                'cobradores' => 'PW E2E COB *',
+                'estados' => 'PW E2E EST * / PW EE EST *',
+                'grupos_sanguineos' => 'PWE2E-* / PWE2E+*',
+                'medios_pago' => 'PW E2E MED *',
+                'periodos' => 'id > 7 y PW E2E PER *',
             ],
         ];
     }
@@ -324,6 +438,27 @@ final class TestingCleanup
         );
         $statement->execute(array_values($ids));
         return $statement->rowCount();
+    }
+
+    private static function withoutReferences(PDO $db, array $ids, array $relations): array
+    {
+        $safe = array_values(array_unique(array_map('intval', $ids)));
+        if ($safe === []) return [];
+
+        $blocked = [];
+        foreach ($relations as [$table, $column]) {
+            if (!self::tableExists($db, $table) || !self::columnExists($db, $table, $column)) continue;
+            $statement = $db->prepare(
+                "SELECT DISTINCT `{$column}` FROM `{$table}` WHERE `{$column}` IN ("
+                . self::placeholders(count($safe)) . ')'
+            );
+            $statement->execute($safe);
+            foreach ($statement->fetchAll(PDO::FETCH_NUM) as $row) {
+                if ($row[0] !== null) $blocked[] = (int)$row[0];
+            }
+        }
+
+        return array_values(array_diff($safe, array_values(array_unique($blocked))));
     }
 
     private static function columnExists(PDO $db, string $table, string $column): bool

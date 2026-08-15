@@ -2,7 +2,10 @@ import React from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFilePdf, faPrint } from "@fortawesome/free-solid-svg-icons";
 import CrudModal from "../CrudModal";
-import { normalizePaymentReceipt } from "../../../_shared/utils/comprobantePago";
+import {
+  normalizePaymentReceipt,
+  paymentReceiptPreviewHtml,
+} from "../../../_shared/utils/comprobantePago";
 import "./ModalComprobantePago.css";
 
 const money = (value) =>
@@ -70,6 +73,14 @@ export default function ModalComprobantePago({
             : "Podés generar el comprobante ahora mismo."}
         </p>
       </section>
+
+      <section
+        className="payment-receipt-legacy-preview"
+        aria-label="Vista previa del comprobante"
+        dangerouslySetInnerHTML={{
+          __html: paymentReceiptPreviewHtml(comprobante),
+        }}
+      />
 
       <div className="payment-receipt-footer">
         <div className="payment-receipt-total-pill">

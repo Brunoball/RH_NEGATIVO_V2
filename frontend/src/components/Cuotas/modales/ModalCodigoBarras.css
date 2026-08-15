@@ -1,0 +1,308 @@
+.barcode-payment-modal.entity-modal {
+  width: min(760px, 100%);
+}
+
+.barcode-payment-modal .entity-modal__body {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+
+.barcode-reader {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid var(--mov-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--balto-action) 4%, #fff);
+}
+
+.barcode-reader__icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  background: var(--balto-action);
+  font-size: 22px;
+}
+
+.barcode-reader label,
+.barcode-payment-fields label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.barcode-reader label > span,
+.barcode-payment-fields label > span {
+  color: var(--balto-text);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.barcode-reader input,
+.barcode-payment-fields input[type="text"],
+.barcode-payment-fields select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--mov-border);
+  border-radius: 9px;
+  color: var(--balto-ink);
+  background: #fff;
+  font: inherit;
+}
+
+.barcode-reader input {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.barcode-reader input:focus,
+.barcode-payment-fields input:focus,
+.barcode-payment-fields select:focus {
+  outline: 3px solid color-mix(in srgb, var(--balto-action) 18%, transparent);
+  border-color: var(--balto-action);
+}
+
+.barcode-reader small,
+.barcode-payment-status-row small {
+  color: var(--balto-text);
+  font-size: 11px;
+}
+
+.barcode-payment-state,
+.barcode-payment-error {
+  padding: 11px 13px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.barcode-payment-state {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.barcode-payment-error {
+  color: #b42318;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+}
+
+.barcode-member-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--mov-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.barcode-member-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mov-border);
+}
+
+.barcode-member-card > header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.barcode-member-card > header span {
+  color: var(--balto-text);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.barcode-member-card > header strong {
+  overflow: hidden;
+  color: var(--balto-ink);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barcode-member-card > header b {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--balto-action);
+  background: color-mix(in srgb, var(--balto-action) 10%, #fff);
+  font-size: 11px;
+}
+
+.barcode-member-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.barcode-member-grid article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--balto-bg) 64%, #fff);
+}
+
+.barcode-member-grid article svg {
+  grid-row: 1 / 3;
+  color: var(--balto-action);
+}
+
+.barcode-member-grid article span {
+  color: var(--balto-text);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.barcode-member-grid article strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barcode-payment-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.barcode-payment-status-row > span {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.barcode-payment-status-row > span.is-pending,
+.barcode-payment-status-row > span.is-pagado {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.barcode-payment-status-row > span.is-condonado {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.barcode-payment-status-row > span.is-blocked {
+  color: #b42318;
+  background: #fee2e2;
+}
+
+.barcode-payment-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.barcode-custom-amount {
+  grid-column: 1 / -1;
+  display: flex !important;
+  align-items: center;
+  grid-template-columns: none !important;
+}
+
+.barcode-custom-amount input {
+  width: 16px;
+  height: 16px;
+}
+
+.barcode-payment-total {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--balto-action);
+}
+
+.barcode-payment-total span {
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.barcode-payment-total strong {
+  font-size: 16px;
+}
+
+.barcode-payment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.barcode-condone-button {
+  color: #b45309 !important;
+  border: 1px solid #f59e0b !important;
+  background: #fff !important;
+}
+
+.barcode-pay-button {
+  color: #fff !important;
+  border: 1px solid #10b981 !important;
+  background: #10b981 !important;
+}
+
+html[data-theme="oscuro"] .barcode-reader,
+html[data-theme="oscuro"] .barcode-member-card,
+html[data-theme="oscuro"] .barcode-reader input,
+html[data-theme="oscuro"] .barcode-payment-fields input[type="text"],
+html[data-theme="oscuro"] .barcode-payment-fields select {
+  background: color-mix(in srgb, var(--balto-bg) 86%, #fff 14%);
+}
+
+@media (max-width: 620px) {
+  .barcode-payment-modal .entity-modal__body {
+    padding: 13px;
+  }
+
+  .barcode-reader {
+    grid-template-columns: 1fr;
+  }
+
+  .barcode-reader__icon {
+    display: none;
+  }
+
+  .barcode-member-grid,
+  .barcode-payment-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .barcode-payment-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .barcode-payment-actions .mov-btn {
+    width: 100%;
+  }
+}

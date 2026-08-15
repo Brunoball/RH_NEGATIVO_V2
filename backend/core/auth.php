@@ -77,10 +77,6 @@ function require_auth(): array
         'session_key' => $token,
         'auth_source' => $credentials['source'],
         'id_usuario' => $userId,
-
-        // Alias conservado porque varias tablas funcionales ya poseen columnas
-        // id_usuario_master. Ahora representa al usuario de esta única base.
-        'id_usuario_master' => $userId,
         'usuario' => (string)$row['usuario'],
         'rol' => (string)$row['rol'],
         'organizacion' => $organization,

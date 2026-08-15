@@ -1070,6 +1070,7 @@ export default function Socios() {
   const [infoModal, setInfoModal] = useState(null);
   const [infoTab, setInfoTab] = useState(INFO_TAB_GENERAL);
   const [infoLoading, setInfoLoading] = useState(false);
+  const infoRequestIdRef = useRef(0);
   const [contactSaving, setContactSaving] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -1185,18 +1186,35 @@ export default function Socios() {
     }
   };
 
+  const closeInfo = useCallback(() => {
+    // Invalida cualquier carga de ficha que siga en vuelo. Sin esto, una
+    // respuesta tardía puede volver a abrir el modal después de cerrarlo.
+    infoRequestIdRef.current += 1;
+    setInfoModal(null);
+    setInfoLoading(false);
+  }, []);
+
   const openHistory = async (item, preferredTab = INFO_TAB_GENERAL) => {
+    const requestId = infoRequestIdRef.current + 1;
+    infoRequestIdRef.current = requestId;
     setInfoModal({ item, data: null });
     setInfoTab(preferredTab);
     setInfoLoading(true);
     try {
       const response = await sociosApi.historial(item.id_socio);
-      setInfoModal({ item: response.item || item, data: response });
+      if (infoRequestIdRef.current !== requestId) return;
+
+      setInfoModal((current) => {
+        const currentId = current?.data?.item?.id_socio ?? current?.item?.id_socio;
+        if (Number(currentId) !== Number(item.id_socio)) return current;
+        return { item: response.item || item, data: response };
+      });
     } catch (requestError) {
+      if (infoRequestIdRef.current !== requestId) return;
       setFeedback({ type: "error", message: requestError.message || "No se pudo cargar la ficha del socio." });
       setInfoModal(null);
     } finally {
-      setInfoLoading(false);
+      if (infoRequestIdRef.current === requestId) setInfoLoading(false);
     }
   };
 
@@ -1454,7 +1472,7 @@ export default function Socios() {
         open={Boolean(infoModal)}
         title="Información del socio"
         subtitle={itemInfo ? `ID ${itemInfo.id_socio} · ${itemInfo.nombre}` : ""}
-        onClose={() => setInfoModal(null)}
+        onClose={closeInfo}
         loading={infoLoading}
         tabs={[
           { value: INFO_TAB_GENERAL, label: "General", icon: faUser },

@@ -13,8 +13,18 @@ function rowByText(page, text) {
   return page.getByRole('row').filter({ hasText: text }).last();
 }
 
+function splitFullName(value) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    nombre: parts.slice(0, -1).join(' ') || parts[0] || '',
+    apellido: parts.length > 1 ? parts.at(-1) : 'PLAYWRIGHT',
+  };
+}
+
 async function fillSocioForm(dialog, data, catalogs, { birthday = false } = {}) {
-  await dialog.getByLabel('Nombre completo *').fill(data.nombre);
+  const person = splitFullName(data.nombre);
+  await dialog.getByLabel('Nombre *', { exact: true }).fill(person.nombre);
+  await dialog.getByLabel('Apellido *', { exact: true }).fill(person.apellido);
   await dialog.getByLabel('DNI').fill(data.dni);
   await dialog.getByLabel('Fecha de nacimiento').fill(birthday ? '2008-01-01' : '1999-05-15');
   await dialog.getByLabel('Domicilio', { exact: true }).fill('CALLE PLAYWRIGHT');
@@ -39,9 +49,35 @@ async function fillSocioForm(dialog, data, catalogs, { birthday = false } = {}) 
   await dialog.getByLabel('Observaciones').fill(data.observaciones);
 }
 
+async function birthdayDrawer(page, { open = false } = {}) {
+  const drawer = page.getByLabel('Socios para contactar de 18 a 23 años');
+  if ((await drawer.count()) === 0) return null;
+
+  if (open) {
+    const openButton = drawer.getByRole('button', { name: 'Abrir avisos de cumpleaños' });
+    if (await openButton.isVisible().catch(() => false)) {
+      await openButton.click();
+      await expect(drawer).toHaveClass(/\bis-open\b/);
+    }
+  }
+
+  return drawer;
+}
+
+async function closeBirthdayDrawer(page) {
+  const drawer = await birthdayDrawer(page);
+  if (!drawer) return;
+  const closeButton = drawer.getByRole('button', { name: 'Cerrar avisos de cumpleaños' });
+  if (await closeButton.isVisible().catch(() => false)) {
+    await closeButton.click();
+    await expect(drawer).not.toHaveClass(/\bis-open\b/);
+  }
+}
+
 async function findBirthdayCardFor(page, name) {
-  const card = page.getByLabel('Socios para contactar de 18 a 23 años');
-  if (!(await card.isVisible().catch(() => false))) return null;
+  const card = await birthdayDrawer(page, { open: true });
+  if (!card) return null;
+
   const counter = await card.locator('.socios-birthdayCard__counter').textContent();
   const total = Number(String(counter || '1/1').split('/')[1] || 1);
   for (let i = 0; i < total; i += 1) {
@@ -72,12 +108,17 @@ test.describe('Socios', () => {
       // Los campos required usan validación nativa del navegador.
       // Antes se esperaba un toast que nunca podía ejecutarse porque el submit
       // queda bloqueado por HTML5 antes de entrar al handler de React.
-      const validationName = dialog.getByLabel('Nombre completo *');
+      const validationName = dialog.getByLabel('Nombre *', { exact: true });
+      const validationLastName = dialog.getByLabel('Apellido *', { exact: true });
       await validationName.fill('');
+      await validationLastName.fill('');
       await dialog.getByRole('button', { name: 'Crear socio' }).click();
       expect(await validationName.evaluate((element) => element.checkValidity())).toBe(false);
 
-      await validationName.fill('PW E2E SOCIO VALIDACION');
+      await validationName.fill('PW EEE SOCIO');
+      await dialog.getByRole('button', { name: 'Crear socio' }).click();
+      expect(await validationLastName.evaluate((element) => element.checkValidity())).toBe(false);
+      await validationLastName.fill('VALIDACION');
       await dialog.getByRole('tab', { name: 'Gestión' }).click();
       const validationCategory = dialog.getByLabel('Categoría *');
       const validationCollector = dialog.getByLabel('Cobrador *');
@@ -113,7 +154,13 @@ test.describe('Socios', () => {
       const search = page.getByLabel('Buscar socio');
       await search.fill(data.dni);
       let row = rowByText(page, data.nombre);
-      await expect(row).toContainText(data.dni);
+      // La grilla de Socios no muestra el DNI como columna: el DNI es un
+      // criterio de búsqueda. Validamos que buscar por el DNI único deje
+      // visible exactamente al socio creado, sin exigir texto que la UI no
+      // está diseñada para renderizar en la fila.
+      await expect(search).toHaveValue(data.dni);
+      await expect(row).toBeVisible();
+      await expect(page.getByRole('row').filter({ hasText: data.nombre })).toHaveCount(1);
 
       // Filtro principal por categoría, sin modificar ninguna categoría real.
       await page.getByLabel('Categoría').selectOption(String(created.id_categoria));
@@ -142,7 +189,7 @@ test.describe('Socios', () => {
         await stateChoice.click();
       }
 
-      await page.getByRole('button', { name: 'Deudas / pagos' }).click();
+      await page.getByRole('button', { name: 'Pagos', exact: true }).click();
       const debtChoice = page.locator('.socios-filterChoices').getByRole('button', { name: /Al día|Debe 1 o 2 meses|Debe 3 meses o más/ }).first();
       await debtChoice.click();
       await debtChoice.click();
@@ -184,6 +231,7 @@ test.describe('Socios', () => {
           method: 'POST', data: { id: createdId },
         });
       }
+      await closeBirthdayDrawer(page);
 
       // Ficha y las cuatro pestañas.
       row = rowByText(page, data.nombre);
@@ -206,7 +254,9 @@ test.describe('Socios', () => {
       row = rowByText(page, data.nombre);
       await row.getByTitle('Editar socio').click();
       dialog = page.getByRole('dialog', { name: 'Editar socio' });
-      await dialog.getByLabel('Nombre completo *').fill(data.nombreEditado);
+      const editedPerson = splitFullName(data.nombreEditado);
+      await dialog.getByLabel('Nombre *', { exact: true }).fill(editedPerson.nombre);
+      await dialog.getByLabel('Apellido *', { exact: true }).fill(editedPerson.apellido);
       await dialog.getByLabel('Teléfono móvil').fill(`351${data.dni}`.slice(0, 10));
       await dialog.getByRole('tab', { name: 'Gestión' }).click();
       await dialog.getByLabel('Observaciones').fill(`${data.observaciones} EDITADO`);
@@ -250,19 +300,28 @@ test.describe('Socios', () => {
       await expectApiError(request, 'socios_guardar', {
         method: 'POST',
         data: {
-          nombre: 'PW E2E SOCIO DUPLICADO',
+          nombre: 'PW EEE SOCIO DUPLICADO',
           dni: data.dni,
           id_categoria: created.id_categoria,
           id_cobrador: created.id_cobrador,
           fecha_ingreso: todayIso(),
         },
       }, { status: 409, code: 'DNI_DUPLICADO' });
-      // Política RH V2: los socios reales nunca se borran físicamente.
-      // La UI no debe ofrecer esa acción y el backend la rechaza aunque se invoque directo.
-      await expect(row.getByTitle('Eliminar definitivamente')).toHaveCount(0);
-      await expectApiError(request, 'socios_eliminar_definitivo', {
-        method: 'POST', data: { id: createdId, confirmacion: 'ELIMINAR' },
-      }, { status: 405, code: 'ELIMINACION_FISICA_NO_PERMITIDA' });
+      // Eliminación definitiva actual: la UI advierte que también borra pagos y
+      // registros relacionados. Se cancela una vez y luego se confirma.
+      await row.getByTitle('Eliminar socio definitivamente').click();
+      let deleteDialog = page.getByRole('dialog', { name: 'Eliminar socio definitivamente' });
+      await expect(deleteDialog).toContainText('todos sus pagos de cuotas');
+      await expect(deleteDialog).toContainText('acción es irreversible');
+      await deleteDialog.getByRole('button', { name: 'Cancelar' }).click();
+      await row.getByTitle('Eliminar socio definitivamente').click();
+      deleteDialog = page.getByRole('dialog', { name: 'Eliminar socio definitivamente' });
+      await deleteDialog.getByRole('button', { name: 'Eliminar definitivamente', exact: true }).click();
+      await expectFeedback(page, 'Socio y registros relacionados eliminados definitivamente.');
+      await expectApiError(request, 'socios_obtener', { params: { id: createdId } }, {
+        status: 404, code: 'SOCIO_NO_ENCONTRADO',
+      });
+      createdId = null;
   });
 
   test('exporta únicamente la vista filtrada del socio E2E en Excel y PDF', async ({ page, request }) => {

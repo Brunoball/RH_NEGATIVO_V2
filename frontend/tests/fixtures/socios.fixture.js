@@ -5,12 +5,12 @@ function socioData(label = 'SOCIO') {
   const text = lettersFromSuffix(suffix, 12);
   return {
     suffix,
-    nombre: `PW E2E SOCIO ${label} ${text}`,
-    nombreEditado: `PW E2E SOCIO ${label} ${text} EDITADO`,
+    nombre: `PW EEE SOCIO ${label} ${text}`,
+    nombreEditado: `PW EEE SOCIO ${label} ${text} EDITADO`,
     dni: `9${digitsFromSuffix(suffix, 7)}`.slice(0, 8),
     movil: `351${digitsFromSuffix(`${suffix}-movil`, 7)}`,
     fijo: `3564${digitsFromSuffix(`${suffix}-fijo`, 6)}`,
-    observaciones: `PW E2E SOCIO ${label} CREADO POR PLAYWRIGHT ${text}`,
+    observaciones: `PW EEE SOCIO ${label} CREADO POR PLAYWRIGHT ${text}`,
   };
 }
 
@@ -18,9 +18,9 @@ function familyData() {
   const suffix = uniqueSuffix();
   const text = lettersFromSuffix(suffix, 12);
   return {
-    nombre: `PW E2E FAM ${text}`,
-    nombreEditado: `PW E2E FAM ${text} EDITADA`,
-    descripcion: `PW E2E FAM OBSERVACION ${text}`,
+    nombre: `PW EEE FAM ${text}`,
+    nombreEditado: `PW EEE FAM ${text} EDITADA`,
+    descripcion: `PW EEE FAM OBSERVACION ${text}`,
   };
 }
 

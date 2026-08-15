@@ -84,12 +84,16 @@ function PaymentYearChip({
               type="button"
               role="option"
               aria-selected="false"
+              className="cuotas-add-year"
               onClick={() => {
                 onAddNextYear();
                 setOpen(false);
               }}
+              title={`Habilitar ${nextYear} para registrar un pago`}
             >
-              + Agregar {nextYear}
+              <FontAwesomeIcon icon={faCalendarDays} />
+              <span>Agregar año</span>
+              <small>{nextYear}</small>
             </button>
           ) : null}
         </div>
@@ -155,17 +159,12 @@ export default function ModalPagoCuota({
     [extraPaymentYears, paymentForm.anio, paymentYearOptions],
   );
 
-  const nextPaymentYear = useMemo(() => {
-    const enabledYears = new Set(
-      modalPaymentYearOptions.map(Number).filter(Number.isFinite),
-    );
-    let candidate = CURRENT_YEAR + 1;
-    while (candidate <= 2100 && enabledYears.has(candidate)) candidate += 1;
-    return candidate <= 2100 ? candidate : null;
-  }, [modalPaymentYearOptions]);
+  const nextPaymentYear = CURRENT_YEAR + 1;
+  const canAddNextPaymentYear = !modalPaymentYearOptions.includes(
+    String(nextPaymentYear),
+  );
 
   const addNextPaymentYear = () => {
-    if (!nextPaymentYear) return;
     const nextYear = String(nextPaymentYear);
     setExtraPaymentYears((current) =>
       current.includes(nextYear) ? current : [...current, nextYear],
@@ -205,6 +204,10 @@ export default function ModalPagoCuota({
   const hasFamilyPaidSelectedPeriods = Array.from(
     familyPaidPeriodsByMember.values(),
   ).some((periods) => periods.length > 0);
+  const annualSelected = selectedMonthIds.includes("7");
+  const bimonthlySelected = selectedMonthIds.some(
+    (monthId) => String(monthId) !== "7",
+  );
 
   return (
     <CrudModal
@@ -267,7 +270,9 @@ export default function ModalPagoCuota({
           <small>
             {paymentMode === "multiple"
               ? `${paymentForm.pagos.length} cuotas seleccionadas`
-              : `${selectedMonthIds.length} ${selectedMonthIds.length === 1 ? "mes seleccionado" : "meses seleccionados"}`}
+              : annualSelected
+                ? "Contado anual seleccionado"
+                : `${selectedMonthIds.length} ${selectedMonthIds.length === 1 ? "período seleccionado" : "períodos seleccionados"}`}
           </small>
         </div>
       }
@@ -425,11 +430,14 @@ export default function ModalPagoCuota({
           >
             <section
               className="cuotas-period-group cuotas-period-selector"
-              aria-label="Meses a pagar"
+              aria-label="Períodos a pagar"
             >
               <header>
                 <div>
-                  <span>Meses disponibles</span>
+                  <span>Períodos disponibles</span>
+                  <small>
+                    Contado Anual es exclusivo y representa el pago completo del año.
+                  </small>
                 </div>
                 <div className="cuotas-period-selector__actions">
                   <PaymentYearChip
@@ -437,7 +445,7 @@ export default function ModalPagoCuota({
                     options={modalPaymentYearOptions}
                     onChange={updatePaymentYear}
                     disabled={contextLoading || !paymentForm.id_socio}
-                    nextYear={nextPaymentYear}
+                    nextYear={canAddNextPaymentYear ? nextPaymentYear : null}
                     onAddNextYear={addNextPaymentYear}
                   />
                   <div
@@ -453,7 +461,9 @@ export default function ModalPagoCuota({
                     type="button"
                     className="cuotas-select-all"
                     onClick={toggleAllPaymentMonths}
-                    disabled={contextLoading || !availableMonthIds.length}
+                    disabled={
+                      contextLoading || annualSelected || !availableMonthIds.length
+                    }
                   >
                     {allAvailableMonthsSelected
                       ? "Deseleccionar todos"
@@ -472,7 +482,33 @@ export default function ModalPagoCuota({
                   const selected = selectedMonthIds.includes(monthId);
                   const paid = Boolean(period?.paid);
                   const unavailable = Boolean(period?.unavailable);
-                  const disabled = contextLoading || paid || unavailable;
+                  const blockedBySelection =
+                    (annualSelected && monthId !== "7") ||
+                    (bimonthlySelected && monthId === "7");
+                  const disabled =
+                    contextLoading || paid || unavailable || blockedBySelection;
+                  const unavailableReason =
+                    period?.context?.principal?.motivo_no_disponible || "";
+                  const status = String(
+                    period?.context?.principal?.estado || "",
+                  ).toUpperCase();
+                  const coveredByAnnual = Boolean(
+                    period?.context?.principal?.origen_anual,
+                  );
+                  const statusLabel =
+                    status === "CONDONADO"
+                      ? "Condonado"
+                      : coveredByAnnual
+                        ? "Cubierto por anual"
+                        : paid
+                          ? "Pagado"
+                          : unavailable
+                            ? "No disponible"
+                            : blockedBySelection
+                              ? "Modalidad exclusiva"
+                              : selected
+                                ? "Seleccionado"
+                                : "Disponible";
 
                   return (
                     <button
@@ -482,18 +518,18 @@ export default function ModalPagoCuota({
                       onClick={() => togglePaymentMonth(monthId)}
                       disabled={disabled}
                       aria-pressed={selected}
-                      aria-label={`${item.nombre} ${paymentForm.anio}: ${paid ? "pagado" : unavailable ? "no disponible" : selected ? "seleccionado" : "disponible"}`}
+                      title={
+                        unavailableReason ||
+                        (blockedBySelection
+                          ? "Desmarcá la modalidad seleccionada para cambiar."
+                          : undefined)
+                      }
+                      aria-label={`${item.nombre} ${paymentForm.anio}: ${statusLabel.toLowerCase()}`}
                     >
                       <strong>{item.nombre}</strong>
                       <small>{paymentForm.anio}</small>
                       <span>
-                        {paid
-                          ? "Pagado"
-                          : unavailable
-                            ? "No disponible"
-                            : selected
-                              ? "Seleccionado"
-                              : "Disponible"}
+                        {statusLabel}
                       </span>
                     </button>
                   );
@@ -545,7 +581,7 @@ export default function ModalPagoCuota({
                 {selectedMonthIds.length ? (
                   <div className="cuotas-month-amount-editor">
                     <div className="cuotas-month-amount-editor__title">
-                      <span>Importe por mes</span>
+                      <span>Importe por período</span>
                       <small>
                         {paymentForm.aplicar_familia && family
                           ? "Monto del socio; al cambiarlo se cobra individual."

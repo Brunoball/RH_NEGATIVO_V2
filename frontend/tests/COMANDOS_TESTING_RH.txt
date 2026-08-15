@@ -1,0 +1,24 @@
+# Desde frontend
+
+# TODO el alcance RH (recomendado)
+npx playwright test --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+
+# Lo mismo con navegador visible
+npx playwright test --config=playwright.rh.config.js --project=chromium --workers=1 --headed --reporter=list
+
+# Por módulo
+npx playwright test tests/00-contratos-seguridad.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/01-login.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/02-socios.spec.js tests/02-socios-api-complemento.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/03-categorias.spec.js tests/03-categorias-api-complemento.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/04-dashboard.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/05-cuotas.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/06-configuracion.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+npx playwright test tests/07-cobertura-total.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+
+# Blindaje adicional
+npx playwright test tests/08-blindaje-modulos.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+
+# Atajos Windows incluidos en el ZIP
+run-testing-rh.cmd
+run-testing-rh-headed.cmd

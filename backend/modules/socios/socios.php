@@ -119,7 +119,7 @@ final class Socios
 
         api_success(
             $result,
-            'Socio eliminado definitivamente junto con todos sus pagos y registros relacionados.'
+            'Socio y registros relacionados eliminados definitivamente.'
         );
     }
 }

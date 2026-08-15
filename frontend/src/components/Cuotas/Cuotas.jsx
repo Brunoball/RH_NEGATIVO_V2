@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBan,
+  faBarcode,
   faDollarSign,
   faPrint,
   faReceipt,
@@ -25,6 +26,7 @@ import {
 import { cuotasApi } from "./api/cuotasApi";
 import { useCuotas } from "./hooks/useCuotas";
 import ModalPagoCuota from "./modales/ModalPagoCuota";
+import ModalCodigoBarras from "./modales/ModalCodigoBarras";
 import "./Cuotas.css";
 
 const localToday = () => {
@@ -36,7 +38,10 @@ const localToday = () => {
 
 const currentDate = new Date();
 const currentYear = currentDate.getFullYear();
-const currentMonth = currentDate.getMonth() + 1;
+// RH Negativo cobra seis períodos bimestrales. El frontend base trabajaba
+// con meses calendario; se conserva el nombre de la variable para no alterar
+// el resto del flujo, pero su valor es el período vigente (1 a 6).
+const currentMonth = Math.ceil((currentDate.getMonth() + 1) / 2);
 const PAGE_SIZE = 100;
 
 const decimalInput = (value, maxIntegerDigits = 12, maxDecimals = 2) => {
@@ -67,19 +72,14 @@ const CUOTAS_EXPORT_COLUMNS = [
 ];
 
 const DEFAULT_MONTHS = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-].map((nombre, index) => ({ id_mes: index + 1, nombre }));
+  { id_mes: 1, nombre: "PERÍODO 1 Y 2" },
+  { id_mes: 2, nombre: "PERÍODO 3 Y 4" },
+  { id_mes: 3, nombre: "PERÍODO 5 Y 6" },
+  { id_mes: 4, nombre: "PERÍODO 7 Y 8" },
+  { id_mes: 5, nombre: "PERÍODO 9 Y 10" },
+  { id_mes: 6, nombre: "PERÍODO 11 Y 12" },
+  { id_mes: 7, nombre: "CONTADO ANUAL" },
+];
 
 const paginationItems = (currentPage, totalPages) => {
   if (totalPages <= 7) {
@@ -185,32 +185,8 @@ const defaultAmountOption = (principal) => {
   const options = Array.isArray(principal?.opciones_monto)
     ? principal.opciones_monto
     : [];
-  const year = Number(principal?.anio);
-  const month = Number(principal?.mes);
-
-  // Elegimos por vigencia real, no sólo por importe: una categoría puede haber
-  // tenido el mismo valor en períodos históricos distintos.
-  if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
-    const periodEnd = new Date(Date.UTC(year, month, 0))
-      .toISOString()
-      .slice(0, 10);
-    const periodOption = options.find((option) => {
-      const from = option?.vigente_desde ? String(option.vigente_desde).slice(0, 10) : null;
-      const to = option?.vigente_hasta ? String(option.vigente_hasta).slice(0, 10) : null;
-      return (!from || from <= periodEnd) && (!to || to >= periodEnd);
-    });
-    if (periodOption) return periodOption;
-  }
-
-  const periodBaseAmount = Number(principal?.monto_base);
-  if (Number.isFinite(periodBaseAmount) && periodBaseAmount > 0) {
-    const amountMatch = options.find(
-      (option) =>
-        Math.abs(Number(option?.monto_base || 0) - periodBaseAmount) < 0.005,
-    );
-    if (amountMatch) return amountMatch;
-  }
-
+  // La V2 propone siempre el monto vigente. Los valores históricos quedan
+  // disponibles en el selector, pero nunca se eligen solos.
   return options.find((option) => option.actual) || options[0] || null;
 };
 
@@ -306,13 +282,23 @@ const enrichPaymentReceipt = (source, context = {}) => {
         fallbackLines[index]?.medio_pago ||
         context.medio ||
         "",
+      domicilio_cobro:
+        line.domicilio_cobro ||
+        fallbackLines[index]?.domicilio_cobro ||
+        "",
+      telefono_movil:
+        line.telefono_movil || fallbackLines[index]?.telefono_movil || "",
+      telefono_fijo:
+        line.telefono_fijo || fallbackLines[index]?.telefono_fijo || "",
     }),
   );
 
   return {
     ...source,
     organizacion:
-      source.organizacion || operation.organizacion || "LALCEC San Francisco",
+      source.organizacion ||
+      operation.organizacion ||
+      "CIRCULO Rh (-) · Asociación Civil",
     operacion: {
       ...operation,
       socios_label: operation.socios_label || context.socios || "—",
@@ -363,6 +349,9 @@ const CuotasTableRows = React.memo(function CuotasTableRows({
             />
           </div>
         ) : null}
+        <div className="mov-gridCell is-strong is-center cuotas-id-cell">
+          {item.id_socio}
+        </div>
         <div className="mov-gridCell entity-main-cell">
           <strong>{item.denominacion || "SIN DENOMINACIÓN"}</strong>
           <small>
@@ -380,7 +369,12 @@ const CuotasTableRows = React.memo(function CuotasTableRows({
             {item.categoria || "SIN CATEGORÍA"}
           </span>
         </div>
-        <div className="mov-gridCell is-strong is-center">{item.periodo}</div>
+        <div className="mov-gridCell is-strong is-center cuotas-period-cell">
+          <span>{item.periodo}</span>
+          {item.origen_anual ? (
+            <small>CUBIERTO POR CONTADO ANUAL</small>
+          ) : null}
+        </div>
         {isResolved ? (
           <>
             <div className="mov-gridCell is-center">
@@ -500,6 +494,7 @@ export default function Cuotas() {
   const [multiMode, setMultiMode] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState({});
   const [receipt, setReceipt] = useState(null);
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [estadoTotales, setEstadoTotales] = useState({
     DEUDORES: null,
@@ -767,7 +762,7 @@ export default function Cuotas() {
     .map((item) => String(item.id_mes))
     .filter((monthId) => {
       const period = paymentPeriods[monthId];
-      return period && !period.paid && !period.unavailable;
+      return monthId !== "7" && period && !period.paid && !period.unavailable;
     });
   const allAvailableMonthsSelected =
     availableMonthIds.length > 0 &&
@@ -1025,6 +1020,9 @@ export default function Cuotas() {
           opciones_monto: amountOptions,
           opcion_monto_id: currentOption?.id || "actual",
           domicilio: item.domicilio || item.domicilio_2 || item.direccion || "",
+          domicilio_cobro: item.domicilio_cobro || "",
+          telefono_movil: item.telefono_movil || "",
+          telefono_fijo: item.telefono_fijo || "",
           cobrador: item.cobrador || "",
           // En selección múltiple el valor inicial es siempre la cuota actual.
           monto: String(
@@ -1074,14 +1072,22 @@ export default function Cuotas() {
           lineas: [
             {
               id: item.id_pago || selectionKey(item),
+              id_pago: item.id_pago || null,
+              id_socio: Number(item.id_socio),
+              id_periodo: Number(item.id_periodo_pago || item.id_periodo || item.mes),
+              anio: Number(item.anio),
+              codigo_barra: item.codigo_barra || "",
               socio: item.denominacion || `ID ${item.id_socio}`,
               categoria: item.categoria || "SIN CATEGORÍA",
-              periodo: item.periodo,
+              periodo: item.periodo_pago || item.periodo,
               monto_base: Number(item.monto_base || amount),
               porcentaje_descuento_familiar: Number(
                 item.porcentaje_descuento_familiar || 0,
               ),
               monto: amount,
+              domicilio_cobro: item.domicilio_cobro || "",
+              telefono_movil: item.telefono_movil || "",
+              telefono_fijo: item.telefono_fijo || "",
             },
           ],
         },
@@ -1098,13 +1104,16 @@ export default function Cuotas() {
   };
 
   const applyMonthSelection = (months, activeMonth, defaultFamily = true) => {
-    const normalizedMonths = months
+    const eligibleMonths = months
       .map(String)
       .filter((monthId) => {
         const period = paymentPeriods[monthId];
         return period && !period.paid && !period.unavailable;
       })
       .sort((left, right) => Number(left) - Number(right));
+    const normalizedMonths = eligibleMonths.includes("7")
+      ? ["7"]
+      : eligibleMonths;
     const resolvedActiveMonth = normalizedMonths.includes(String(activeMonth))
       ? String(activeMonth)
       : normalizedMonths[0] || "";
@@ -1140,7 +1149,12 @@ export default function Cuotas() {
     const selected = selectedMonthIds.includes(normalizedMonth);
     const nextMonths = selected
       ? selectedMonthIds.filter((value) => value !== normalizedMonth)
-      : [...selectedMonthIds, normalizedMonth];
+      : normalizedMonth === "7"
+        ? ["7"]
+        : [
+            ...selectedMonthIds.filter((value) => value !== "7"),
+            normalizedMonth,
+          ];
     applyMonthSelection(
       nextMonths,
       selected ? nextMonths[0] : normalizedMonth,
@@ -1381,12 +1395,14 @@ export default function Cuotas() {
         });
       } else if (paymentForm.aplicar_familia && family) {
         response = await cuotasApi.registrarPagos({
-          id_socio: Number(paymentForm.id_socio),
-          anio: Number(paymentForm.anio),
-          meses: selectedMonthIds.map(Number),
           fecha_pago: paymentForm.fecha_pago,
           id_medio_pago: Number(paymentForm.id_medio_pago),
-          aplicar_familia: true,
+          pagos: familyPaymentTargets.map((target) => ({
+            id_socio: Number(target.id_socio),
+            anio: Number(paymentForm.anio),
+            mes: Number(target.mes),
+            monto: Number(target.monto),
+          })),
         });
       } else if (selectedMonthIds.length > 1) {
         response = await cuotasApi.registrarPagos({
@@ -1436,6 +1452,9 @@ export default function Cuotas() {
       const fallbackLines =
         paymentMode === "multiple"
           ? paymentForm.pagos.map((payment) => ({
+              id_socio: Number(payment.id_socio),
+              id_periodo: Number(payment.mes),
+              anio: Number(payment.anio),
               socio: payment.denominacion || `ID ${payment.id_socio}`,
               categoria: payment.categoria || "SIN CATEGORÍA",
               periodo: `${
@@ -1450,6 +1469,9 @@ export default function Cuotas() {
               ),
               monto: Number(payment.monto || 0),
               domicilio: payment.domicilio || "",
+              domicilio_cobro: payment.domicilio_cobro || "",
+              telefono_movil: payment.telefono_movil || "",
+              telefono_fijo: payment.telefono_fijo || "",
               cobrador: payment.cobrador || "",
               medio_pago: selectedMedium?.nombre || "—",
             }))
@@ -1457,6 +1479,9 @@ export default function Cuotas() {
               const periodPrincipal =
                 paymentPeriods[monthId]?.context?.principal || principal || {};
               return {
+                id_socio: Number(paymentForm.id_socio),
+                id_periodo: Number(monthId),
+                anio: Number(paymentForm.anio),
                 socio:
                   selectedPartner?.denominacion ||
                   periodPrincipal.denominacion ||
@@ -1496,6 +1521,18 @@ export default function Cuotas() {
                   selectedPartner?.domicilio ||
                   selectedPartner?.direccion ||
                   "",
+                domicilio_cobro:
+                  periodPrincipal.domicilio_cobro ||
+                  selectedPartner?.domicilio_cobro ||
+                  "",
+                telefono_movil:
+                  periodPrincipal.telefono_movil ||
+                  selectedPartner?.telefono_movil ||
+                  "",
+                telefono_fijo:
+                  periodPrincipal.telefono_fijo ||
+                  selectedPartner?.telefono_fijo ||
+                  "",
                 cobrador:
                   periodPrincipal.cobrador || selectedPartner?.cobrador || "",
                 medio_pago: selectedMedium?.nombre || "—",
@@ -1531,6 +1568,10 @@ export default function Cuotas() {
       // desaparece de Deudores al refrescar, pero el usuario sigue exactamente
       // en el contexto desde el que abrió el modal.
       await Promise.all([cargar(), cargarTotalesEstado()]);
+      setFeedback({
+        type: "success",
+        message: "Período pagado correctamente.",
+      });
     } catch (err) {
       setFeedback({ type: "error", message: err.message });
     } finally {
@@ -1540,14 +1581,15 @@ export default function Cuotas() {
 
   const deletePayment = async () => {
     const response = await cuotasApi.eliminarPago(deleteRow.id_pago);
+    const successMessage = "Cuota eliminada correctamente.";
     setDeleteRow(null);
     setEstado("DEUDORES");
-    setFeedback({ type: "success", message: response.mensaje });
+    setFeedback({ type: "success", message: successMessage });
     // Si era el último pago de un año futuro, refrescamos los años visibles
     // sin bloquear el cierre ni el feedback del modal.
     void cargarCatalogos();
     void cargarTotalesEstado();
-    return response;
+    return { ...response, mensaje: successMessage };
   };
 
   const condonePayment = async () => {
@@ -1558,11 +1600,12 @@ export default function Cuotas() {
       mes: Number(condoneRow.mes),
       fecha_condonacion: localToday(),
     });
+    const successMessage = "Cuota condonada correctamente.";
     pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
     setCondoneRow(null);
-    setFeedback({ type: "success", message: response.mensaje });
+    setFeedback({ type: "success", message: successMessage });
     await Promise.all([cargar(), cargarTotalesEstado(), cargarCatalogos()]);
-    return response;
+    return { ...response, mensaje: successMessage };
   };
 
   const toggleSelection = (item) => {
@@ -1711,6 +1754,7 @@ export default function Cuotas() {
 
   const tableLabel = `Cuotas de socios ${isPaid ? "pagadas" : isCondoned ? "condonadas" : "adeudadas"}`;
   const baseDebtColumns = [
+    "ID",
     "Socio",
     "Categoría",
     "Período",
@@ -1719,6 +1763,7 @@ export default function Cuotas() {
   ];
   const columns = isResolved
     ? [
+        "ID",
         "Socio",
         "Categoría",
         "Período",
@@ -1743,23 +1788,60 @@ export default function Cuotas() {
     else setMultiMode(true);
   };
 
+  const handleBarcodeSaved = async ({ type }) => {
+    setFeedback({
+      type: "success",
+      message:
+        type === "condoned"
+          ? "Cuota condonada correctamente."
+          : "Período pagado correctamente.",
+    });
+    await Promise.all([cargar(), cargarTotalesEstado(), cargarCatalogos()]);
+  };
+
+  const deletingAnnual = Boolean(
+    deleteRow &&
+      (deleteRow.origen_anual ||
+        Number(
+          deleteRow.id_periodo_pago ||
+            deleteRow.id_periodo ||
+            deleteRow.mes,
+        ) === 7),
+  );
+  const deletePeriodLabel = deletingAnnual
+    ? deleteRow?.periodo_pago || `CONTADO ANUAL ${deleteRow?.anio || ""}`.trim()
+    : deleteRow?.periodo || "este período";
+
   return (
     <>
       <ModulePage
         className="cuotas-page"
         title="Cuotas"
-        description="Control mensual de cuotas de socios."
+        description="Control de períodos bimestrales y Contado Anual."
         filters={pageFilters}
         tabsInTitle
         headLeftClassName="cuotas-header-row"
         headFiltersContainerClassName="cuotas-head-filters"
         headerActions={
-          <BotonExportarGlobal
-            label="Exportar"
-            onClick={() => setExportModalOpen(true)}
-            disabled={loading || itemsPagina.length === 0}
-            title="Exportar cuotas en Excel o PDF"
-          />
+          <>
+            {writable ? (
+              <button
+                type="button"
+                className="mov-btn mov-btn--ghost cuotas-barcode-action"
+                onClick={() => setBarcodeOpen(true)}
+                title="Registrar una cuota leyendo el código del comprobante"
+              >
+                <FontAwesomeIcon icon={faBarcode} />
+                Código de barras
+              </button>
+            ) : null}
+            <BotonExportarGlobal
+              label="Exportar"
+              onClick={() => setExportModalOpen(true)}
+              disabled={loading || itemsPagina.length === 0}
+              title="Exportar cuotas en Excel o PDF"
+            />
+          </>
         }
         secondaryActions={
           !isResolved && writable
@@ -1946,6 +2028,18 @@ export default function Cuotas() {
             className="cuotas-lower-actions"
             aria-label="Acciones de cuotas"
           >
+            {writable ? (
+              <button
+                type="button"
+                className="mov-btn mov-btn--ghost cuotas-lower-action cuotas-barcode-lower-action"
+                onClick={() => setBarcodeOpen(true)}
+                title="Registrar una cuota leyendo el código del comprobante"
+              >
+                <FontAwesomeIcon icon={faBarcode} />
+                Código de barras
+              </button>
+            ) : null}
+
             <BotonExportarGlobal
               label="Exportar"
               className="cuotas-lower-action mov-btn--compact"
@@ -2040,6 +2134,13 @@ export default function Cuotas() {
         onExportPdf={() => downloadPaymentReceiptPdf(receipt)}
       />
 
+      <ModalCodigoBarras
+        open={barcodeOpen}
+        onClose={() => setBarcodeOpen(false)}
+        mediosPago={catalogos.medios_pago || []}
+        onSaved={handleBarcodeSaved}
+      />
+
       <ModalEliminarGlobal
         open={Boolean(condoneRow)}
         operacion="advertencia"
@@ -2070,19 +2171,46 @@ export default function Cuotas() {
         row={deleteRow}
         onClose={() => setDeleteRow(null)}
         onConfirm={deletePayment}
-        title={deleteRow?.estado === "CONDONADO" ? "Eliminar condonación" : "Eliminar pago registrado"}
-        message={deleteRow?.estado === "CONDONADO" ? "¿Seguro que querés eliminar esta condonación?" : "¿Seguro que querés eliminar este pago?"}
-        warning="La cuota volverá a aparecer en Deudores para el mismo mes y año."
-        confirmLabel={deleteRow?.estado === "CONDONADO" ? "Eliminar condonación" : "Eliminar pago"}
+        modalClassName={`cuotas-delete-modal ${
+          deletingAnnual
+            ? "cuotas-delete-modal--annual"
+            : "cuotas-delete-modal--standard"
+        }`}
+        title={
+          deletingAnnual
+            ? "Eliminar Contado Anual"
+            : deleteRow?.estado === "CONDONADO"
+              ? "Eliminar condonación"
+              : "Eliminar pago"
+        }
+        message={
+          deletingAnnual
+            ? "¿Deseás eliminar este pago de Contado Anual?"
+            : deleteRow?.estado === "CONDONADO"
+              ? `¿Deseás eliminar la condonación de ${deletePeriodLabel}?`
+              : `¿Deseás eliminar el pago de ${deletePeriodLabel}?`
+        }
+        warning={
+          deletingAnnual
+            ? "Este pago corresponde a Contado Anual. Si eliminás este pago, también eliminás el Contado Anual y los seis períodos volverán a figurar como deuda."
+            : ""
+        }
+        confirmLabel={
+          deletingAnnual
+            ? "Eliminar Contado Anual"
+            : deleteRow?.estado === "CONDONADO"
+              ? "Eliminar condonación"
+              : "Eliminar pago"
+        }
         loadingMessage={deleteRow?.estado === "CONDONADO" ? "Eliminando condonación…" : "Eliminando pago…"}
-        successMessage={deleteRow?.estado === "CONDONADO" ? "Condonación eliminada correctamente." : "Pago eliminado correctamente."}
+        successMessage="Cuota eliminada correctamente."
         errorMessage={deleteRow?.estado === "CONDONADO" ? "No se pudo eliminar la condonación." : "No se pudo eliminar el pago."}
         details={[
           {
             label: "Socio",
             value: deleteRow?.denominacion,
           },
-          { label: "Período", value: deleteRow?.periodo },
+          { label: "Período", value: deletePeriodLabel },
           { label: "Estado", value: deleteRow?.estado || "PAGADO" },
           { label: "Importe", value: money(deleteRow?.monto) },
           { label: "Medio", value: deleteRow?.medio_pago || "—" },

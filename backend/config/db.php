@@ -20,8 +20,8 @@ function pdo_connection(string $host, int $port, string $database, string $user,
 /**
  * Única conexión de la aplicación.
  *
- * El proyecto dejó de resolver organizaciones mediante una base maestra: autenticación,
- * sesiones, auditoría y módulos funcionales trabajan sobre la misma base.
+ * Es un sistema personalizado con una única base: autenticación, sesiones,
+ * auditoría y módulos funcionales trabajan sobre rh_neg_v2.
  */
 function app_db(): PDO
 {

@@ -179,10 +179,35 @@ function transaction(PDO $db, callable $callback): mixed
 
 function audit_change(PDO $db, array $auth, string $module, string $action, string $table, int|string|null $id, string $description, mixed $before, mixed $after): void
 {
+    if ($id === null) return;
+
+    // El esquema personalizado de RH Negativo sólo admite estas acciones.
+    // Los nombres detallados de cada módulo se normalizan sin exigir columnas
+    // heredadas de arquitecturas multiempresa.
+    $requestedAction = function_exists('mb_strtoupper')
+        ? mb_strtoupper(trim($action), 'UTF-8')
+        : strtoupper(trim($action));
+    $auditAction = match (true) {
+        in_array($requestedAction, ['INSERT', 'UPDATE', 'DELETE', 'MIGRACION', 'FUSION'], true)
+            => $requestedAction,
+        str_contains($requestedAction, 'ELIMINAR')
+            => 'DELETE',
+        str_contains($requestedAction, 'CREAR'),
+        str_contains($requestedAction, 'PAGAR'),
+        str_contains($requestedAction, 'CONDONAR')
+            => 'INSERT',
+        default => 'UPDATE',
+    };
+
+    $origin = function_exists('mb_strtoupper')
+        ? mb_strtoupper(trim($module), 'UTF-8')
+        : strtoupper(trim($module));
+    $origin = $origin === '' ? 'SISTEMA' : substr($origin, 0, 30);
+
     $statement = $db->prepare(
         'INSERT INTO auditoria
-         (id_usuario_master, modulo, accion, tabla_afectada, id_registro, descripcion, datos_anteriores, datos_nuevos, ip, user_agent)
-         VALUES (:usuario, :modulo, :accion, :tabla, :registro, :descripcion, :antes, :despues, :ip, :agente)'
+         (tabla, id_registro, accion, datos_anteriores, datos_nuevos, id_usuario, origen)
+         VALUES (:tabla, :registro, :accion, :antes, :despues, :usuario, :origen)'
     );
     $encode = static function (mixed $data): ?string {
         if ($data === null) return null;
@@ -206,16 +231,13 @@ function audit_change(PDO $db, array $auth, string $module, string $action, stri
             : '{"error":"No se pudo serializar el detalle de auditoría."}';
     };
     $statement->execute([
-        'usuario' => $auth['id_usuario_master'],
-        'modulo' => $module,
-        'accion' => $action,
         'tabla' => $table,
-        'registro' => $id === null ? null : (string)$id,
-        'descripcion' => $description,
+        'registro' => (int)$id,
+        'accion' => $auditAction,
         'antes' => $encode($before),
         'despues' => $encode($after),
-        'ip' => client_ip(),
-        'agente' => client_user_agent(),
+        'usuario' => $auth['id_usuario'],
+        'origen' => $origin,
     ]);
 }
 

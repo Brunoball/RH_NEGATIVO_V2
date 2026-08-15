@@ -130,20 +130,17 @@ function ensure_contable_schema(PDO $db): void
     ];
 
     $forbiddenColumns = [
-        'contable_opciones' => [
-            'id_usuario_master_creacion', 'id_usuario_master_modificacion',
-        ],
+        'contable_opciones' => [],
         'contable_ingresos' => [
             'id_proveedor', 'id_categoria', 'id_concepto',
             'medio_pago_snapshot', 'proveedor_snapshot', 'categoria_snapshot', 'concepto_snapshot',
-            'estado', 'fecha_anulacion', 'id_usuario_master_creacion', 'id_usuario_master_modificacion',
+            'estado', 'fecha_anulacion',
         ],
         'contable_egresos' => [
             'id_proveedor', 'id_categoria', 'id_concepto',
             'medio_pago_snapshot', 'proveedor_snapshot', 'categoria_snapshot', 'concepto_snapshot',
             'estado', 'fecha_anulacion', 'archivo_nombre_original', 'archivo_nombre_guardado',
             'archivo_mime', 'archivo_tamanio',
-            'id_usuario_master_creacion', 'id_usuario_master_modificacion',
         ],
     ];
 

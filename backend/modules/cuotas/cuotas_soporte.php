@@ -1,410 +1,328 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/cuotas_schema.php';
+
 abstract class CuotasSoporte
 {
-    protected const ESTADOS_REGISTRADOS = ['PAGADO', 'CONDONADO'];
-    protected const MODALIDADES_CUOTAS = ['MENSUAL', 'PRIMERA_MITAD', 'SEGUNDA_MITAD', 'CONTADO_ANUAL'];
-    protected const MODALIDADES_PAQUETE = ['PRIMERA_MITAD', 'SEGUNDA_MITAD', 'CONTADO_ANUAL'];
+    protected const MAX_PAGOS_LOTE = 200;
 
-    /**
-     * Permite cobrar cuotas e inscripciones del año actual y del siguiente.
-     * La regla queda centralizada para que modal, filtros y validaciones usen
-     * exactamente el mismo límite.
-     */
-    protected static function maximumEnabledYear(): int
+    protected static function validarEsquema(PDO $db): void
     {
-        return (int)date('Y') + 1;
+        ensure_cuotas_schema($db);
     }
 
-    /**
-     * Convierte una fecha de fin de vigencia en el último mes realmente
-     * exigible. Si la baja ocurrió antes del último día del mes, ese mes ya no
-     * genera deuda. Esto también corrige historiales viejos cerrados a mitad de
-     * mes por versiones anteriores del sistema.
-     */
-    protected static function lastChargeableMonth(?string $endDate): ?DateTimeImmutable
+    protected static function validarAnio(mixed $value): int
     {
-        $endDate = trim((string)$endDate);
-        if ($endDate === '' || $endDate === '9999-12-31') return null;
-
-        $date = new DateTimeImmutable($endDate);
-        $monthStart = $date->modify('first day of this month');
-        $monthEnd = $date->modify('last day of this month');
-
-        return $date < $monthEnd
-            ? $monthStart->modify('-1 month')
-            : $monthStart;
+        $year = filter_var($value, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 2000, 'max_range' => (int)date('Y') + 1],
+        ]);
+        if ($year === false) api_error('El año seleccionado no es válido.', 'PERIODO_INVALIDO');
+        return (int)$year;
     }
 
-    protected static function allowedRecipients(PDO $db, int $principalId, bool $applyFamily): array
+    protected static function idOpcional(mixed $value, string $label): ?int
     {
-        $statement = $db->prepare('SELECT id_socio, activo FROM socios WHERE id_socio = ?');
-        $statement->execute([$principalId]);
-        $principal = $statement->fetch();
-        if (!$principal) api_error('El socio no existe.', 'SOCIO_NO_DISPONIBLE', 404);
-        if (!$applyFamily || !(bool)$principal['activo']) return [$principalId];
-
-        $familyStatement = $db->prepare(
-            'SELECT f.id_familia FROM familia_socios fs INNER JOIN familias f ON f.id_familia = fs.id_familia
-             WHERE fs.id_socio = ? AND f.activo = 1 LIMIT 1'
-        );
-        $familyStatement->execute([$principalId]);
-        $familyId = $familyStatement->fetchColumn();
-        if (!$familyId) return [$principalId];
-        $members = $db->prepare(
-            'SELECT s.id_socio FROM familia_socios fs INNER JOIN socios s ON s.id_socio = fs.id_socio
-             WHERE fs.id_familia = ? AND s.activo = 1 ORDER BY s.id_socio'
-        );
-        $members->execute([(int)$familyId]);
-        return array_map('intval', array_column($members->fetchAll(), 'id_socio'));
+        if ($value === null || trim((string)$value) === '') return null;
+        return positive_id($value, $label);
     }
 
-    protected static function recipientsWithCategory(PDO $db, array $partnerIds, int $categoryId, int $year): array
+    protected static function periodo(PDO $db, mixed $value, bool $soloActivo = true): array
     {
-        if ($partnerIds === []) return [];
-        $placeholders = implode(',', array_fill(0, count($partnerIds), '?'));
-        $start = $year . '-01-01';
-        $end = $year . '-12-31';
-        $statement = $db->prepare(
-            "SELECT DISTINCT sc.id_socio
-             FROM socio_categorias sc
-             WHERE sc.id_socio IN ({$placeholders}) AND sc.id_categoria = ?
-               AND sc.fecha_desde <= ? AND (sc.fecha_hasta IS NULL OR sc.fecha_hasta >= ?)"
-             . " AND EXISTS (
-                    SELECT 1 FROM socios_periodos_activos spa
-                    WHERE spa.id_socio = sc.id_socio
-                      AND spa.vigente_desde <= ? AND (spa.vigente_hasta IS NULL OR spa.vigente_hasta >= ?)
-                 )
-                 AND EXISTS (
-                    SELECT 1 FROM categorias_periodos_activos cpa
-                    WHERE cpa.id_categoria = sc.id_categoria
-                      AND cpa.vigente_desde <= ? AND (cpa.vigente_hasta IS NULL OR cpa.vigente_hasta >= ?)
-                 )"
-        );
-        $statement->execute([...$partnerIds, $categoryId, $end, $start, $end, $start, $end, $start]);
-        return array_map('intval', array_column($statement->fetchAll(), 'id_socio'));
-    }
-
-    protected static function hasAssignmentForPeriod(PDO $db, int $partnerId, int $categoryId, int $year, int $month): bool
-    {
-        $start = sprintf('%04d-%02d-01', $year, $month);
-        $end = (new DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
-        $statement = $db->prepare(
-            'SELECT sc.id_socio_categoria
-             FROM socio_categorias sc
-             WHERE sc.id_socio = ? AND sc.id_categoria = ?
-               AND sc.fecha_desde <= ?
-               AND (sc.fecha_hasta IS NULL OR sc.fecha_hasta >= ?)
-               AND EXISTS (
-                    SELECT 1 FROM socios_periodos_activos spa
-                    WHERE spa.id_socio = sc.id_socio
-                      AND spa.vigente_desde <= ? AND (spa.vigente_hasta IS NULL OR spa.vigente_hasta >= ?)
-               )
-               AND EXISTS (
-                    SELECT 1 FROM categorias_periodos_activos cpa
-                    WHERE cpa.id_categoria = sc.id_categoria
-                      AND cpa.vigente_desde <= ? AND (cpa.vigente_hasta IS NULL OR cpa.vigente_hasta >= ?)
-               )
-             LIMIT 1'
-        );
-        $statement->execute([$partnerId, $categoryId, $end, $end, $end, $end, $end, $end]);
-        return (bool)$statement->fetchColumn();
-    }
-
-    protected static function hasRegisteredPeriod(PDO $db, int $partnerId, int $categoryId, int $year, int $month): bool
-    {
-        $statement = $db->prepare(
-            "SELECT 1 FROM pagos
-             WHERE id_socio = ? AND id_categoria = ? AND anio = ? AND id_mes = ?
-               AND estado IN ('PAGADO','CONDONADO')
-             LIMIT 1"
-        );
-        $statement->execute([$partnerId, $categoryId, $year, $month]);
-        return (bool)$statement->fetchColumn();
-    }
-
-    protected static function hasRegisteredYear(PDO $db, int $partnerId, int $categoryId, int $year): bool
-    {
-        $statement = $db->prepare(
-            "SELECT 1 FROM pagos
-             WHERE id_socio = ? AND id_categoria = ? AND anio = ?
-               AND estado IN ('PAGADO','CONDONADO')
-             LIMIT 1"
-        );
-        $statement->execute([$partnerId, $categoryId, $year]);
-        return (bool)$statement->fetchColumn();
-    }
-
-    protected static function validateAssignmentForPeriod(PDO $db, int $partnerId, int $categoryId, int $year, int $month): void
-    {
-        if (!self::hasAssignmentForPeriod($db, $partnerId, $categoryId, $year, $month)) {
-            api_error('Una cuota no corresponde a la fecha de ingreso o categoría del socio.', 'CUOTA_NO_CORRESPONDE');
+        $id = positive_id($value, 'período');
+        // Cuotas trabaja con una estructura fija: seis períodos bimestrales
+        // (1..6) y Contado Anual (7). Configuración puede conservar opciones
+        // auxiliares/históricas, pero nunca deben entrar al circuito de cobro.
+        if ($id < 1 || $id > 7) {
+            api_error('El período seleccionado no existe o no pertenece al módulo de cuotas.', 'PERIODO_INVALIDO');
         }
+        $sql = 'SELECT id_periodo, nombre, meses, activo FROM periodo WHERE id_periodo = ?';
+        if ($soloActivo) $sql .= ' AND activo = 1';
+        $sql .= ' LIMIT 1';
+        $statement = $db->prepare($sql);
+        $statement->execute([$id]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$row) api_error('El período seleccionado no existe o está inactivo.', 'PERIODO_INVALIDO');
+        $row['id_periodo'] = (int)$row['id_periodo'];
+        $row['activo'] = (bool)$row['activo'];
+        return $row;
     }
 
-    protected static function discountContextForPartner(PDO $db, int $partnerId, array $rules, array &$cache): array
+    protected static function periodos(PDO $db, bool $soloActivos = true): array
     {
-        if (isset($cache[$partnerId])) return $cache[$partnerId];
-        $statement = $db->prepare(
-            'SELECT f.id_familia,
-                    COUNT(CASE WHEN sm.activo = 1 THEN 1 END) AS cantidad_integrantes
-             FROM socios s
-             LEFT JOIN familia_socios fs ON fs.id_socio = s.id_socio
-             LEFT JOIN familias f ON f.id_familia = fs.id_familia AND f.activo = 1
-             LEFT JOIN familia_socios fsm ON fsm.id_familia = f.id_familia
-             LEFT JOIN socios sm ON sm.id_socio = fsm.id_socio
-             WHERE s.id_socio = ?
-             GROUP BY s.id_socio, f.id_familia'
-        );
-        $statement->execute([$partnerId]);
-        $row = $statement->fetch() ?: ['id_familia' => null, 'cantidad_integrantes' => 0];
-        $familyId = $row['id_familia'] === null ? null : (int)$row['id_familia'];
-        $count = $familyId === null ? 0 : (int)$row['cantidad_integrantes'];
-        return $cache[$partnerId] = [
-            'id_familia' => $familyId,
-            'cantidad_integrantes' => $count,
-            'porcentaje' => $familyId === null ? 0.0 : self::discountForCount($rules, $count),
-        ];
+        $conditions = ['id_periodo BETWEEN 1 AND 7'];
+        if ($soloActivos) $conditions[] = 'activo = 1';
+        $sql = 'SELECT id_periodo, nombre, meses, activo FROM periodo'
+            . ' WHERE ' . implode(' AND ', $conditions)
+            . ' ORDER BY id_periodo ASC';
+        $rows = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        return array_map(static fn(array $row): array => [
+            'id_periodo' => (int)$row['id_periodo'],
+            // Alias que consume el frontend base de Cuotas.
+            'id_mes' => (int)$row['id_periodo'],
+            'nombre' => (string)$row['nombre'],
+            'meses' => (string)$row['meses'],
+            'tipo' => (int)$row['id_periodo'] === 7 ? 'ANUAL' : 'MENSUAL',
+            'activo' => (bool)$row['activo'],
+        ], $rows);
     }
 
-    protected static function normalPaymentMediumId(PDO $db, mixed $value): int
+    protected static function esAnual(int $periodId): bool
+    {
+        return $periodId === 7;
+    }
+
+    protected static function tipoPrecio(int $periodId): string
+    {
+        return self::esAnual($periodId) ? 'anual' : 'mensual';
+    }
+
+    protected static function finPeriodo(int $year, int $periodId): string
+    {
+        if (self::esAnual($periodId)) return sprintf('%04d-12-31', $year);
+        $month = min(12, max(1, $periodId * 2));
+        return (new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))
+            ->modify('last day of this month')
+            ->format('Y-m-d');
+    }
+
+    protected static function inicioPeriodo(int $year, int $periodId): string
+    {
+        if (self::esAnual($periodId)) return sprintf('%04d-01-01', $year);
+        $month = min(12, max(1, $periodId * 2 - 1));
+        return sprintf('%04d-%02d-01', $year, $month);
+    }
+
+    protected static function medioPago(PDO $db, mixed $value): array
     {
         $id = positive_id($value, 'medio de pago');
-        $statement = $db->prepare("SELECT id_medio_pago, nombre FROM medios_pago WHERE id_medio_pago = ? AND activo = 1 LIMIT 1");
+        $statement = $db->prepare(
+            'SELECT id_medio_pago, nombre FROM medios_pago
+             WHERE id_medio_pago = ? AND activo = 1 LIMIT 1'
+        );
         $statement->execute([$id]);
-        $row = $statement->fetch();
-        if (!$row || self::upper((string)$row['nombre']) === 'CONDONACIÓN') api_error('El medio de pago seleccionado no es válido.', 'MEDIO_PAGO_INVALIDO');
-        return $id;
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$row) api_error('El medio de pago seleccionado no existe o está inactivo.', 'MEDIO_PAGO_INVALIDO');
+        return ['id_medio_pago' => (int)$row['id_medio_pago'], 'nombre' => (string)$row['nombre']];
     }
 
-    protected static function condonationMediumId(PDO $db): int
+    protected static function mapaCategorias(PDO $db, array $ids): array
     {
-        $statement = $db->prepare("SELECT id_medio_pago FROM medios_pago WHERE nombre = 'CONDONACIÓN' AND activo = 1 LIMIT 1");
-        $statement->execute();
-        $id = $statement->fetchColumn();
-        if (!$id) api_error('Ejecutá primero la migración SQL del módulo Cuotas.', 'MIGRACION_CUOTAS_REQUERIDA', 500);
-        return (int)$id;
-    }
-
-    protected static function modalitiesMap(PDO $db): array
-    {
-        $rows = $db->query(
-            "SELECT id_modalidad_pago, codigo, nombre, mes_desde, mes_hasta, cantidad_meses
-             FROM modalidades_pago
-             WHERE activo = 1
-             ORDER BY id_modalidad_pago"
-        )->fetchAll();
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if ($ids === []) return [];
+        $statement = $db->prepare(
+            'SELECT id_categoria, nombre, monto_mensual, monto_anual, activo
+             FROM categoria WHERE id_categoria IN (' . implode(',', array_fill(0, count($ids), '?')) . ')'
+        );
+        $statement->execute($ids);
         $map = [];
-        foreach ($rows as $row) {
-            $code = self::upper((string)$row['codigo']);
-            $map[$code] = [
-                'id_modalidad_pago' => (int)$row['id_modalidad_pago'],
-                'codigo' => $code,
-                'nombre' => (string)$row['nombre'],
-                'mes_desde' => $row['mes_desde'] === null ? null : (int)$row['mes_desde'],
-                'mes_hasta' => $row['mes_hasta'] === null ? null : (int)$row['mes_hasta'],
-                'cantidad_meses' => (int)$row['cantidad_meses'],
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $map[(int)$row['id_categoria']] = $row;
+        }
+        return $map;
+    }
+
+    protected static function historialesPrecios(PDO $db, array $categoryIds): array
+    {
+        $categoryIds = array_values(array_unique(array_map('intval', $categoryIds)));
+        if ($categoryIds === []) return [];
+        $statement = $db->prepare(
+            'SELECT id_historial, id_categoria, tipo, precio_viejo, precio_nuevo, fecha_cambio
+             FROM precios_historicos
+             WHERE id_categoria IN (' . implode(',', array_fill(0, count($categoryIds), '?')) . ')
+             ORDER BY id_categoria ASC, tipo ASC, fecha_cambio ASC, id_historial ASC'
+        );
+        $statement->execute($categoryIds);
+        $map = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $map[(int)$row['id_categoria']][(string)$row['tipo']][] = $row;
+        }
+        return $map;
+    }
+
+    protected static function montoActual(array $category, int $periodId): float
+    {
+        return round((float)(self::esAnual($periodId)
+            ? $category['monto_anual']
+            : $category['monto_mensual']), 2);
+    }
+
+    protected static function opcionesMonto(
+        array $category,
+        int $periodId,
+        array $history,
+        float $discount = 0.0
+    ): array {
+        $current = self::montoActual($category, $periodId);
+        $options = [[
+            'id' => 'actual',
+            'actual' => true,
+            'monto_base' => number_format($current, 2, '.', ''),
+            'monto' => number_format(self::aplicarDescuento($current, $discount), 2, '.', ''),
+            // Sin rango: el frontend selecciona primero el valor actual.
+            'vigente_desde' => null,
+            'vigente_hasta' => null,
+        ]];
+
+        if ($history === []) return $options;
+
+        $segments = [];
+        $first = $history[0];
+        $segments[] = [
+            'id' => 'inicial-' . (int)$first['id_historial'],
+            'amount' => (float)$first['precio_viejo'],
+            'from' => null,
+            'to' => (new DateTimeImmutable((string)$first['fecha_cambio']))
+                ->modify('-1 day')->format('Y-m-d'),
+        ];
+        foreach ($history as $index => $change) {
+            $next = $history[$index + 1] ?? null;
+            $segments[] = [
+                'id' => 'hist-' . (int)$change['id_historial'],
+                'amount' => (float)$change['precio_nuevo'],
+                'from' => (string)$change['fecha_cambio'],
+                'to' => $next
+                    ? (new DateTimeImmutable((string)$next['fecha_cambio']))->modify('-1 day')->format('Y-m-d')
+                    : null,
             ];
         }
-        return $map;
-    }
 
-    protected static function paymentModality(PDO $db, mixed $value): array
-    {
-        $code = self::upper(clean_text($value ?? 'MENSUAL', 40, false));
-        if (!in_array($code, self::MODALIDADES_CUOTAS, true)) {
-            api_error('La modalidad de pago seleccionada no es válida.', 'MODALIDAD_INVALIDA');
+        $seen = [];
+        foreach (array_reverse($segments) as $segment) {
+            $amount = round((float)$segment['amount'], 2);
+            if ($amount <= 0 || abs($amount - $current) < 0.005) continue;
+            $key = number_format($amount, 2, '.', '') . '|' . ($segment['to'] ?? '');
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $options[] = [
+                'id' => $segment['id'],
+                'actual' => false,
+                'monto_base' => number_format($amount, 2, '.', ''),
+                'monto' => number_format(self::aplicarDescuento($amount, $discount), 2, '.', ''),
+                'vigente_desde' => $segment['from'],
+                'vigente_hasta' => $segment['to'],
+            ];
         }
-        $modalities = self::modalitiesMap($db);
-        if (!isset($modalities[$code])) {
-            api_error('Falta configurar la modalidad ' . $code . '.', 'MODALIDAD_NO_CONFIGURADA', 500);
-        }
-        return $modalities[$code];
+        return $options;
     }
 
-    protected static function modalityMonths(string $code): array
-    {
-        return match ($code) {
-            'PRIMERA_MITAD' => range(1, 6),
-            'SEGUNDA_MITAD' => range(7, 12),
-            'CONTADO_ANUAL' => range(1, 12),
-            default => [],
-        };
-    }
-
-    protected static function isPackageModality(string $code): bool
-    {
-        return in_array($code, self::MODALIDADES_PAQUETE, true);
-    }
-
-    protected static function modalityLabel(string $code): string
-    {
-        return match ($code) {
-            'PRIMERA_MITAD' => 'PRIMERA MITAD',
-            'SEGUNDA_MITAD' => 'SEGUNDA MITAD',
-            'CONTADO_ANUAL' => 'CONTADO ANUAL',
-            'INSCRIPCION' => 'INSCRIPCIÓN',
-            default => 'CUOTAS MENSUALES',
-        };
-    }
-
-    protected static function categoryMap(PDO $db, array $categoryIds): array
-    {
-        if ($categoryIds === []) return [];
-        $placeholders = implode(',', array_fill(0, count($categoryIds), '?'));
-        $statement = $db->prepare("SELECT id_categoria, nombre, monto_actual FROM categorias WHERE id_categoria IN ({$placeholders})");
-        $statement->execute($categoryIds);
-        $map = [];
-        foreach ($statement->fetchAll() as $row) $map[(int)$row['id_categoria']] = $row;
-        return $map;
-    }
-
-    protected static function partnerSnapshot(PDO $db, int $partnerId): array
-    {
-        $statement = $db->prepare('SELECT CONCAT(apellido, ", ", nombre) AS socio, dni FROM socios WHERE id_socio = ?');
-        $statement->execute([$partnerId]);
-        $row = $statement->fetch();
-        if (!$row) api_error('Uno de los socios seleccionados ya no existe.', 'SOCIO_NO_DISPONIBLE', 404);
-        return ['socio' => (string)$row['socio'], 'dni' => (string)$row['dni']];
-    }
-
-    protected static function paymentMediumName(PDO $db, int $mediumId): string
-    {
-        $statement = $db->prepare('SELECT nombre FROM medios_pago WHERE id_medio_pago = ?');
-        $statement->execute([$mediumId]);
-        $name = $statement->fetchColumn();
-        if ($name === false) api_error('El medio de pago seleccionado no existe.', 'MEDIO_PAGO_INVALIDO');
-        return (string)$name;
-    }
-
-    protected static function registrationAmount(PDO $db): string
-    {
-        $statement = $db->query("SELECT monto_fijo FROM modalidades_pago WHERE codigo = 'INSCRIPCION' AND activo = 1 LIMIT 1");
-        $amount = $statement->fetchColumn();
-        return number_format((float)($amount === false ? 0 : $amount), 2, '.', '');
-    }
-
-    protected static function priceHistory(PDO $db, array $categoryIds): array
-    {
-        if ($categoryIds === []) return [];
-        $placeholders = implode(',', array_fill(0, count($categoryIds), '?'));
-        $statement = $db->prepare(
-            "SELECT id_categoria, monto_anterior, monto_nuevo, fecha_cambio
-             FROM categorias_historial_precios
-             WHERE id_categoria IN ({$placeholders})
-             ORDER BY id_categoria, fecha_cambio DESC, id_historial_precio DESC"
-        );
-        $statement->execute($categoryIds);
-        $map = [];
-        foreach ($statement->fetchAll() as $row) $map[(int)$row['id_categoria']][] = $row;
-        return $map;
-    }
-
-    protected static function priceForPeriod(array $history, float $fallback, int $year, int $month): float
-    {
-        $start = sprintf('%04d-%02d-01', $year, $month);
-        $end = (new DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
-
-        // El historial original guarda cambios puntuales, no intervalos. Para el
-        // período pedido se toma el último monto nuevo cuyo cambio ya ocurrió.
-        foreach ($history as $row) {
-            if (substr((string)$row['fecha_cambio'], 0, 10) <= $end) {
-                return (float)$row['monto_nuevo'];
-            }
-        }
-
-        // Si el período es anterior al primer cambio registrado, el monto
-        // anterior de la fila más antigua representa el valor vigente entonces.
-        if ($history !== []) {
-            $oldest = $history[count($history) - 1];
-            return (float)$oldest['monto_anterior'];
-        }
-
-        return $fallback;
-    }
-
-    protected static function discountRules(PDO $db): array
+    protected static function reglasDescuento(PDO $db, string $date): array
     {
         $statement = $db->prepare(
-            'SELECT cantidad_integrantes_desde,
-                    cantidad_integrantes_hasta,
-                    porcentaje_descuento
+            'SELECT cantidad_integrantes_desde, cantidad_integrantes_hasta, porcentaje_descuento
              FROM descuentos_familiares
-             WHERE activo = 1
-               AND vigencia_desde <= CURDATE()
-               AND (vigencia_hasta IS NULL OR vigencia_hasta >= CURDATE())
-             ORDER BY cantidad_integrantes_desde ASC,
-                      COALESCE(cantidad_integrantes_hasta, 65535) ASC'
+             WHERE activo = 1 AND vigencia_desde <= ?
+               AND (vigencia_hasta IS NULL OR vigencia_hasta >= ?)
+             ORDER BY cantidad_integrantes_desde DESC, id_descuento_familiar DESC'
         );
-        $statement->execute();
-
-        return array_map(static fn(array $row): array => [
-            'desde' => (int)$row['cantidad_integrantes_desde'],
-            'hasta' => $row['cantidad_integrantes_hasta'] === null
-                ? null
-                : (int)$row['cantidad_integrantes_hasta'],
-            'porcentaje' => (float)$row['porcentaje_descuento'],
-        ], $statement->fetchAll());
+        $statement->execute([$date, $date]);
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    protected static function discountForCount(array $rules, int $count): float
+    protected static function porcentajeDescuento(array $rules, int $count): float
     {
         foreach ($rules as $rule) {
-            $from = (int)$rule['desde'];
-            $to = $rule['hasta'] === null ? null : (int)$rule['hasta'];
+            $from = (int)$rule['cantidad_integrantes_desde'];
+            $to = $rule['cantidad_integrantes_hasta'] === null ? null : (int)$rule['cantidad_integrantes_hasta'];
             if ($count >= $from && ($to === null || $count <= $to)) {
-                return (float)$rule['porcentaje'];
+                return max(0.0, min(100.0, (float)$rule['porcentaje_descuento']));
             }
         }
         return 0.0;
     }
 
-    protected static function amountWithFamilyDiscount(float $baseAmount, float $familyPercentage): float
+    protected static function aplicarDescuento(float $amount, float $percentage): float
     {
-        // La misma regla se usa para cuotas mensuales, paquetes semestrales,
-        // contado anual e inscripciones. La modalidad nunca debe saltear el
-        // descuento familiar vigente del socio.
-        $percentage = max(0.0, min(100.0, $familyPercentage));
-        return round($baseAmount * (1 - $percentage / 100), 2);
+        return round($amount * (1 - max(0.0, min(100.0, $percentage)) / 100), 2);
     }
 
-    protected static function familyCounts(PDO $db): array
+    protected static function familiaDeSocio(PDO $db, int $partnerId, string $date): ?array
     {
-        $rows = $db->query(
-            'SELECT f.id_familia, COUNT(CASE WHEN s.activo = 1 THEN 1 END) AS cantidad
-             FROM familias f
-             LEFT JOIN familia_socios fs ON fs.id_familia = f.id_familia
-             LEFT JOIN socios s ON s.id_socio = fs.id_socio
-             WHERE f.activo = 1 GROUP BY f.id_familia'
-        )->fetchAll();
+        $statement = $db->prepare(
+            'SELECT f.id_familia, f.nombre_familia
+             FROM familias_socios fs
+             INNER JOIN familias f ON f.id_familia = fs.id_familia AND f.activo = 1
+             WHERE fs.id_socio = ? AND fs.activo = 1
+               AND (fs.desde IS NULL OR fs.desde <= ?)
+               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+             ORDER BY fs.id_familia_socio DESC LIMIT 1'
+        );
+        $statement->execute([$partnerId, $date, $date]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        return $row ? ['id_familia' => (int)$row['id_familia'], 'nombre' => (string)$row['nombre_familia']] : null;
+    }
+
+    protected static function integrantesFamilia(PDO $db, int $familyId, string $date): array
+    {
+        $statement = $db->prepare(
+            'SELECT s.id_socio
+             FROM familias_socios fs
+             INNER JOIN socios s ON s.id_socio = fs.id_socio
+             WHERE fs.id_familia = ? AND fs.activo = 1
+               AND (fs.desde IS NULL OR fs.desde <= ?)
+               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+               AND s.vigente = 1
+             ORDER BY s.nombre ASC, s.id_socio ASC'
+        );
+        $statement->execute([$familyId, $date, $date]);
+        return array_map('intval', array_column($statement->fetchAll(PDO::FETCH_ASSOC), 'id_socio'));
+    }
+
+    protected static function pagosRegistrados(PDO $db, array $partnerIds, int $year): array
+    {
+        $partnerIds = array_values(array_unique(array_map('intval', $partnerIds)));
+        if ($partnerIds === []) return [];
+        $statement = $db->prepare(
+            'SELECT p.*, mp.nombre AS medio_pago
+             FROM pagos p LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
+             WHERE p.id_socio IN (' . implode(',', array_fill(0, count($partnerIds), '?')) . ')
+               AND p.anio_aplicado = ? ORDER BY p.id_pago DESC'
+        );
+        $statement->execute(array_merge($partnerIds, [$year]));
         $map = [];
-        foreach ($rows as $row) $map[(int)$row['id_familia']] = (int)$row['cantidad'];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = (int)$row['id_socio'] . '-' . (int)$row['id_periodo'];
+            if (!isset($map[$key])) $map[$key] = $row;
+        }
         return $map;
     }
 
-    protected static function periodKey(int $partnerId, int $categoryId, int $year, int $month): string
+    protected static function conflictoModalidad(array $payments, int $partnerId, int $periodId): ?string
     {
-        return $partnerId . '-' . $categoryId . '-' . $year . '-' . $month;
+        if (self::esAnual($periodId)) {
+            for ($id = 1; $id <= 6; $id++) {
+                if (isset($payments[$partnerId . '-' . $id])) {
+                    return 'El pago anual no está disponible porque el socio ya posee períodos registrados en ese año.';
+                }
+            }
+            return null;
+        }
+        return isset($payments[$partnerId . '-7']) ? 'El período ya está cubierto por un pago anual.' : null;
     }
 
-    protected static function operationCode(string $prefix): string
+    protected static function codigoOperacion(string $prefix, array $ids): string
     {
-        return $prefix . '-' . date('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(4)));
+        if (count($ids) === 1) return $prefix . '-' . $ids[0];
+        return $prefix . '-' . date('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(3)));
     }
 
-    protected static function monthName(int $month): string
+    protected static function codigoBarra(int $periodId, int $year, int $partnerId): string
     {
-        return [1 => 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'][$month] ?? '';
+        if ($periodId < 1 || $periodId > 7 || $year < 2000 || $year > 2099 || $partnerId <= 0) {
+            api_error(
+                'No se pudo generar el código de barras del comprobante.',
+                'CODIGO_BARRA_INVALIDO',
+                500
+            );
+        }
+
+        return sprintf('%d%02d-%d', $periodId, $year % 100, $partnerId);
     }
 
-    protected static function lower(string $value): string
+    protected static function fechaPago(mixed $value, string $label = 'pago'): string
     {
-        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
-    }
-
-    protected static function upper(string $value): string
-    {
-        return function_exists('mb_strtoupper') ? mb_strtoupper($value, 'UTF-8') : strtoupper($value);
+        $date = valid_date($value ?? date('Y-m-d'), $label);
+        if ($date > date('Y-m-d')) api_error('La fecha de pago no puede ser futura.', 'FECHA_PAGO_FUTURA');
+        return $date;
     }
 }
