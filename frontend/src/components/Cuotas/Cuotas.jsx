@@ -2028,18 +2028,6 @@ export default function Cuotas() {
             className="cuotas-lower-actions"
             aria-label="Acciones de cuotas"
           >
-            {writable ? (
-              <button
-                type="button"
-                className="mov-btn mov-btn--ghost cuotas-lower-action cuotas-barcode-lower-action"
-                onClick={() => setBarcodeOpen(true)}
-                title="Registrar una cuota leyendo el código del comprobante"
-              >
-                <FontAwesomeIcon icon={faBarcode} />
-                Código de barras
-              </button>
-            ) : null}
-
             <BotonExportarGlobal
               label="Exportar"
               className="cuotas-lower-action mov-btn--compact"

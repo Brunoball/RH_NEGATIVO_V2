@@ -56,7 +56,17 @@
 }
 
 .socios-table .global-divTable__body {
+  flex: 1 1 auto;
   min-height: 318px;
+}
+
+/*
+ * La tabla debe ocupar siempre el espacio disponible del módulo. La cantidad
+ * de filas cambia al buscar, pero no debe modificar la altura del listado.
+ */
+.socios-table {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .socios-table.has-bottom-pagination .global-divTable__body {
@@ -465,7 +475,16 @@
 
 /* Aviso 18-23 años: panel lateral independiente del contenedor de Socios. */
 .socios-sectionShell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
+}
+
+.socios-sectionShell > .socios-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
 }
 
 .socios-birthdayDrawer {
@@ -898,6 +917,7 @@
 /* Paginación */
 .socios-pagination {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px 16px;

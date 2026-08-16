@@ -181,10 +181,17 @@ export default function Principal() {
     groupClickTimer.current = null;
   };
 
-  const toggleGroup = (item) => {
+  const toggleGroup = (item, event) => {
     clearGroupClickTimer();
+
+    // El segundo clic pertenece al doble clic: la navegación se resuelve
+    // exclusivamente en handleGroupDoubleClick.
+    if (event.detail > 1) return;
+
     groupClickTimer.current = setTimeout(() => {
-      setOpenGroupKey((current) => (current === item.key ? null : item.key));
+      setOpenGroupKey((currentKey) =>
+        currentKey === item.key ? null : item.key,
+      );
       groupClickTimer.current = null;
     }, 0);
   };
@@ -343,7 +350,7 @@ export default function Principal() {
                     className={`pp-nav__item ${active ? "is-active" : ""}`}
                     type="button"
                     aria-expanded={groupOpen}
-                    onClick={() => toggleGroup(item)}
+                    onClick={(event) => toggleGroup(item, event)}
                     onDoubleClick={(event) => handleGroupDoubleClick(item, event)}
                     title="Un clic para desplegar; doble clic para ingresar"
                   >

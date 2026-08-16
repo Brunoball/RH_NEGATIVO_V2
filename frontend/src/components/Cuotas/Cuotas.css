@@ -17,20 +17,16 @@
   display: grid;
   align-items: end;
   gap: 10px;
-  width: auto;
+  width: 100%;
   min-width: 0;
   max-width: none;
   flex: 1 1 auto;
-  margin-left: auto;
-  justify-self: end;
-  justify-content: end;
-  /* Conserva los tamaños normales mientras hay lugar. Cuando la barra lateral
-     reduce el ancho disponible, primero ceden Búsqueda, Año y Mes. */
-  grid-template-columns:
-    minmax(330px, 360px)
-    minmax(120px, 250px)
-    minmax(82px, 120px)
-    minmax(92px, 120px);
+  margin-left: 0;
+  justify-self: stretch;
+  justify-content: stretch;
+  /* Búsqueda absorbe el espacio disponible; Año y Mes permanecen agrupados
+     y alineados contra el sector derecho del encabezado. */
+  grid-template-columns: minmax(240px, 1fr) 120px 150px;
 }
 
 .cuotas-head-filters .module-filter--tabs {
@@ -106,12 +102,18 @@
   justify-self: end;
 }
 
-.cuotas-head-filters .cuotas-year-filter,
-.cuotas-head-filters .cuotas-month-filter {
-  width: 100%;
-  min-width: 0;
+.cuotas-head-filters .cuotas-year-filter {
+  width: 120px;
+  min-width: 120px;
   max-width: 120px;
-  justify-self: stretch;
+  justify-self: end;
+}
+
+.cuotas-head-filters .cuotas-month-filter {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+  justify-self: end;
 }
 
 .cuotas-page .module-card .cuotas-table > .entity-table-wrap {
@@ -439,6 +441,15 @@
 
 @media (max-width: 1499px) {
   .cuotas-page > .module-card > .module-card__head > .module-card__actions {
+    display: flex !important;
+    flex: 0 0 auto;
+  }
+
+  .cuotas-page
+    > .module-card
+    > .module-card__head
+    > .module-card__actions
+    > :not(.cuotas-barcode-action) {
     display: none !important;
   }
 
@@ -537,11 +548,7 @@
 
   .cuotas-head-filters {
     flex-basis: auto;
-    grid-template-columns:
-      minmax(300px, 330px)
-      minmax(100px, 220px)
-      minmax(78px, 105px)
-      minmax(88px, 110px);
+    grid-template-columns: minmax(180px, 1fr) 120px 150px;
   }
 
   .cuotas-head-filters .module-filter--tabs {
@@ -553,7 +560,7 @@
   .cuotas-head-filters {
     max-width: none;
     flex-basis: 100%;
-    grid-template-columns: minmax(240px, 1fr) 120px 120px;
+    grid-template-columns: minmax(0, 1fr) 120px 150px;
     justify-content: end;
   }
 
@@ -569,13 +576,13 @@
 
   .cuotas-head-filters .cuotas-month-filter {
     grid-column: 3;
-    justify-self: start;
+    justify-self: end;
   }
 }
 
 @media (max-width: 600px) {
   .cuotas-head-filters {
-    grid-template-columns: minmax(0, 1fr) 120px 120px;
+    grid-template-columns: minmax(0, 1fr) 120px 150px;
   }
 
   .cuotas-head-filters .module-filter--tabs {
@@ -593,6 +600,15 @@
 }
 
 @media (max-width: 720px) {
+  .cuotas-header-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cuotas-header-row .module-titleBox {
+    width: 100%;
+  }
+
   .cuotas-pagination {
     align-items: stretch;
     flex-direction: column;
@@ -623,11 +639,8 @@
     padding: 8px 10px;
   }
 
-  .cuotas-head-filters .module-filter,
   .cuotas-head-filters .module-filter--tabs,
-  .cuotas-head-filters .cuotas-search-filter,
-  .cuotas-head-filters .cuotas-year-filter,
-  .cuotas-head-filters .cuotas-month-filter {
+  .cuotas-head-filters .cuotas-search-filter {
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;

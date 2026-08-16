@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import DataTableSkeleton from "./DataTableSkeleton";
 
+const SKELETON_ROW_HEIGHT = 67;
+
 /**
  * Estructura global para tablas construidas con divs.
  *
@@ -23,6 +25,7 @@ export default function GlobalDivTable({
   skeletonRows = 6,
 }) {
   const bodyRef = useRef(null);
+  const minimumSkeletonRows = Math.max(1, Number(skeletonRows) || 1);
   const setBodyRef = useCallback(
     (node) => {
       bodyRef.current = node;
@@ -36,6 +39,9 @@ export default function GlobalDivTable({
   );
   const [hasVerticalScroll, setHasVerticalScroll] = useState(false);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const [visibleSkeletonRows, setVisibleSkeletonRows] = useState(
+    minimumSkeletonRows,
+  );
 
   useEffect(() => {
     const body = bodyRef.current;
@@ -45,6 +51,18 @@ export default function GlobalDivTable({
     const updateScrollbar = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
+        const rowsNeededToFillBody = loading
+          ? Math.ceil(body.clientHeight / SKELETON_ROW_HEIGHT)
+          : minimumSkeletonRows;
+        const nextSkeletonRows = Math.max(
+          minimumSkeletonRows,
+          rowsNeededToFillBody,
+        );
+
+        setVisibleSkeletonRows((current) =>
+          current === nextSkeletonRows ? current : nextSkeletonRows,
+        );
+
         if (empty) {
           body.scrollTop = 0;
           setHasVerticalScroll(false);
@@ -79,7 +97,7 @@ export default function GlobalDivTable({
       mutationObserver.disconnect();
       window.removeEventListener("resize", updateScrollbar);
     };
-  }, [empty]);
+  }, [empty, loading, minimumSkeletonRows]);
 
   const actionColumnIndex =
     typeof skeletonActionColumn === "number"
@@ -141,7 +159,7 @@ export default function GlobalDivTable({
             actionColumnIndex={actionColumnIndex}
             columnCount={columns.length}
             gridClassName={gridClassName}
-            rows={skeletonRows}
+            rows={visibleSkeletonRows}
           />
         ) : (
           children

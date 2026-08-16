@@ -1167,6 +1167,50 @@
   color: rgba(255, 255, 255, 0.45);
 }
 
+.cuotas-payment-tab-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 13px;
+}
+
+.cuotas-payment-tab-empty {
+  min-height: 150px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 22px;
+  border: 1px dashed color-mix(in srgb, var(--mov-border) 90%, transparent);
+  border-radius: 11px;
+  color: var(--balto-text);
+  background: color-mix(in srgb, var(--balto-bg) 45%, #fff);
+  text-align: center;
+}
+
+.cuotas-payment-tab-empty strong {
+  color: var(--balto-ink);
+  font-size: 12px;
+}
+
+.cuotas-payment-tab-empty span {
+  max-width: 430px;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.cuotas-payment-tab-empty button {
+  margin-top: 5px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--balto-action) 30%, transparent);
+  border-radius: 8px;
+  color: var(--balto-action);
+  background: #fff;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
 .cuotas-payment-top-context {
   display: grid;
   gap: 12px;
@@ -1391,6 +1435,11 @@
   min-width: 0;
   padding-top: 6px;
   border-top: 1px solid color-mix(in srgb, var(--mov-border) 82%, transparent);
+}
+
+.cuotas-payment-date-card.is-amounts-only .cuotas-month-amount-editor {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .cuotas-month-amount-editor__title {

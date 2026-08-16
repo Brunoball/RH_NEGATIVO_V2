@@ -131,7 +131,7 @@
 
 .admin-dashboard__metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
   gap: 10px;
 }
 
@@ -220,28 +220,27 @@
 }
 
 
-/* Saldo del mes: la última tarjeta toma el ancho que necesita su contenido.
-   El importe conserva el mismo tamaño tipográfico y el icono no se desplaza
-   dentro de la tarjeta. */
+/* El valor queda visible sin imponer un ancho distinto al de las demás
+   tarjetas. Todas las métricas comparten por igual el espacio disponible. */
 .admin-dashboard__metric.has-visible-value {
-  min-width: max-content;
+  min-width: 0;
   justify-self: stretch;
 }
 
 .admin-dashboard__metric.has-visible-value .admin-dashboard__metricBody {
-  width: max-content;
-  min-width: max-content;
-  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .admin-dashboard__metric.has-visible-value .admin-dashboard__metricBody strong {
-  width: auto;
-  max-width: none;
-  overflow: visible;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
   letter-spacing: -0.035em;
-  text-overflow: clip;
+  text-overflow: ellipsis;
 }
 
 .admin-dashboard__metricBody small {

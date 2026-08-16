@@ -3,10 +3,14 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDays,
   faChevronDown,
+  faMoneyBillWave,
   faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 import CrudModal from "../../Global/Modales/CrudModal";
-import { FloatingField } from "../../Global/Formularios/TabbedForm";
+import {
+  EntityTabs,
+  FloatingField,
+} from "../../Global/Formularios/TabbedForm";
 import "./CuotasModal.css";
 
 const formatOptionDate = (value) => {
@@ -136,10 +140,12 @@ export default function ModalPagoCuota({
   updateMonthCustomAmount,
   updateBatchAmountOption,
 }) {
+  const [activePaymentTab, setActivePaymentTab] = useState("periods");
   const [familyExpanded, setFamilyExpanded] = useState(false);
   const [extraPaymentYears, setExtraPaymentYears] = useState([]);
 
   useEffect(() => {
+    setActivePaymentTab("periods");
     setFamilyExpanded(false);
   }, [paymentOpen, paymentForm.id_socio, paymentForm.anio]);
 
@@ -280,13 +286,46 @@ export default function ModalPagoCuota({
     >
       {paymentMode === "single" ? (
         <>
-          {tipo === "PERSONA" ? (
-            <div className="cuotas-payment-top-context">
-              {family ? (
-                <section
-                  className="cuotas-family-card"
-                  aria-label="Grupo familiar del socio"
-                >
+          <EntityTabs
+            tabs={[
+              {
+                value: "periods",
+                label: "Meses a pagar",
+                icon: faCalendarDays,
+                badge: selectedMonthIds.length,
+              },
+              {
+                value: "family",
+                label: "Familia",
+                icon: faUsers,
+                badge: family?.cantidad_integrantes || 0,
+              },
+              {
+                value: "amounts",
+                label: "Importe por período",
+                icon: faMoneyBillWave,
+                badge: selectedMonthIds.length,
+              },
+            ]}
+            value={activePaymentTab}
+            onChange={setActivePaymentTab}
+            idPrefix="cuotas-payment-tab"
+            ariaLabel="Secciones del pago"
+          />
+
+          <div
+            id={`cuotas-payment-tab-${activePaymentTab}-panel`}
+            className="cuotas-payment-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`cuotas-payment-tab-${activePaymentTab}`}
+          >
+            {activePaymentTab === "family" ? (
+              <div className="cuotas-payment-top-context">
+                {tipo === "PERSONA" && family ? (
+                  <section
+                    className="cuotas-family-card"
+                    aria-label="Grupo familiar del socio"
+                  >
                   <div className="cuotas-family-card__head">
                     <div className="cuotas-family-card__identity">
                       <span className="cuotas-family-card__icon" aria-hidden="true">
@@ -420,18 +459,29 @@ export default function ModalPagoCuota({
                       })}
                     </div>
                   </div>
-                </section>
-              ) : null}
-            </div>
-          ) : null}
+                  </section>
+                ) : (
+                  <div className="cuotas-no-family">
+                    <FontAwesomeIcon icon={faUsers} aria-hidden="true" />
+                    <span>
+                      {tipo === "PERSONA"
+                        ? "Este socio no pertenece a un grupo familiar."
+                        : "La aplicación familiar está disponible únicamente para socios."}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
-          <div
-            className={`cuotas-payment-main-row ${tipo !== "PERSONA" ? "is-date-only" : ""}`.trim()}
-          >
-            <section
-              className="cuotas-period-group cuotas-period-selector"
-              aria-label="Períodos a pagar"
+          {activePaymentTab !== "family" ? (
+            <div
+              className={`cuotas-payment-main-row ${tipo !== "PERSONA" ? "is-date-only" : ""}`.trim()}
             >
+            {activePaymentTab === "periods" ? (
+              <section
+                className="cuotas-period-group cuotas-period-selector"
+                aria-label="Períodos a pagar"
+              >
               <header>
                 <div>
                   <span>Períodos disponibles</span>
@@ -535,16 +585,23 @@ export default function ModalPagoCuota({
                   );
                 })}
               </div>
-            </section>
+              </section>
+            ) : null}
 
-            <aside className="cuotas-payment-date-card">
-              <div className="cuotas-payment-date-card__header">
-                <span>Datos del pago</span>
-                <small>Completá la fecha, el monto y el medio de pago.</small>
-              </div>
+            {activePaymentTab === "periods" || activePaymentTab === "amounts" ? (
+              <aside
+                className={`cuotas-payment-date-card ${activePaymentTab === "amounts" ? "is-amounts-only" : ""}`.trim()}
+              >
+                {activePaymentTab === "periods" ? (
+                  <div className="cuotas-payment-date-card__header">
+                    <span>Datos del pago</span>
+                    <small>Completá la fecha y el medio de pago.</small>
+                  </div>
+                ) : null}
 
-              <div className="cuotas-payment-date-card__fields">
-                <div className="cuotas-payment-date-method-row">
+                <div className="cuotas-payment-date-card__fields">
+                  {activePaymentTab === "periods" ? (
+                    <div className="cuotas-payment-date-method-row">
                   <FloatingField
                     label="Fecha de pago *"
                     active={Boolean(paymentForm.fecha_pago)}
@@ -576,18 +633,20 @@ export default function ModalPagoCuota({
                       ))}
                     </select>
                   </FloatingField>
-                </div>
-
-                {selectedMonthIds.length ? (
-                  <div className="cuotas-month-amount-editor">
-                    <div className="cuotas-month-amount-editor__title">
-                      <span>Importe por período</span>
-                      <small>
-                        {paymentForm.aplicar_familia && family
-                          ? "Monto del socio; al cambiarlo se cobra individual."
-                          : "Actual o histórico según el período."}
-                      </small>
                     </div>
+                  ) : null}
+
+                {activePaymentTab === "amounts" ? (
+                  selectedMonthIds.length ? (
+                    <div className="cuotas-month-amount-editor">
+                      <div className="cuotas-month-amount-editor__title">
+                        <span>Importe por período</span>
+                        <small>
+                          {paymentForm.aplicar_familia && family
+                            ? "Monto del socio; al cambiarlo se cobra individual."
+                            : "Actual o histórico según el período."}
+                        </small>
+                      </div>
 
                     <div className="cuotas-month-amount-editor__list">
                       {selectedMonthIds.map((monthId) => {
@@ -676,12 +735,30 @@ export default function ModalPagoCuota({
                           </section>
                         );
                       })}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="cuotas-payment-tab-empty" role="status">
+                      <strong>No hay períodos seleccionados</strong>
+                      <span>
+                        Elegí uno o más meses en la pestaña “Meses a pagar” para
+                        configurar sus importes.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActivePaymentTab("periods")}
+                      >
+                        Ir a Meses a pagar
+                      </button>
+                    </div>
+                  )
                 ) : null}
 
-              </div>
-            </aside>
+                </div>
+              </aside>
+            ) : null}
+            </div>
+          ) : null}
           </div>
         </>
       ) : (

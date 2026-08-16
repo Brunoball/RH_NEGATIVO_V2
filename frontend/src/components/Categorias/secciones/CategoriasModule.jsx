@@ -14,7 +14,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../../Global/ModulePage";
 import GlobalDivTable from "../../Global/GlobalDivTable";
-import SummaryCards from "../../Global/SummaryCards";
 import CrudModal from "../../Global/Modales/CrudModal";
 import InfoModal, {
   InfoEmpty,
@@ -339,7 +338,6 @@ export default function CategoriasModule({ section = "categorias" }) {
 
   const {
     items,
-    resumen,
     loading,
     error,
     cargar,
@@ -654,6 +652,7 @@ export default function CategoriasModule({ section = "categorias" }) {
   return (
     <>
       <ModulePage
+        className="categorias-page"
         title={section === "categorias" ? "Categorías" : "Descuentos familiares"}
         description={
           section === "categorias"
@@ -664,6 +663,7 @@ export default function CategoriasModule({ section = "categorias" }) {
         tabsInTitle
         primaryActionLabel={primaryLabel}
         onPrimaryAction={primaryAction}
+        primaryActionClassName="categorias-primaryAction"
         canCreate={writable}
         notice={
           !writable
@@ -680,24 +680,6 @@ export default function CategoriasModule({ section = "categorias" }) {
 
         {section === "categorias" ? (
           <>
-            <SummaryCards
-              title="Resumen de categorías"
-              items={[
-                { key: "activas", label: "Activas", value: resumen.activas },
-                { key: "baja", label: "Dadas de baja", value: resumen.inactivas },
-                {
-                  key: "promedio-mensual",
-                  label: "Promedio mensual",
-                  value: money(resumen.promedio_mensual),
-                },
-                {
-                  key: "promedio-anual",
-                  label: "Promedio anual",
-                  value: money(resumen.promedio_anual),
-                },
-              ]}
-            />
-
             <GlobalDivTable
               bodyRef={tableBodyRef}
               className="categorias-table"
@@ -787,15 +769,6 @@ export default function CategoriasModule({ section = "categorias" }) {
           </>
         ) : (
           <>
-            <div className="categorias-discount-note">
-              <strong>Cómo se aplica</strong>
-              <span>
-                Primero se calcula lo correspondiente a cada integrante según su
-                categoría. Después se suma el total familiar y se aplica la regla
-                vigente que coincida con la cantidad de integrantes.
-              </span>
-            </div>
-
             <GlobalDivTable
               bodyRef={tableBodyRef}
               className="categorias-discountsTable"

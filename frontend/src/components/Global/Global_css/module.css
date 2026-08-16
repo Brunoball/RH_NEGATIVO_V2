@@ -949,6 +949,14 @@
   border-radius: 0;
 }
 
+/* Resumen compacto y redondeado para ubicar después de una tabla. */
+.global-summaryCards--tableFooter.global-summaryCards--footer {
+  flex: 0 0 auto;
+  margin: 12px 0 0;
+  border: none;
+  border-radius: 14px;
+}
+
 .global-summaryCards__title {
   color: var(--balto-ink);
   font-size: 12px;
@@ -1660,6 +1668,87 @@
 }
 
 /* =========================================================
+   ACCIONES GLOBALES AL PIE DE TABLA
+   Patrón reutilizable derivado de las acciones de Contable.
+   ========================================================= */
+.global-tableFooter {
+  min-height: 54px;
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-top: 0;
+  border-radius: 0 0 15px 15px;
+  background: var(--surface-color, #fff);
+}
+
+.global-tableActions {
+  min-width: 0;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.global-tableActions .global-tableActions__create {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: transparent;
+  border-radius: 8px;
+  color: var(--balto-action);
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.global-tableActions .global-tableActions__create:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--balto-action) 20%, transparent);
+  color: color-mix(in srgb, var(--balto-action) 88%, #000);
+  background: color-mix(in srgb, var(--balto-action) 8%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+.global-tableActions .global-tableActions__create:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--balto-action) 15%, transparent);
+}
+
+.global-tableActions .global-tableActions__create svg {
+  font-size: 12px;
+}
+
+@media (max-width: 1499px) {
+  .module-card__actions .mov-btn.global-tableAction--top {
+    display: none !important;
+  }
+
+  .global-tableFooter {
+    display: flex;
+  }
+}
+
+@media (max-width: 720px) {
+  .global-tableFooter {
+    padding-inline: 10px;
+  }
+
+  .global-tableActions {
+    flex: 1 1 auto;
+  }
+
+  .global-tableActions .mov-btn:not(.mov-btn--excel) {
+    flex: 1 1 0;
+  }
+}
+
+/* =========================================================
    PAGINACIÓN GLOBAL
    Reutilizable en tablas de todos los módulos.
    ========================================================= */
@@ -1773,4 +1862,3 @@
     padding-bottom: 2px;
   }
 }
-

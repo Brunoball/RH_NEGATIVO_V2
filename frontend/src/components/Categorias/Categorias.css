@@ -98,24 +98,9 @@
   font-size: 0.82rem;
 }
 
-.categorias-discount-note {
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--mov-border, #e5e7eb);
-  border-radius: 12px;
-  background: var(--mov-surface, #fff);
-  margin-bottom: 12px;
-}
-
-.categorias-discount-note strong {
-  font-size: 0.88rem;
-}
-
-.categorias-discount-note span {
-  color: var(--mov-text-muted, #667085);
-  font-size: 0.84rem;
-  line-height: 1.45;
+/* La acción principal permanece en el encabezado, incluso en vista compacta. */
+.categorias-page .categorias-primaryAction {
+  display: inline-flex !important;
 }
 
 @media (max-width: 1080px) {
