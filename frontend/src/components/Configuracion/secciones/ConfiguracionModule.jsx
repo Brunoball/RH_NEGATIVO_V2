@@ -289,7 +289,7 @@ function CatalogStat({ icon, label, value, detail, tone }) {
   );
 }
 
-function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelete }) {
+function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState, onDelete }) {
   const { bodyRef, hasVerticalScroll, scrollbarWidth } =
     useTableScrollbarCompensation();
 
@@ -333,6 +333,9 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
             const usageCount = Number(item.cantidad_usos || 0);
             const active = Boolean(item.activo);
             const stateAction = active ? "baja" : "reactivar";
+            const coreState = listKey === "estado" && [1, 2].includes(Number(id));
+            const structuralPeriod = listKey === "periodo" && Number(id) >= 1 && Number(id) <= 7;
+            const structural = coreState || structuralPeriod;
 
             return (
               <div
@@ -385,7 +388,8 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
                         type="button"
                         className="mov-iconBtn"
                         onClick={() => onEdit(item)}
-                        title={`Editar ${meta.label}`}
+                        disabled={coreState}
+                        title={coreState ? "ACTIVO y PASIVO son estados estructurales" : `Editar ${meta.label}`}
                         aria-label={`Editar ${item.nombre}`}
                       >
                         <FontAwesomeIcon icon={faPen} />
@@ -394,7 +398,8 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
                         type="button"
                         className={`mov-iconBtn ${active ? "mov-iconBtn--danger" : ""}`.trim()}
                         onClick={() => onState(item, stateAction)}
-                        title={active ? "Dar de baja" : "Reactivar"}
+                        disabled={structural}
+                        title={structural ? "Opción estructural: debe permanecer activa" : (active ? "Dar de baja" : "Reactivar")}
                         aria-label={`${active ? "Dar de baja" : "Reactivar"} ${item.nombre}`}
                       >
                         <FontAwesomeIcon
@@ -405,11 +410,13 @@ function CatalogTable({ items, loading, meta, writable, onEdit, onState, onDelet
                         type="button"
                         className="mov-iconBtn mov-iconBtn--danger"
                         onClick={() => onDelete(item)}
-                        disabled={usageCount > 0}
+                        disabled={usageCount > 0 || structural}
                         title={
-                          usageCount > 0
-                            ? "No se puede eliminar definitivamente mientras tenga registros asociados; podés darlo de baja"
-                            : "Eliminar definitivamente"
+                          structural
+                            ? "Opción estructural: no se puede eliminar"
+                            : usageCount > 0
+                              ? "No se puede eliminar definitivamente mientras tenga registros asociados; podés darlo de baja"
+                              : "Eliminar definitivamente"
                         }
                         aria-label={`Eliminar definitivamente ${item.nombre}`}
                       >
@@ -613,8 +620,8 @@ function CatalogsPanel() {
           },
         ]}
         primaryActionLabel={`Nuevo ${meta.label}`}
-        onPrimaryAction={writable ? openCreate : undefined}
-        canCreate={writable}
+        onPrimaryAction={writable && activeList !== "periodo" ? openCreate : undefined}
+        canCreate={writable && activeList !== "periodo"}
         secondaryActions={[
           {
             key: "volver",
@@ -626,7 +633,11 @@ function CatalogsPanel() {
         notice={
           !writable
             ? "Tu usuario tiene permiso de consulta. Las modificaciones están deshabilitadas."
-            : null
+            : activeList === "periodo"
+              ? "Los 7 períodos son estructurales del sistema: podés corregir su texto, pero no agregar, dar de baja ni eliminar períodos."
+              : activeList === "estado"
+                ? "ACTIVO y PASIVO son estados estructurales y permanecen protegidos; podés administrar estados auxiliares."
+                : null
         }
       >
         <ModuleFeedback
@@ -681,6 +692,7 @@ function CatalogsPanel() {
             items={filteredItems}
             loading={loading}
             meta={meta}
+            listKey={activeList}
             writable={writable}
             onEdit={openEdit}
             onState={(item, action) => setStateModal({ item, action })}

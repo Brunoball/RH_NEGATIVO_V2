@@ -14,6 +14,35 @@ function ensure_contable_schema(PDO $db): void
     $connectionId = spl_object_id($db);
     if (isset($done[$connectionId])) return;
 
+    // Camino normal: el esquema ya existe. Un SELECT con LIMIT 0 obliga a
+    // MySQL/MariaDB a validar tablas y columnas sin leer filas ni ejecutar DDL.
+    // Antes cada request hacía 3 CREATE TABLE IF NOT EXISTS + 3 consultas a
+    // information_schema aunque no hubiera nada que migrar.
+    $probe = static function (PDO $connection): void {
+        $connection->query(
+            'SELECT
+                o.id_opcion, o.tipo, o.nombre, o.activo, o.creado_en, o.actualizado_en,
+                i.id_ingreso, i.fecha, i.id_medio_pago, i.proveedor, i.categoria,
+                i.concepto, i.importe, i.detalle, i.creado_en, i.actualizado_en,
+                e.id_egreso, e.fecha, e.id_medio_pago, e.proveedor, e.categoria,
+                e.concepto, e.numero_comprobante, e.importe, e.detalle,
+                e.archivo_path, e.creado_en, e.actualizado_en
+             FROM contable_opciones o
+             LEFT JOIN contable_ingresos i ON 1 = 0
+             LEFT JOIN contable_egresos e ON 1 = 0
+             LIMIT 0'
+        );
+    };
+
+    try {
+        $probe($db);
+        $done[$connectionId] = true;
+        return;
+    } catch (PDOException) {
+        // Instalación incompleta o versión anterior: se ejecuta el camino de
+        // autocreación/validación original que está debajo.
+    }
+
     $db->exec(
         "CREATE TABLE IF NOT EXISTS contable_opciones (
             id_opcion INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -74,6 +103,15 @@ function ensure_contable_schema(PDO $db): void
             CONSTRAINT chk_contable_egresos_importe CHECK (importe > 0)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+
+    try {
+        $probe($db);
+        $done[$connectionId] = true;
+        return;
+    } catch (PDOException) {
+        // Si CREATE TABLE IF NOT EXISTS no pudo reparar una tabla antigua con
+        // columnas faltantes, conservamos el diagnóstico detallado de abajo.
+    }
 
     $required = [
         'contable_opciones' => ['id_opcion','tipo','nombre','activo','creado_en','actualizado_en'],

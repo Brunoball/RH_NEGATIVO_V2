@@ -40,16 +40,28 @@ trait ContableGestion
                 }
 
                 $oldName = (string)$before['nombre'];
+                if ($oldName !== $name) {
+                    $usageCount = self::cantidadUsosOpcion($db, $type, $oldName);
+                    if ($usageCount > 0) {
+                        api_error(
+                            'La opción ya está utilizada por movimientos contables y no puede renombrarse porque cambiaría su referencia histórica. Dala de baja y creá una opción nueva.',
+                            'OPCION_CONTABLE_EN_USO',
+                            409,
+                            ['cantidad_usos' => $usageCount]
+                        );
+                    }
+                }
                 $statement = $db->prepare(
                     'UPDATE contable_opciones
                      SET nombre = ?
                      WHERE id_opcion = ?'
                 );
                 $statement->execute([$name, $id]);
-                $renamedUses = self::renombrarOpcionContable($db, $type, $oldName, $name);
                 $savedId = $id;
                 $action = 'EDITAR_OPCION';
-                $description = "Se modificó la opción contable {$oldName} a {$name}; {$renamedUses} movimientos conservaron su clasificación.";
+                $description = $oldName === $name
+                    ? "Se guardó la opción contable {$name} sin cambiar su nombre."
+                    : "Se modificó la opción contable {$oldName} a {$name} sin alterar movimientos históricos.";
             }
 
             $after = self::opcionConfiguracion($db, $savedId);
@@ -156,30 +168,6 @@ trait ContableGestion
                 'registros_desvinculados' => 0,
             ];
         });
-    }
-
-    protected static function renombrarOpcionContable(PDO $db, string $type, string $oldName, string $newName): int
-    {
-        if ($oldName === $newName) return 0;
-        $targets = match ($type) {
-            'PROVEEDOR' => [
-                ['contable_ingresos', 'proveedor'],
-                ['contable_egresos', 'proveedor'],
-            ],
-            'CATEGORIA_INGRESO' => [['contable_ingresos', 'categoria']],
-            'CONCEPTO_INGRESO' => [['contable_ingresos', 'concepto']],
-            'CATEGORIA_EGRESO' => [['contable_egresos', 'categoria']],
-            'CONCEPTO_EGRESO' => [['contable_egresos', 'concepto']],
-            default => [],
-        };
-
-        $updated = 0;
-        foreach ($targets as [$table, $column]) {
-            $statement = $db->prepare("UPDATE {$table} SET {$column} = ? WHERE {$column} = ?");
-            $statement->execute([$newName, $oldName]);
-            $updated += $statement->rowCount();
-        }
-        return $updated;
     }
 
     protected static function guardarIngresoDatos(array $auth, array $body): array

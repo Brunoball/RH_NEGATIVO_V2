@@ -371,8 +371,7 @@ trait DescuentosFamiliaresGestion
         $sql =
             'SELECT id_descuento_familiar
              FROM descuentos_familiares
-             WHERE activo = 1
-               AND id_descuento_familiar <> :id_excluido
+             WHERE id_descuento_familiar <> :id_excluido
                AND (cantidad_integrantes_hasta IS NULL
                     OR cantidad_integrantes_hasta >= :cantidad_desde)
                AND (vigencia_hasta IS NULL
@@ -384,7 +383,7 @@ trait DescuentosFamiliaresGestion
         if ($effectiveTo !== null) {
             $sql .= "\n               AND vigencia_desde <= :vigencia_hasta";
         }
-        $sql .= "\n             LIMIT 1";
+        $sql .= "\n             LIMIT 1 FOR UPDATE";
 
         $statement = $db->prepare($sql);
         $statement->bindValue(':id_excluido', $excludeId ?? 0, PDO::PARAM_INT);

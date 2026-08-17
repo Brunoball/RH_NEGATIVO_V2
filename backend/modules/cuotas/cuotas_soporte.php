@@ -5,7 +5,7 @@ require_once __DIR__ . '/cuotas_schema.php';
 
 abstract class CuotasSoporte
 {
-    protected const MAX_PAGOS_LOTE = 200;
+    protected const MAX_PAGOS_LOTE = 5000;
 
     protected static function validarEsquema(PDO $db): void
     {
@@ -140,6 +140,72 @@ abstract class CuotasSoporte
         return $map;
     }
 
+    /**
+     * Reconstruye la categoría que cada socio tenía a una fecha determinada
+     * usando la auditoría de cambios de Socios.
+     *
+     * @return array<int,int> id_socio => id_categoria
+     */
+    protected static function categoriasSociosEnFecha(PDO $db, array $partnerIds, string $date): array
+    {
+        $partnerIds = array_values(array_unique(array_filter(
+            array_map('intval', $partnerIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        if ($partnerIds === []) return [];
+
+        $placeholders = implode(',', array_fill(0, count($partnerIds), '?'));
+        $statement = $db->prepare(
+            "SELECT id_socio, id_categoria
+             FROM socios
+             WHERE id_socio IN ({$placeholders})"
+        );
+        $statement->execute($partnerIds);
+        $map = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $map[(int)$row['id_socio']] = (int)$row['id_categoria'];
+        }
+
+        $targetEnd = $date . ' 23:59:59';
+        $audit = $db->prepare(
+            "SELECT id_registro, datos_anteriores
+             FROM auditoria
+             WHERE tabla = 'socios'
+               AND accion = 'UPDATE'
+               AND fecha > ?
+               AND id_registro IN ({$placeholders})
+             ORDER BY fecha DESC, id_auditoria DESC"
+        );
+        $audit->execute([$targetEnd, ...$partnerIds]);
+        foreach ($audit->fetchAll(PDO::FETCH_ASSOC) as $entry) {
+            $id = (int)$entry['id_registro'];
+            if (!isset($map[$id])) continue;
+            $before = json_decode((string)($entry['datos_anteriores'] ?? ''), true);
+            if (!is_array($before) || !array_key_exists('id_categoria', $before)) continue;
+            $map[$id] = (int)$before['id_categoria'];
+        }
+        return $map;
+    }
+
+    protected static function montoCategoriaEnFecha(
+        array $category,
+        int $periodId,
+        array $history,
+        string $date
+    ): float {
+        $chosen = null;
+        foreach ($history as $change) {
+            if ((string)$change['fecha_cambio'] <= $date) {
+                $chosen = (float)$change['precio_nuevo'];
+                continue;
+            }
+            if ($chosen === null) $chosen = (float)$change['precio_viejo'];
+            break;
+        }
+        if ($chosen === null) $chosen = self::montoActual($category, $periodId);
+        return round((float)$chosen, 2);
+    }
+
     protected static function montoActual(array $category, int $periodId): float
     {
         return round((float)(self::esAnual($periodId)
@@ -151,12 +217,14 @@ abstract class CuotasSoporte
         array $category,
         int $periodId,
         array $history,
-        float $discount = 0.0
+        float $discount = 0.0,
+        ?string $preferredDate = null
     ): array {
         $current = self::montoActual($category, $periodId);
         $options = [[
             'id' => 'actual',
             'actual' => true,
+            'recomendado' => false,
             'monto_base' => number_format($current, 2, '.', ''),
             'monto' => number_format(self::aplicarDescuento($current, $discount), 2, '.', ''),
             // Sin rango: el frontend selecciona primero el valor actual.
@@ -197,11 +265,30 @@ abstract class CuotasSoporte
             $options[] = [
                 'id' => $segment['id'],
                 'actual' => false,
+                'recomendado' => false,
                 'monto_base' => number_format($amount, 2, '.', ''),
                 'monto' => number_format(self::aplicarDescuento($amount, $discount), 2, '.', ''),
                 'vigente_desde' => $segment['from'],
                 'vigente_hasta' => $segment['to'],
             ];
+        }
+        if ($preferredDate !== null) {
+            $preferredBase = self::montoCategoriaEnFecha($category, $periodId, $history, $preferredDate);
+            $bestIndex = null;
+            foreach ($options as $index => $option) {
+                if (abs((float)$option['monto_base'] - $preferredBase) >= 0.005) continue;
+                $from = $option['vigente_desde'] ?? null;
+                $to = $option['vigente_hasta'] ?? null;
+                if (($from === null || $from <= $preferredDate) && ($to === null || $to >= $preferredDate)) {
+                    $bestIndex = $index;
+                    break;
+                }
+                if ($bestIndex === null) $bestIndex = $index;
+            }
+            if ($bestIndex !== null) $options[$bestIndex]['recomendado'] = true;
+        }
+        if (!array_filter($options, static fn(array $option): bool => !empty($option['recomendado']))) {
+            $options[0]['recomendado'] = true;
         }
         return $options;
     }
@@ -211,7 +298,7 @@ abstract class CuotasSoporte
         $statement = $db->prepare(
             'SELECT cantidad_integrantes_desde, cantidad_integrantes_hasta, porcentaje_descuento
              FROM descuentos_familiares
-             WHERE activo = 1 AND vigencia_desde <= ?
+             WHERE vigencia_desde <= ?
                AND (vigencia_hasta IS NULL OR vigencia_hasta >= ?)
              ORDER BY cantidad_integrantes_desde DESC, id_descuento_familiar DESC'
         );
@@ -241,8 +328,8 @@ abstract class CuotasSoporte
         $statement = $db->prepare(
             'SELECT f.id_familia, f.nombre_familia
              FROM familias_socios fs
-             INNER JOIN familias f ON f.id_familia = fs.id_familia AND f.activo = 1
-             WHERE fs.id_socio = ? AND fs.activo = 1
+             INNER JOIN familias f ON f.id_familia = fs.id_familia
+             WHERE fs.id_socio = ?
                AND (fs.desde IS NULL OR fs.desde <= ?)
                AND (fs.hasta IS NULL OR fs.hasta >= ?)
              ORDER BY fs.id_familia_socio DESC LIMIT 1'
@@ -258,14 +345,80 @@ abstract class CuotasSoporte
             'SELECT s.id_socio
              FROM familias_socios fs
              INNER JOIN socios s ON s.id_socio = fs.id_socio
-             WHERE fs.id_familia = ? AND fs.activo = 1
+             WHERE fs.id_familia = ?
                AND (fs.desde IS NULL OR fs.desde <= ?)
                AND (fs.hasta IS NULL OR fs.hasta >= ?)
-               AND s.vigente = 1
              ORDER BY s.nombre ASC, s.id_socio ASC'
         );
         $statement->execute([$familyId, $date, $date]);
         return array_map('intval', array_column($statement->fetchAll(PDO::FETCH_ASSOC), 'id_socio'));
+    }
+
+    /**
+     * Resuelve pertenencia y cantidad familiar para muchos socios con dos
+     * consultas como máximo. Evita el N+1 cuando se confirman cientos de cuotas
+     * desde selección múltiple.
+     *
+     * @return array<int,array{familia:?array,cantidad:int}>
+     */
+    protected static function mapaFamiliasSocios(PDO $db, array $partnerIds, string $date): array
+    {
+        $partnerIds = array_values(array_unique(array_filter(
+            array_map('intval', $partnerIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        if ($partnerIds === []) return [];
+
+        $placeholders = implode(',', array_fill(0, count($partnerIds), '?'));
+        $statement = $db->prepare(
+            "SELECT fs.id_socio, fs.id_familia, fs.id_familia_socio, f.nombre_familia
+             FROM familias_socios fs
+             INNER JOIN familias f ON f.id_familia = fs.id_familia
+             WHERE fs.id_socio IN ({$placeholders})
+               AND (fs.desde IS NULL OR fs.desde <= ?)
+               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+             ORDER BY fs.id_socio, fs.id_familia_socio DESC"
+        );
+        $statement->execute([...$partnerIds, $date, $date]);
+
+        $familyByPartner = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $partnerId = (int)$row['id_socio'];
+            if (isset($familyByPartner[$partnerId])) continue;
+            $familyByPartner[$partnerId] = [
+                'id_familia' => (int)$row['id_familia'],
+                'nombre' => (string)$row['nombre_familia'],
+            ];
+        }
+        if ($familyByPartner === []) return [];
+
+        $familyIds = array_values(array_unique(array_map(
+            static fn(array $family): int => (int)$family['id_familia'],
+            $familyByPartner
+        )));
+        $familyPlaceholders = implode(',', array_fill(0, count($familyIds), '?'));
+        $countStatement = $db->prepare(
+            "SELECT fs.id_familia, COUNT(DISTINCT fs.id_socio) AS cantidad
+             FROM familias_socios fs
+             WHERE fs.id_familia IN ({$familyPlaceholders})
+               AND (fs.desde IS NULL OR fs.desde <= ?)
+               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+             GROUP BY fs.id_familia"
+        );
+        $countStatement->execute([...$familyIds, $date, $date]);
+        $counts = [];
+        foreach ($countStatement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $counts[(int)$row['id_familia']] = (int)$row['cantidad'];
+        }
+
+        $result = [];
+        foreach ($familyByPartner as $partnerId => $family) {
+            $result[$partnerId] = [
+                'familia' => $family,
+                'cantidad' => (int)($counts[(int)$family['id_familia']] ?? 0),
+            ];
+        }
+        return $result;
     }
 
     protected static function pagosRegistrados(PDO $db, array $partnerIds, int $year): array

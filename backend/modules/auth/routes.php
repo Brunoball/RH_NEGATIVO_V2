@@ -30,6 +30,7 @@ function auth_login_audit(PDO $db, ?array $candidate, string $usuario, bool $suc
 function auth_login_lock_status(PDO $db, string $usuario): array
 {
     try {
+        $ip = client_ip();
         $statement = $db->prepare(
             "SELECT
                 idLog,
@@ -39,11 +40,13 @@ function auth_login_lock_status(PDO $db, string $usuario): array
                 ) AS reintentar_en_segundos
              FROM sis_login_auditoria
              WHERE usuario = :usuario_fallos
+               AND ip = :ip_fallos
                AND exito = 0
                AND idLog > COALESCE((
                    SELECT MAX(exitoso.idLog)
                    FROM sis_login_auditoria exitoso
                    WHERE exitoso.usuario = :usuario_exitos
+                     AND exitoso.ip = :ip_exitos
                      AND exitoso.exito = 1
                ), 0)
                AND creado_en > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
@@ -52,7 +55,9 @@ function auth_login_lock_status(PDO $db, string $usuario): array
         );
         $statement->execute([
             'usuario_fallos' => $usuario,
+            'ip_fallos' => $ip,
             'usuario_exitos' => $usuario,
+            'ip_exitos' => $ip,
         ]);
         $attempts = $statement->fetchAll();
 

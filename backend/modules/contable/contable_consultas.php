@@ -23,19 +23,13 @@ trait ContableConsultas
         $otherByMonth = array_fill(1, 12, 0);
         $expensesByMonth = array_fill(1, 12, 0);
         $estimatedByMonth = array_fill(1, 12, 0);
-        $paymentAmount = self::importePagoSql();
+        foreach (self::pagosHistoricosContables($db, $yearStart, $yearEnd) as $payment) {
+            $month = (int)$payment['mes'];
+            if ($month < 1 || $month > 12) continue;
+            $feesByMonth[$month] += (int)$payment['monto_cents'];
+            if (!empty($payment['estimado'])) $estimatedByMonth[$month]++;
+        }
 
-        self::acumularTotalesMensuales(
-            $db,
-            "SELECT MONTH(p.fecha_pago) AS mes, SUM({$paymentAmount}) AS total
-             FROM pagos p
-             INNER JOIN socios s ON s.id_socio = p.id_socio
-             LEFT JOIN categoria c ON c.id_categoria = s.id_categoria
-             WHERE p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?
-             GROUP BY MONTH(p.fecha_pago)",
-            [$yearStart, $yearEnd],
-            $feesByMonth
-        );
         self::acumularTotalesMensuales(
             $db,
             'SELECT MONTH(fecha_pago) AS mes, SUM(monto) AS total
@@ -43,15 +37,6 @@ trait ContableConsultas
              GROUP BY MONTH(fecha_pago)',
             [$yearStart, $yearEnd],
             $registrationsByMonth
-        );
-        self::acumularConteosMensuales(
-            $db,
-            "SELECT MONTH(fecha_pago) AS mes, COUNT(*) AS total
-             FROM pagos WHERE estado = 'PAGADO' AND monto IS NULL
-               AND fecha_pago >= ? AND fecha_pago < ?
-             GROUP BY MONTH(fecha_pago)",
-            [$yearStart, $yearEnd],
-            $estimatedByMonth
         );
         self::acumularTotalesMensuales(
             $db,
@@ -169,6 +154,70 @@ trait ContableConsultas
         ];
     }
 
+    /**
+     * Caja histórica de cuotas. La categoría/cobrador de un socio puede cambiar
+     * con el tiempo, pero un resumen viejo debe conservar la clasificación que
+     * correspondía en la fecha en que se cobró.
+     *
+     * @return array<int,array{mes:int,monto_cents:int,categoria:string,medio:string,estimado:bool}>
+     */
+    private static function pagosHistoricosContables(PDO $db, string $start, string $endExclusive): array
+    {
+        static $cache = [];
+        $key = spl_object_id($db) . '|' . $start . '|' . $endExclusive;
+        if (isset($cache[$key])) return $cache[$key];
+
+        $statement = $db->prepare(
+            "SELECT p.id_pago, p.id_socio, p.id_periodo, p.anio_aplicado,
+                    p.fecha_pago, p.monto,
+                    COALESCE(NULLIF(mp.nombre,''), 'SIN MEDIO ESPECIFICADO') AS medio
+             FROM pagos p
+             LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
+             WHERE p.estado = 'PAGADO'
+               AND p.fecha_pago >= ?
+               AND p.fecha_pago < ?
+             ORDER BY p.fecha_pago, p.id_pago"
+        );
+        $statement->execute([$start, $endExclusive]);
+
+        $rows = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $date = substr((string)$row['fecha_pago'], 0, 10);
+            $partnerId = (int)$row['id_socio'];
+            $historical = self::snapshotSociosEnFecha($db, $date)[$partnerId] ?? [];
+            $categoryId = (int)($historical['id_categoria'] ?? 0);
+            $categoryName = trim((string)($historical['categoria'] ?? '')) ?: 'SIN CATEGORÍA';
+
+            $periodId = (int)$row['id_periodo'];
+            $year = (int)$row['anio_aplicado'];
+            $referenceDate = sprintf(
+                '%04d-%02d-01',
+                $year,
+                $periodId === 7 ? 1 : (($periodId - 1) * 2 + 1)
+            );
+            $fallback = $categoryId > 0
+                ? self::precioHistorico(
+                    $db,
+                    $categoryId,
+                    $periodId === 7 ? 'anual' : 'mensual',
+                    $referenceDate
+                )
+                : 0.0;
+            $amount = $row['monto'] === null
+                ? self::centavos($fallback)
+                : self::centavos($row['monto']);
+
+            $rows[] = [
+                'mes' => (int)substr($date, 5, 2),
+                'monto_cents' => $amount,
+                'categoria' => $categoryName,
+                'medio' => (string)$row['medio'],
+                'estimado' => $row['monto'] === null,
+            ];
+        }
+        return $cache[$key] = $rows;
+    }
+
     private static function acumularTotalesMensuales(PDO $db, string $sql, array $params, array &$target): void
     {
         $statement = $db->prepare($sql);
@@ -193,17 +242,10 @@ trait ContableConsultas
     {
         [$start, $end] = self::rangoMes($year, $month);
         $totals = [];
-        $paymentAmount = self::importePagoSql();
-        self::acumularAgrupacion(
-            $db,
-            "SELECT CONCAT('CUOTAS · ', COALESCE(NULLIF(c.nombre, ''), 'SIN CATEGORÍA')) AS nombre,
-                    SUM({$paymentAmount}) AS total
-             FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio
-             LEFT JOIN categoria c ON c.id_categoria = s.id_categoria
-             WHERE p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?
-             GROUP BY c.id_categoria, c.nombre",
-            [$start, $end], $totals
-        );
+        foreach (self::pagosHistoricosContables($db, $start, $end) as $payment) {
+            $name = 'CUOTAS · ' . ((string)$payment['categoria'] ?: 'SIN CATEGORÍA');
+            $totals[$name] = ($totals[$name] ?? 0) + (int)$payment['monto_cents'];
+        }
         self::acumularAgrupacion(
             $db,
             "SELECT 'INSCRIPCIONES' AS nombre, SUM(monto) AS total
@@ -236,17 +278,10 @@ trait ContableConsultas
     {
         [$start, $end] = self::rangoMes($year, $month);
         $totals = [];
-        $paymentAmount = self::importePagoSql();
-        self::acumularAgrupacion(
-            $db,
-            "SELECT COALESCE(NULLIF(mp.nombre, ''), 'SIN MEDIO ESPECIFICADO') AS nombre, SUM({$paymentAmount}) AS total
-             FROM pagos p INNER JOIN socios s ON s.id_socio = p.id_socio
-             LEFT JOIN categoria c ON c.id_categoria = s.id_categoria
-             LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
-             WHERE p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?
-             GROUP BY mp.id_medio_pago, mp.nombre",
-            [$start, $end], $totals
-        );
+        foreach (self::pagosHistoricosContables($db, $start, $end) as $payment) {
+            $name = trim((string)$payment['medio']) ?: 'SIN MEDIO ESPECIFICADO';
+            $totals[$name] = ($totals[$name] ?? 0) + (int)$payment['monto_cents'];
+        }
         self::acumularAgrupacion(
             $db,
             "SELECT COALESCE(NULLIF(mp.nombre, ''), 'SIN MEDIO ESPECIFICADO') AS nombre, SUM(pi.monto) AS total

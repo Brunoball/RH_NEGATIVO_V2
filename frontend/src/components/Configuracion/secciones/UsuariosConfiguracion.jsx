@@ -314,7 +314,7 @@ export default function UsuariosConfiguracion({ onBack }) {
 
         {!data.capacidades.email || !data.capacidades.fecha_creacion ? (
           <div className="config-usersSchemaNotice">
-            Ejecutá el SQL incluido en el ZIP sobre lalcec_v2 para completar la
+            Ejecutá el SQL incluido en el ZIP sobre rh_neg_v2 para completar la
             estructura de usuarios.
           </div>
         ) : null}

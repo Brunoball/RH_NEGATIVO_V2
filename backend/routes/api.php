@@ -21,7 +21,14 @@ require_once __DIR__ . '/../modules/categorias/routes.php';
 require_once __DIR__ . '/../modules/configuracion/routes.php';
 require_once __DIR__ . '/../modules/usuarios/routes.php';
 require_once __DIR__ . '/../modules/contable/routes.php';
-require_once __DIR__ . '/../modules/testing_cleanup/routes.php';
+
+$appEnv = strtolower(trim((string)env_value('APP_ENV', 'production')));
+$e2eCleanupEnabled = in_array($appEnv, ['local', 'dev', 'development', 'test', 'testing'], true)
+    || env_bool('ENABLE_E2E_CLEANUP', false);
+
+if ($e2eCleanupEnabled) {
+    require_once __DIR__ . '/../modules/testing_cleanup/routes.php';
+}
 
 date_default_timezone_set((string)env_value('APP_TIMEZONE', 'America/Argentina/Cordoba'));
 ini_set('display_errors', env_bool('APP_DEBUG', false) ? '1' : '0');
@@ -44,7 +51,10 @@ register_categorias_routes($router);
 register_configuracion_routes($router);
 register_usuarios_routes($router);
 register_contable_routes($router);
-register_testing_cleanup_routes($router);
+
+if ($e2eCleanupEnabled) {
+    register_testing_cleanup_routes($router);
+}
 
 try {
     $router->dispatch(request_action());

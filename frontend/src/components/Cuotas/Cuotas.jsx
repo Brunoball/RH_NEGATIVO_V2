@@ -43,6 +43,7 @@ const currentYear = currentDate.getFullYear();
 // el resto del flujo, pero su valor es el período vigente (1 a 6).
 const currentMonth = Math.ceil((currentDate.getMonth() + 1) / 2);
 const PAGE_SIZE = 100;
+const BULK_SELECTION_PAGE_SIZE = 200;
 
 const decimalInput = (value, maxIntegerDigits = 12, maxDecimals = 2) => {
   const normalized = String(value ?? "")
@@ -185,14 +186,25 @@ const defaultAmountOption = (principal) => {
   const options = Array.isArray(principal?.opciones_monto)
     ? principal.opciones_monto
     : [];
-  // La V2 propone siempre el monto vigente. Los valores históricos quedan
-  // disponibles en el selector, pero nunca se eligen solos.
-  return options.find((option) => option.actual) || options[0] || null;
+  // El backend marca como recomendado el importe que correspondía al período
+  // aplicado. Para períodos actuales coincide con el vigente; para cuotas
+  // retroactivas conserva categoría/precio históricos.
+  return (
+    options.find((option) => option.recomendado) ||
+    options.find((option) => option.actual) ||
+    options[0] ||
+    null
+  );
 };
 
 const currentBatchAmountOption = (item) => {
   const options = Array.isArray(item?.opciones_monto) ? item.opciones_monto : [];
-  return options.find((option) => option?.actual) || options[0] || null;
+  return (
+    options.find((option) => option?.recomendado) ||
+    options.find((option) => option?.actual) ||
+    options[0] ||
+    null
+  );
 };
 
 const defaultMonthAmountState = (principal) => {
@@ -492,6 +504,7 @@ export default function Cuotas() {
   const [deleteRow, setDeleteRow] = useState(null);
   const [multiMode, setMultiMode] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState({});
+  const [selectingFiltered, setSelectingFiltered] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -1023,7 +1036,7 @@ export default function Cuotas() {
           telefono_movil: item.telefono_movil || "",
           telefono_fijo: item.telefono_fijo || "",
           cobrador: item.cobrador || "",
-          // En selección múltiple el valor inicial es siempre la cuota actual.
+          // En selección múltiple se usa el importe recomendado para ese período.
           monto: String(
             currentOption?.monto ??
               item.monto_actual_categoria ??
@@ -1617,6 +1630,57 @@ export default function Cuotas() {
     });
   };
 
+  const selectAllFiltered = async () => {
+    if (saving || selectingFiltered || isResolved) return;
+
+    setSelectingFiltered(true);
+    setFeedback(null);
+
+    try {
+      const filterSnapshot = {
+        ...filtros,
+        estado: "DEUDORES",
+        pagina: 1,
+        por_pagina: BULK_SELECTION_PAGE_SIZE,
+        incluir_catalogos: 0,
+      };
+      const firstResponse = await cuotasApi.listar(filterSnapshot);
+      const filteredItems = [...(firstResponse.items || [])];
+      const total = Number(
+        firstResponse.paginacion?.total || filteredItems.length,
+      );
+      const totalPages = Number(
+        firstResponse.paginacion?.total_paginas ||
+          Math.max(1, Math.ceil(total / BULK_SELECTION_PAGE_SIZE)),
+      );
+
+      for (let pageNumber = 2; pageNumber <= totalPages; pageNumber += 1) {
+        const response = await cuotasApi.listar({
+          ...filterSnapshot,
+          pagina: pageNumber,
+        });
+        filteredItems.push(...(response.items || []));
+      }
+
+      setSelectedPayments((current) => {
+        const next = { ...current };
+        filteredItems.forEach((item) => {
+          next[selectionKey(item)] = item;
+        });
+        return next;
+      });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        message:
+          err?.message ||
+          "No se pudieron seleccionar todas las cuotas del filtro actual.",
+      });
+    } finally {
+      setSelectingFiltered(false);
+    }
+  };
+
   const selectRow = (event, item) => {
     if (!multiMode || isResolved || !writable) return;
     if (!(event.target instanceof Element)) return;
@@ -1653,12 +1717,10 @@ export default function Cuotas() {
 
   const setYearFilter = (value) => {
     setAnio(value);
-    clearMultipleSelection();
   };
 
   const setMonthFilter = (value) => {
     setMes(value);
-    clearMultipleSelection();
   };
 
   const pageFilters = [
@@ -1670,7 +1732,7 @@ export default function Cuotas() {
       value: estado,
       onChange: (value) => {
         setEstado(value);
-        if (value !== "DEUDORES") clearMultipleSelection();
+        if (value !== "DEUDORES") setMultiMode(false);
       },
       options: [
         {
@@ -1897,11 +1959,24 @@ export default function Cuotas() {
             }
             acciones={
               <>
+                {!isResolved ? (
+                  <button
+                    type="button"
+                    className="mov-btn mov-btn--ghost"
+                    onClick={selectAllFiltered}
+                    disabled={loading || saving || selectingFiltered || totalRegistros === 0}
+                    title="Suma a la selección todas las cuotas que coinciden con los filtros actuales, incluyendo otras páginas"
+                  >
+                    {selectingFiltered
+                      ? "Seleccionando..."
+                      : `Seleccionar todo lo filtrado (${totalRegistros})`}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="mov-btn mov-btn--ghost"
                   onClick={() => setSelectedPayments({})}
-                  disabled={!selectedCount || saving}
+                  disabled={!selectedCount || saving || selectingFiltered}
                 >
                   Limpiar
                 </button>
@@ -1909,7 +1984,7 @@ export default function Cuotas() {
                   type="button"
                   className="mov-btn mov-btn--primary"
                   onClick={openMultiplePayment}
-                  disabled={!selectedCount || saving}
+                  disabled={!selectedCount || saving || selectingFiltered}
                 >
                   Continuar ({selectedCount})
                 </button>

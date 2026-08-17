@@ -221,16 +221,39 @@ abstract class CuotasRegistros extends CuotasConsultas
                 api_error('Uno de los socios seleccionados no existe.', 'SOCIO_NO_ENCONTRADO', 404);
             }
 
-            $categoryIds = array_map('intval', array_column($rowsById, 'id_categoria'));
-            $histories = self::historialesPrecios($db, $categoryIds);
-            $rules = self::reglasDescuento($db, $date);
             $years = array_values(array_unique(array_map('intval', array_column($targets, 'anio'))));
             $paymentsByYear = [];
             foreach ($years as $year) {
                 $paymentsByYear[$year] = self::pagosRegistrados($db, $partnerIds, $year);
             }
 
-            $familyCache = [];
+            $referenceGroups = [];
+            foreach ($targets as $target) {
+                $referenceDate = self::inicioPeriodo((int)$target['anio'], (int)$target['id_periodo']);
+                $referenceGroups[$referenceDate][] = (int)$target['id_socio'];
+            }
+            $historicalCategoriesByDate = [];
+            $categoriesByDate = [];
+            $historiesByDate = [];
+            $familiesByDate = [];
+            $rulesByDate = [];
+            foreach ($referenceGroups as $referenceDate => $idsAtDate) {
+                $idsAtDate = array_values(array_unique($idsAtDate));
+                $historicalCategoriesByDate[$referenceDate] = self::categoriasSociosEnFecha(
+                    $db,
+                    $idsAtDate,
+                    $referenceDate
+                );
+                $categoryIds = array_values(array_unique(array_filter(array_map(
+                    static fn(int $partnerId): int => (int)($historicalCategoriesByDate[$referenceDate][$partnerId] ?? 0),
+                    $idsAtDate
+                ))));
+                $categoriesByDate[$referenceDate] = self::mapaCategorias($db, $categoryIds);
+                $historiesByDate[$referenceDate] = self::historialesPrecios($db, $categoryIds);
+                $familiesByDate[$referenceDate] = self::mapaFamiliasSocios($db, $idsAtDate, $referenceDate);
+                $rulesByDate[$referenceDate] = self::reglasDescuento($db, $referenceDate);
+            }
+
             $periodCache = [];
             $lines = [];
             $ids = [];
@@ -254,8 +277,15 @@ abstract class CuotasRegistros extends CuotasConsultas
                 if (!(bool)$partner['vigente']) {
                     api_error('No se puede registrar una cuota a un socio dado de baja.', 'SOCIO_INACTIVO', 409);
                 }
-                if (!(bool)$partner['categoria_activa']) {
-                    api_error('La categoría del socio está inactiva.', 'CATEGORIA_INACTIVA', 409);
+                $referenceDate = self::inicioPeriodo($year, $periodId);
+                $historicalCategoryId = (int)(
+                    $historicalCategoriesByDate[$referenceDate][$partnerId]
+                    ?? $partner['id_categoria']
+                );
+                $historicalCategory = $categoriesByDate[$referenceDate][$historicalCategoryId] ?? null;
+                $historicalPeriod = self::finPeriodo($year, $periodId) < date('Y-m-d');
+                if (!$historicalCategory || (!(bool)$historicalCategory['activo'] && !$historicalPeriod)) {
+                    api_error('La categoría correspondiente al período está inactiva o ya no existe.', 'CATEGORIA_INACTIVA', 409);
                 }
                 if ($partner['fecha_ingreso'] !== null
                     && (string)$partner['fecha_ingreso'] > self::finPeriodo($year, $periodId)) {
@@ -269,16 +299,19 @@ abstract class CuotasRegistros extends CuotasConsultas
                 $conflict = self::conflictoModalidad($payments, $partnerId, $periodId);
                 if ($conflict !== null) api_error($conflict, 'MODALIDAD_NO_DISPONIBLE', 409);
 
-                if (!isset($familyCache[$partnerId])) {
-                    $family = self::familiaDeSocio($db, $partnerId, $date);
-                    $familyCount = $family
-                        ? count(self::integrantesFamilia($db, (int)$family['id_familia'], $date))
-                        : 0;
-                    $familyCache[$partnerId] = [$family, $familyCount];
-                }
-                [$family, $familyCount] = $familyCache[$partnerId];
-                $discount = $family ? self::porcentajeDescuento($rules, $familyCount) : 0.0;
-                $base = self::montoActual($partner, $periodId);
+                $familyInfo = $familiesByDate[$referenceDate][$partnerId] ?? ['familia' => null, 'cantidad' => 0];
+                $family = $familyInfo['familia'];
+                $familyCount = (int)$familyInfo['cantidad'];
+                $discount = $family
+                    ? self::porcentajeDescuento($rulesByDate[$referenceDate] ?? [], $familyCount)
+                    : 0.0;
+                $history = $historiesByDate[$referenceDate][$historicalCategoryId][self::tipoPrecio($periodId)] ?? [];
+                $base = self::montoCategoriaEnFecha(
+                    $historicalCategory,
+                    $periodId,
+                    $history,
+                    $referenceDate
+                );
                 if ($base <= 0) {
                     api_error('La categoría no tiene un monto configurado para ese período.', 'MONTO_NO_CONFIGURADO', 409);
                 }
@@ -310,8 +343,8 @@ abstract class CuotasRegistros extends CuotasConsultas
                     'socio' => (string)$partner['nombre'],
                     'denominacion' => (string)$partner['nombre'],
                     'documento' => $partner['dni'],
-                    'id_categoria' => (int)$partner['id_categoria'],
-                    'categoria' => (string)$partner['categoria'],
+                    'id_categoria' => $historicalCategoryId,
+                    'categoria' => (string)$historicalCategory['nombre'],
                     'anio' => $year,
                     'mes' => $periodId,
                     'id_periodo' => $periodId,

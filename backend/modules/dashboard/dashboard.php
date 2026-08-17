@@ -33,7 +33,11 @@ final class Dashboard
 
         [$familyTable, $familyLink] = self::familyTables($db);
         $families = $familyTable === null ? 0 : self::safeCount($db, "SELECT COUNT(*) FROM `{$familyTable}`" . (self::columnExists($db, $familyTable, 'activo') ? ' WHERE activo = 1' : ''));
-        $withFamily = $familyLink === null ? 0 : self::safeCount($db, "SELECT COUNT(DISTINCT s.id_socio) FROM socios s INNER JOIN `{$familyLink}` fs ON fs.id_socio = s.id_socio WHERE {$activeSocioWhere}");
+        $familyWhere = $activeSocioWhere;
+        if ($familyLink !== null && self::columnExists($db, $familyLink, 'activo')) $familyWhere .= ' AND fs.activo = 1';
+        if ($familyLink !== null && self::columnExists($db, $familyLink, 'desde')) $familyWhere .= ' AND (fs.desde IS NULL OR fs.desde <= CURDATE())';
+        if ($familyLink !== null && self::columnExists($db, $familyLink, 'hasta')) $familyWhere .= ' AND (fs.hasta IS NULL OR fs.hasta >= CURDATE())';
+        $withFamily = $familyLink === null ? 0 : self::safeCount($db, "SELECT COUNT(DISTINCT s.id_socio) FROM socios s INNER JOIN `{$familyLink}` fs ON fs.id_socio = s.id_socio WHERE {$familyWhere}");
 
         $payments = self::currentPayments($db, $year, $month);
         $expected = $withCategory > 0 ? $withCategory : $active;

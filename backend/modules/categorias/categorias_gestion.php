@@ -153,6 +153,23 @@ trait CategoriasGestion
             throw new LogicException('Tipo de precio inválido.');
         }
 
+        $existing = $db->prepare(
+            'SELECT id_historial
+             FROM precios_historicos
+             WHERE id_categoria = ? AND tipo = ? AND fecha_cambio = ?
+             ORDER BY id_historial ASC
+             LIMIT 1 FOR UPDATE'
+        );
+        $existing->execute([$categoryId, $type, $effectiveDate]);
+        $existingId = $existing->fetchColumn();
+        if ($existingId !== false) {
+            // Varias correcciones el mismo día representan una sola vigencia:
+            // se conserva el precio_viejo original y se actualiza el destino.
+            $db->prepare('UPDATE precios_historicos SET precio_nuevo = ? WHERE id_historial = ?')
+                ->execute([$newAmount, (int)$existingId]);
+            return;
+        }
+
         $db->prepare(
             'INSERT INTO precios_historicos
              (id_categoria, tipo, precio_viejo, precio_nuevo, fecha_cambio)

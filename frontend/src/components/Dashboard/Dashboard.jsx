@@ -221,7 +221,7 @@ export default function Dashboard() {
           />
           <MetricCard
             icon={faCircleCheck}
-            title="Cuotas pagadas"
+            title="Cuotas cubiertas"
             value={Number(cuotas.pagadas_mes || 0)}
             detail={`${Number(cuotas.condonadas_mes || 0)} condonadas · Período ${periodo.mes_nombre || "actual"}`}
             tone="success"
@@ -254,7 +254,7 @@ export default function Dashboard() {
               </div>
               <span className="admin-dashboard__statusChip is-complete">
                 <FontAwesomeIcon icon={faCircleCheck} />
-                {Number(cuotas.pagadas_mes || 0)} pagadas este mes
+                {Number(cuotas.pagadas_mes || 0)} pagadas del período
               </span>
             </header>
             <PaymentChart items={summary.serie_cuotas || []} />

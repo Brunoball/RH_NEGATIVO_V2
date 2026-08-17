@@ -170,6 +170,13 @@ trait FamiliasGestion
                                 422
                             );
                         }
+                        self::validarIntervaloFamiliaSocio(
+                            $db,
+                            (int)$removedId,
+                            $from === null ? '1900-01-01' : (string)$from,
+                            $unlinkDate,
+                            (int)$currentLinks[$removedId]['id_familia_socio']
+                        );
                     }
 
                     $removePlaceholders = implode(',', array_fill(0, count($removedIds), '?'));
@@ -199,11 +206,26 @@ trait FamiliasGestion
 
                 foreach ($members as $memberId => $member) {
                     if (isset($currentLinks[$memberId])) {
+                        $linkId = (int)$currentLinks[$memberId]['id_familia_socio'];
+                        self::validarIntervaloFamiliaSocio(
+                            $db,
+                            (int)$memberId,
+                            $member['desde'],
+                            null,
+                            $linkId
+                        );
                         $update->execute([
                             $member['desde'],
-                            (int)$currentLinks[$memberId]['id_familia_socio'],
+                            $linkId,
                         ]);
                     } else {
+                        self::validarIntervaloFamiliaSocio(
+                            $db,
+                            (int)$memberId,
+                            $member['desde'],
+                            null,
+                            null
+                        );
                         $insert->execute([
                             $familyId,
                             $memberId,
@@ -271,7 +293,7 @@ trait FamiliasGestion
 
             if (!$active) {
                 $links = $db->prepare(
-                    'SELECT id_familia_socio, desde
+                    'SELECT id_familia_socio, id_socio, desde
                      FROM familias_socios
                      WHERE id_familia = ?
                        AND activo = 1
@@ -287,6 +309,15 @@ trait FamiliasGestion
                             422
                         );
                     }
+                    // El intervalo resultante no puede pisar otra pertenencia
+                    // histórica del mismo socio.
+                    self::validarIntervaloFamiliaSocio(
+                        $db,
+                        (int)$link['id_socio'],
+                        $link['desde'] === null ? '1900-01-01' : (string)$link['desde'],
+                        $effectiveDate,
+                        (int)$link['id_familia_socio']
+                    );
                 }
 
                 $db->prepare(
@@ -345,9 +376,17 @@ trait FamiliasGestion
                     'vinculos_eliminados' => (int)($impactRow['vinculos_totales'] ?? 0),
                 ];
 
-                // La eliminación definitiva de una familia jamás elimina socios,
-                // pagos ni datos personales: únicamente borra los vínculos del
-                // grupo y luego la cabecera de la familia.
+                if ($impact['vinculos_eliminados'] > 0) {
+                    api_error(
+                        'No se puede eliminar definitivamente una familia que tuvo integrantes. Dale de baja para conservar la historia de descuentos y pertenencia.',
+                        'FAMILIA_CON_HISTORIAL_NO_ELIMINABLE',
+                        409,
+                        ['vinculos_historicos' => $impact['vinculos_eliminados']]
+                    );
+                }
+
+                // Sólo una familia creada por error y nunca utilizada puede
+                // eliminarse físicamente.
                 $db->prepare('DELETE FROM familias_socios WHERE id_familia = ?')->execute([$id]);
                 $db->prepare('DELETE FROM familias WHERE id_familia = ?')->execute([$id]);
 
@@ -372,6 +411,51 @@ trait FamiliasGestion
         } catch (PDOException $error) {
             self::resolverErrorPersistenciaFamilia($error);
         }
+    }
+
+    /**
+     * Impide que un socio tenga dos pertenencias familiares superpuestas en el
+     * tiempo. El control usa todo el historial, no sólo los vínculos activos.
+     */
+    private static function validarIntervaloFamiliaSocio(
+        PDO $db,
+        int $memberId,
+        string $from,
+        ?string $to,
+        ?int $excludeLinkId
+    ): void {
+        $statement = $db->prepare(
+            'SELECT fs.id_familia_socio, f.nombre_familia, fs.desde, fs.hasta
+             FROM familias_socios fs
+             INNER JOIN familias f ON f.id_familia = fs.id_familia
+             WHERE fs.id_socio = ?
+               AND fs.id_familia_socio <> ?
+               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+               AND (? IS NULL OR fs.desde IS NULL OR fs.desde <= ?)
+             ORDER BY fs.id_familia_socio DESC
+             LIMIT 1
+             FOR UPDATE'
+        );
+        $statement->execute([
+            $memberId,
+            $excludeLinkId ?? 0,
+            $from,
+            $to,
+            $to,
+        ]);
+        $conflict = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$conflict) return;
+
+        api_error(
+            "El integrante ya posee una pertenencia familiar que se superpone con {$conflict['nombre_familia']}. Ajustá las fechas antes de guardar.",
+            'FAMILIA_INTERVALO_SUPERPUESTO',
+            409,
+            [
+                'id_familia_socio_conflicto' => (int)$conflict['id_familia_socio'],
+                'desde_conflicto' => $conflict['desde'],
+                'hasta_conflicto' => $conflict['hasta'],
+            ]
+        );
     }
 
     private static function normalizeMembers(array $body): array

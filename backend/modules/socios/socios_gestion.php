@@ -122,7 +122,10 @@ trait SociosGestion
                 api_error('La fecha de baja no puede ser anterior a la fecha de ingreso.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_baja']);
             }
 
+            self::validarFechaTransicionSocio($db, $id, $date, 'baja');
+
             $before = self::detalle($db, $id);
+            self::cerrarVinculosFamiliaresPorBaja($db, $id, $date);
             $db->prepare('UPDATE socios SET vigente = 0 WHERE id_socio = ?')->execute([$id]);
             $after = self::detalle($db, $id);
             if (!$after) throw new RuntimeException('No se pudo recuperar el socio después de la baja.');
@@ -157,14 +160,7 @@ trait SociosGestion
             if (!$raw) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
             if ((bool)$raw['vigente']) api_error('El socio ya está vigente.', 'SOCIO_YA_VIGENTE', 409);
 
-            $lastLow = $db->prepare(
-                "SELECT MAX(DATE(fecha_evento)) FROM socios_historial_estados WHERE id_socio = ? AND tipo_evento = 'BAJA'"
-            );
-            $lastLow->execute([$id]);
-            $lastLowDate = $lastLow->fetchColumn();
-            if ($lastLowDate && $date < (string)$lastLowDate) {
-                api_error('La fecha de reactivación no puede ser anterior a la última baja.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_reactivacion']);
-            }
+            self::validarFechaTransicionSocio($db, $id, $date, 'reactivación');
 
             $before = self::detalle($db, $id);
             $db->prepare('UPDATE socios SET vigente = 1 WHERE id_socio = ?')->execute([$id]);
@@ -189,6 +185,64 @@ trait SociosGestion
         });
 
         return ['item' => $saved];
+    }
+
+    /**
+     * Una baja termina también la pertenencia familiar vigente en esa fecha.
+     * Dejar el vínculo abierto haría que el socio siguiera contando para
+     * descuentos familiares posteriores aunque ya no estuviera vigente.
+     */
+    private static function cerrarVinculosFamiliaresPorBaja(PDO $db, int $id, string $date): void
+    {
+        $statement = $db->prepare(
+            'SELECT id_familia_socio, desde
+             FROM familias_socios
+             WHERE id_socio = ? AND activo = 1
+             FOR UPDATE'
+        );
+        $statement->execute([$id]);
+        $links = $statement->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($links as $link) {
+            $from = trim((string)($link['desde'] ?? ''));
+            if ($from !== '' && $date < $from) {
+                api_error(
+                    "La fecha de baja no puede ser anterior al inicio de una pertenencia familiar vigente ({$from}). Ajustá primero las fechas de la familia.",
+                    'BAJA_SUPERPONE_FAMILIA',
+                    409,
+                    ['fecha_inicio_familia' => $from]
+                );
+            }
+        }
+        if ($links === []) return;
+
+        $db->prepare(
+            'UPDATE familias_socios
+             SET activo = 0,
+                 hasta = CASE WHEN hasta IS NULL OR hasta > ? THEN ? ELSE hasta END,
+                 actualizado_en = CURRENT_TIMESTAMP
+             WHERE id_socio = ? AND activo = 1'
+        )->execute([$date, $date, $id]);
+    }
+
+    private static function validarFechaTransicionSocio(PDO $db, int $id, string $date, string $label): void
+    {
+        $statement = $db->prepare(
+            "SELECT MAX(DATE(fecha_evento))
+             FROM socios_historial_estados
+             WHERE id_socio = ?
+               AND fecha_evento IS NOT NULL
+               AND tipo_evento IN ('ALTA','BAJA','REACTIVACION')"
+        );
+        $statement->execute([$id]);
+        $lastDate = $statement->fetchColumn();
+        if ($lastDate !== false && $lastDate !== null && $date < (string)$lastDate) {
+            api_error(
+                "La fecha de {$label} no puede ser anterior a la última transición registrada ({$lastDate}).",
+                'CRONOLOGIA_SOCIO_INVALIDA',
+                409,
+                ['fecha_ultima_transicion' => (string)$lastDate]
+            );
+        }
     }
 
     private static function registrarContactoDatos(array $auth, array $body): array
@@ -279,6 +333,24 @@ trait SociosGestion
             // El impacto es meramente informativo. Si una tabla opcional no
             // existe en una instalación local, nunca debe impedir el borrado.
             $impact = self::impactoEliminacion($db, $id);
+
+            // Una eliminación definitiva sólo es válida para altas cargadas por
+            // error que todavía no generaron historia económica ni familiar.
+            // Los movimientos contables deben sobrevivir a la baja del socio.
+            $financial = ((int)($impact['pagos'] ?? 0)) + ((int)($impact['pagos_inscripcion'] ?? 0));
+            $familyLinks = (int)($impact['vinculos_familiares'] ?? 0);
+            if ($financial > 0 || $familyLinks > 0) {
+                api_error(
+                    'No se puede eliminar definitivamente un socio con pagos, inscripciones o vínculos familiares históricos. Dale de baja para conservar intacta la información contable.',
+                    'SOCIO_CON_HISTORIAL_NO_ELIMINABLE',
+                    409,
+                    [
+                        'pagos' => (int)($impact['pagos'] ?? 0),
+                        'pagos_inscripcion' => (int)($impact['pagos_inscripcion'] ?? 0),
+                        'vinculos_familiares' => $familyLinks,
+                    ]
+                );
+            }
 
             // Descubre relaciones a partir del esquema REAL de la conexión y
             // suma un fallback de las tablas conocidas de RH Negativo V2. De
@@ -500,7 +572,7 @@ trait SociosGestion
         $current = null;
         if ($editingId !== null) {
             $currentStatement = $db->prepare(
-                'SELECT id_cobrador, id_categoria, id_grupo_sanguineo, id_estado FROM socios WHERE id_socio = ? LIMIT 1'
+                'SELECT id_cobrador, id_categoria, id_grupo_sanguineo, id_estado, fecha_ingreso FROM socios WHERE id_socio = ? LIMIT 1'
             );
             $currentStatement->execute([$editingId]);
             $current = $currentStatement->fetch();
@@ -559,6 +631,13 @@ trait SociosGestion
             api_error('La fecha de ingreso no puede ser anterior a la fecha de nacimiento.', 'VALIDATION_ERROR', 422, ['campo' => 'fecha_ingreso']);
         }
 
+        if ($editingId !== null && $current !== null) {
+            $previousJoined = $current['fecha_ingreso'] === null ? null : (string)$current['fecha_ingreso'];
+            if ($previousJoined !== $joined) {
+                self::validarCambioFechaIngreso($db, $editingId, $joined);
+            }
+        }
+
         return [
             'nombre' => $name,
             'id_cobrador' => $collectorId,
@@ -575,6 +654,84 @@ trait SociosGestion
             'dni' => $dni === '' ? null : $dni,
             'fecha_ingreso' => $joined,
         ];
+    }
+
+    /**
+     * La fecha de ingreso participa en deuda y reportes históricos. Si el socio
+     * ya tiene actividad, sólo permitimos moverla a una fecha que no deje pagos,
+     * inscripciones o transiciones de estado "antes de haber ingresado".
+     */
+    private static function validarCambioFechaIngreso(PDO $db, int $id, ?string $joined): void
+    {
+        $references = [];
+
+        $statement = $db->prepare(
+            'SELECT MIN(fecha_pago) FROM pagos WHERE id_socio = ?'
+        );
+        $statement->execute([$id]);
+        $paymentDate = $statement->fetchColumn();
+        if ($paymentDate !== false && $paymentDate !== null) {
+            $references[] = (string)$paymentDate;
+        }
+
+        $statement = $db->prepare(
+            "SELECT MIN(
+                CASE
+                    WHEN id_periodo = 7 THEN STR_TO_DATE(CONCAT(anio_aplicado, '-01-01'), '%Y-%m-%d')
+                    WHEN id_periodo BETWEEN 1 AND 6 THEN STR_TO_DATE(
+                        CONCAT(
+                            anio_aplicado, '-',
+                            LPAD(((id_periodo - 1) * 2) + 1, 2, '0'),
+                            '-01'
+                        ),
+                        '%Y-%m-%d'
+                    )
+                    ELSE NULL
+                END
+             )
+             FROM pagos
+             WHERE id_socio = ?"
+        );
+        $statement->execute([$id]);
+        $periodDate = $statement->fetchColumn();
+        if ($periodDate !== false && $periodDate !== null) {
+            $references[] = (string)$periodDate;
+        }
+
+        $statement = $db->prepare(
+            'SELECT MIN(fecha_pago) FROM pagos_inscripcion WHERE id_socio = ?'
+        );
+        $statement->execute([$id]);
+        $registrationDate = $statement->fetchColumn();
+        if ($registrationDate !== false && $registrationDate !== null) {
+            $references[] = (string)$registrationDate;
+        }
+
+        $statement = $db->prepare(
+            "SELECT MIN(DATE(fecha_evento))
+             FROM socios_historial_estados
+             WHERE id_socio = ?
+               AND fecha_evento IS NOT NULL
+               AND tipo_evento IN ('BAJA','REACTIVACION')"
+        );
+        $statement->execute([$id]);
+        $historyDate = $statement->fetchColumn();
+        if ($historyDate !== false && $historyDate !== null) {
+            $references[] = (string)$historyDate;
+        }
+
+        if ($references === []) return;
+
+        sort($references, SORT_STRING);
+        $earliest = $references[0];
+        if ($joined === null || $joined > $earliest) {
+            api_error(
+                "La fecha de ingreso no puede quedar después del {$earliest} porque el socio ya posee actividad histórica. Podés corregirla a una fecha igual o anterior sin perder consistencia.",
+                'FECHA_INGRESO_AFECTA_HISTORIAL',
+                409,
+                ['campo' => 'fecha_ingreso', 'fecha_limite' => $earliest]
+            );
+        }
     }
 
     private static function optionalPositiveId(mixed $value, string $label): ?int
@@ -625,6 +782,43 @@ trait SociosGestion
         ?string $observation,
         int $userId
     ): void {
+        // Algunas instalaciones heredadas poseen triggers que ya registran el
+        // ALTA. Sólo para ese evento absorbemos un duplicado exacto. Bajas y
+        // reactivaciones pueden repetirse legítimamente el mismo día y siempre
+        // deben conservar su secuencia completa.
+        if ($event === 'ALTA') {
+            $existing = $db->prepare(
+                'SELECT id_historial, motivo, observacion, id_usuario
+                 FROM socios_historial_estados
+                 WHERE id_socio = ?
+                   AND tipo_evento = ?
+                   AND fecha_evento <=> ?
+                   AND id_estado_nuevo <=> ?
+                   AND vigente_nuevo <=> ?
+                 ORDER BY id_historial DESC
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $existing->execute([
+                $id,
+                $event,
+                $eventDate,
+                $newState,
+                $newActive === null ? null : (int)$newActive,
+            ]);
+            $row = $existing->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $db->prepare(
+                    'UPDATE socios_historial_estados
+                     SET motivo = COALESCE(motivo, ?),
+                         observacion = COALESCE(observacion, ?),
+                         id_usuario = COALESCE(id_usuario, ?)
+                     WHERE id_historial = ?'
+                )->execute([$reason, $observation, $userId, (int)$row['id_historial']]);
+                return;
+            }
+        }
+
         $statement = $db->prepare(
             'INSERT INTO socios_historial_estados
              (id_socio, tipo_evento, id_estado_anterior, id_estado_nuevo,

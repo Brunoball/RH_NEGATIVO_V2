@@ -5,6 +5,7 @@ import { faFileExcel, faFileImport, faFilePdf, faLayerGroup, faList, faSpinner, 
 import "../Global_css/Global_Modals.css";
 import useAnimatedModalSize from "./useAnimatedModalSize";
 import "../Global_css/Global_Exportar.css";
+import { getSession } from "../../_shared/auth/session";
 
 const FORMATOS_EXPORTAR = [
   {
@@ -76,157 +77,27 @@ function fechaArchivo() {
 }
 
 
-function leerJsonStorage(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+function resolverPublicBaseUrl() {
+  const publicEnvUrl = String(
+    process.env.REACT_APP_PUBLIC_BASE_URL || process.env.REACT_APP_APP_URL || ""
+  ).trim();
+  if (publicEnvUrl) return publicEnvUrl.replace(/\/+$/, "");
 
-function obtenerOrigenDesdeUrl(url) {
-  const value = String(url || "").trim();
-  if (!value) return "";
-
-  try {
-    return new URL(value, window.location.origin).origin.replace(/\/+$/, "");
-  } catch {
-    return "";
-  }
-}
-
-const LERNA_PROD_ORIGIN = "https://lerna.3devsnet.com";
-
-function esHostLocal() {
-  const host = String(window.location.hostname || "").toLowerCase();
-  return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0";
-}
-
-function normalizarApiRoutesUrl(url) {
-  let value = String(url || "").trim();
-  if (!value) return "";
-
-  value = value.replace(/\/+$/, "");
-
-  if (/\/api\.php$/i.test(value)) return value;
-  if (/\/routes$/i.test(value)) return `${value}/api.php`;
-  if (/\/api\/routes$/i.test(value)) return `${value}/api.php`;
-
-  return `${value}/api.php`;
-}
-
-function obtenerUrlAbsolutaDesdeStorage() {
-  try {
-    const urls = [];
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      const raw = key ? localStorage.getItem(key) : "";
-      const matches = String(raw || "").match(/https?:\/\/[^\"'\s\\]+/gi) || [];
-      urls.push(...matches);
-    }
-
-    return (
-      urls.find((url) => /\/uploads\//i.test(url)) ||
-      urls.find((url) => /lerna\.3devsnet\.com/i.test(url)) ||
-      urls.find((url) => !/auth-db|phpmyadmin/i.test(url)) ||
-      ""
-    );
-  } catch {
-    return "";
-  }
-}
-
-function resolverApiExportacionUrl() {
-  const envUrl = String(
+  const apiEnvUrl = String(
     process.env.REACT_APP_API_URL ||
       process.env.REACT_APP_API_BASE_URL ||
       process.env.REACT_APP_BASE_URL ||
       ""
   ).trim();
-
-  if (envUrl) return normalizarApiRoutesUrl(envUrl);
-
-  const storageUrl = obtenerUrlAbsolutaDesdeStorage();
-  const storageOrigin = obtenerOrigenDesdeUrl(storageUrl);
-  if (storageOrigin) return `${storageOrigin}/api/routes/api.php`;
-
-  if (esHostLocal()) return `${LERNA_PROD_ORIGIN}/api/routes/api.php`;
-
-  const origin = String(window.location.origin || LERNA_PROD_ORIGIN).replace(/\/+$/, "");
-  return `${origin}/api/routes/api.php`;
-}
-
-function resolverPublicBaseUrl() {
-  const publicEnvUrl = String(
-    process.env.REACT_APP_PUBLIC_BASE_URL || process.env.REACT_APP_APP_URL || ""
-  ).trim();
-
-  if (publicEnvUrl) return publicEnvUrl.replace(/\/+$/, "");
-
-  const storageUrl = obtenerUrlAbsolutaDesdeStorage();
-  const storageOrigin = obtenerOrigenDesdeUrl(storageUrl);
-  if (storageOrigin) return storageOrigin;
-
-  if (esHostLocal()) return LERNA_PROD_ORIGIN;
-
-  return String(window.location.origin || LERNA_PROD_ORIGIN).replace(/\/+$/, "");
-}
-
-function obtenerAuthTokenExportacion() {
-  return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("session_key") ||
-    localStorage.getItem("sessionKey") ||
-    localStorage.getItem("auth_token") ||
-    sessionStorage.getItem("auth_token") ||
-    sessionStorage.getItem("session_key") ||
-    sessionStorage.getItem("sessionKey") ||
-    sessionStorage.getItem("token") ||
-    ""
-  );
-}
-
-function obtenerTenantIdExportacion() {
-  return localStorage.getItem("idTenant") || sessionStorage.getItem("idTenant") || "";
-}
-
-async function apiGetExportacion(action, params = {}) {
-  const apiUrl = resolverApiExportacionUrl();
-  const idTenant = obtenerTenantIdExportacion();
-  const query = new URLSearchParams({
-    action,
-    ...(idTenant ? { idTenant } : {}),
-    ...(params || {}),
-  }).toString();
-
-  const token = obtenerAuthTokenExportacion();
-  const res = await fetch(`${apiUrl}?${query}`, {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      "X-Requested-With": "XMLHttpRequest",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  const text = await res.text();
-  let data = null;
-
-  if (text) {
+  if (apiEnvUrl) {
     try {
-      data = JSON.parse(text);
+      return new URL(apiEnvUrl, window.location.origin).origin.replace(/\/+$/, "");
     } catch {
-      throw new Error("La API no devolvió JSON válido al obtener el logo institucional.");
+      // Si la variable no es una URL válida, la exportación sigue sin logo.
     }
   }
 
-  if (!res.ok) {
-    throw new Error(data?.mensaje || `Error HTTP ${res.status}`);
-  }
-
-  return data;
+  return String(window.location.origin || "").replace(/\/+$/, "");
 }
 
 function normalizarLogoPdfUrl(url) {
@@ -363,42 +234,22 @@ function cargarImagenComoJpegAsset(url, name = "ImLogoExport") {
 }
 
 function obtenerDatosInstitucionalesLocales() {
-  const usuario = leerJsonStorage("usuario") || {};
-  const tenant = usuario?.tenant || leerJsonStorage("tenant") || {};
+  const session = getSession() || {};
+  const organizacion = session?.organizacion || {};
   const logoUrl = normalizarLogoPdfUrl(
-    tenant?.logo_icono_url ||
-    tenant?.logo_url ||
-    usuario?.tenant_logo_icono_url ||
-    usuario?.tenant_logo_url ||
-    usuario?.logo_icono_url ||
-    usuario?.logo_url ||
-    ""
+    organizacion?.logo_icono_url || organizacion?.logo_url || ""
   );
-  const nombre = normalizarTexto(tenant?.nombre || usuario?.tenant_nombre || usuario?.institucion || "Institución");
+  const nombre = normalizarTexto(organizacion?.nombre || "RH Negativo");
 
   return { logoUrl, nombre };
 }
 
 async function obtenerDatosInstitucionalesExportacion() {
   const locales = obtenerDatosInstitucionalesLocales();
-
-  try {
-    const data = await apiGetExportacion("perfil_logo_institucional");
-    const tenant = data?.tenant || {};
-    const logoDataUrl = normalizarLogoPdfUrl(tenant?.logo_data_url || data?.logo_data_url || "");
-    const logoUrl = normalizarLogoPdfUrl(
-      logoDataUrl || tenant?.logo_icono_url || tenant?.logo_url || data?.logo_icono_url || data?.logo_url || ""
-    );
-    const nombre = normalizarTexto(tenant?.nombre || data?.nombre || data?.tenant_nombre || locales.nombre || "Institución");
-    const logoAsset = await cargarImagenComoJpegAsset(logoUrl || locales.logoUrl);
-
-    return { logoAsset, institucionNombre: nombre };
-  } catch (_) {
-    return {
-      logoAsset: await cargarImagenComoJpegAsset(locales.logoUrl),
-      institucionNombre: locales.nombre || "Institución",
-    };
-  }
+  return {
+    logoAsset: await cargarImagenComoJpegAsset(locales.logoUrl),
+    institucionNombre: locales.nombre || "RH Negativo",
+  };
 }
 
 function descargarBlob(blob, nombreArchivo) {
@@ -801,15 +652,15 @@ function crearXlsxBlob({ titulo, subtitulo, secciones, logoAsset = null }) {
   archivos["docProps/core.xml"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>${escapeXml(titulo || "Exportación")}</dc:title>
-  <dc:creator>LALCEC</dc:creator>
-  <cp:lastModifiedBy>LALCEC</cp:lastModifiedBy>
+  <dc:creator>RH Negativo</dc:creator>
+  <cp:lastModifiedBy>RH Negativo</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
 </cp:coreProperties>`;
 
   archivos["docProps/app.xml"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>LALCEC</Application>
+  <Application>RH Negativo</Application>
   <DocSecurity>0</DocSecurity>
   <ScaleCrop>false</ScaleCrop>
   <HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>${seccionesNormalizadas.length}</vt:i4></vt:variant></vt:vector></HeadingPairs>
@@ -1184,7 +1035,7 @@ endstream`;
 
   objects[2] = `<< /Type /Pages /Count ${pageObjectNumbers.length} /Kids [${pageObjectNumbers.map((n) => `${n} 0 R`).join(" ")}] >>`;
 
-  let pdf = "%PDF-1.4\n% LALCEC - Exportacion\n";
+  let pdf = "%PDF-1.4\n% RH Negativo - Exportacion\n";
   const offsets = [0];
 
   for (let i = 1; i < objects.length; i += 1) {

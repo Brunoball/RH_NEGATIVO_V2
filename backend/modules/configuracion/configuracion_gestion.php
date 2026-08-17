@@ -10,6 +10,7 @@ trait ConfiguracionGestion
         $idText = trim((string)($body['id'] ?? ''));
         $id = $idText === '' ? null : positive_id($idText, $definition['etiqueta']);
         $data = self::normalizarCamposConfiguracion($definition, $body);
+        self::validarCatalogoEstructural($definition, $id, $data);
 
         try {
             return transaction($db, static function () use ($db, $auth, $definition, $id, $data): array {
@@ -23,7 +24,9 @@ trait ConfiguracionGestion
                     $columns = array_keys($data);
                     $params = array_values($data);
                     if (!(bool)$definition['auto_id']) {
-                        $savedId = (int)$db->query("SELECT COALESCE(MAX({$idField}), 0) + 1 FROM {$table}")->fetchColumn();
+                        $lastIdStatement = $db->query("SELECT {$idField} FROM {$table} ORDER BY {$idField} DESC LIMIT 1 FOR UPDATE");
+                        $lastId = $lastIdStatement->fetchColumn();
+                        $savedId = ($lastId === false ? 0 : (int)$lastId) + 1;
                         array_unshift($columns, $idField);
                         array_unshift($params, $savedId);
                     }
@@ -45,6 +48,7 @@ trait ConfiguracionGestion
                 } else {
                     $before = configuracion_item($db, $definition, $id, true);
                     if (!$before) api_error('La opción que intentás editar no existe.', 'OPCION_NO_ENCONTRADA', 404);
+                    self::validarEdicionCatalogoConHistorial($db, $definition, $id, $before, $data);
                     $sets = [];
                     foreach (array_keys($data) as $column) $sets[] = "{$column} = ?";
                     $params = array_values($data);
@@ -85,6 +89,7 @@ trait ConfiguracionGestion
             $idField = $definition['id_campo'];
             $before = configuracion_item($db, $definition, $id, true);
             if (!$before) api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
+            self::validarCambioEstadoCatalogoEstructural($definition, $id);
             if ((bool)$before['activo'] === $activo) {
                 api_error($activo ? 'La opción ya está activa.' : 'La opción ya está dada de baja.', 'ESTADO_SIN_CAMBIOS', 409);
             }
@@ -111,6 +116,7 @@ trait ConfiguracionGestion
             $idField = $definition['id_campo'];
             $before = configuracion_item($db, $definition, $id, true);
             if (!$before) api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
+            self::validarCambioEstadoCatalogoEstructural($definition, $id);
             $usageCount = configuracion_cantidad_usos($db, $definition, $id);
             if ($usageCount > 0) {
                 api_error(
@@ -158,8 +164,102 @@ trait ConfiguracionGestion
         if ($statement->fetchColumn()) api_error('Ya existe una opción con ese nombre.', 'NOMBRE_DUPLICADO', 409);
     }
 
+    private static function validarCatalogoEstructural(array $definition, ?int $id, array $data): void
+    {
+        $list = (string)$definition['lista'];
+        if ($list === 'periodo' && $id === null) {
+            api_error(
+                'Los períodos 1 a 7 son estructurales del sistema y no se pueden agregar períodos adicionales.',
+                'PERIODO_ESTRUCTURAL',
+                409
+            );
+        }
+        if ($list === 'estado' && $id !== null && in_array($id, [1, 2], true)) {
+            $required = $id === 1 ? 'PASIVO' : 'ACTIVO';
+            if (strtoupper(trim((string)($data['nombre'] ?? ''))) !== $required) {
+                api_error(
+                    "El estado {$required} es estructural y no puede cambiar de nombre.",
+                    'ESTADO_ESTRUCTURAL',
+                    409
+                );
+            }
+        }
+    }
+
+    private static function validarEdicionCatalogoConHistorial(
+        PDO $db,
+        array $definition,
+        int $id,
+        array $before,
+        array $data
+    ): void {
+        $list = (string)$definition['lista'];
+
+        if ($list === 'periodo' && $id >= 1 && $id <= 7) {
+            foreach ($data as $field => $value) {
+                if ((string)($before[$field] ?? '') !== (string)$value) {
+                    api_error(
+                        'Los períodos 1 a 7 son estructurales del sistema y no se pueden renombrar ni modificar.',
+                        'PERIODO_ESTRUCTURAL',
+                        409
+                    );
+                }
+            }
+        }
+
+        // Los movimientos guardan el id del medio, pero los comprobantes e
+        // informes históricos muestran su nombre desde el catálogo. Evitamos
+        // que un renombrado posterior cambie silenciosamente esa etiqueta.
+        if ($list === 'medios_pago'
+            && (string)($before['nombre'] ?? '') !== (string)($data['nombre'] ?? '')) {
+            $usageCount = configuracion_cantidad_usos($db, $definition, $id);
+            if ($usageCount > 0) {
+                api_error(
+                    'El medio de pago ya está utilizado y no puede renombrarse porque cambiaría comprobantes e informes históricos. Dalo de baja y creá uno nuevo.',
+                    'OPCION_EN_USO',
+                    409,
+                    ['cantidad_usos' => $usageCount]
+                );
+            }
+        }
+    }
+
+    private static function validarCambioEstadoCatalogoEstructural(array $definition, int $id): void
+    {
+        $list = (string)$definition['lista'];
+        if ($list === 'periodo' && $id >= 1 && $id <= 7) {
+            api_error(
+                'Los períodos 1 a 7 son estructurales y no se pueden dar de baja ni eliminar.',
+                'PERIODO_ESTRUCTURAL',
+                409
+            );
+        }
+        if ($list === 'estado' && in_array($id, [1, 2], true)) {
+            api_error(
+                'Los estados ACTIVO y PASIVO son estructurales y no se pueden dar de baja ni eliminar.',
+                'ESTADO_ESTRUCTURAL',
+                409
+            );
+        }
+    }
+
     private static function registrarPrecioCategoriaConfiguracion(PDO $db, int $categoryId, string $type, string $previousAmount, string $newAmount): void
     {
+        $existing = $db->prepare(
+            'SELECT id_historial, precio_viejo
+             FROM precios_historicos
+             WHERE id_categoria = ? AND tipo = ? AND fecha_cambio = CURDATE()
+             ORDER BY id_historial ASC
+             LIMIT 1 FOR UPDATE'
+        );
+        $existing->execute([$categoryId, $type]);
+        $row = $existing->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $db->prepare(
+                'UPDATE precios_historicos SET precio_nuevo = ? WHERE id_historial = ?'
+            )->execute([$newAmount, (int)$row['id_historial']]);
+            return;
+        }
         $db->prepare(
             'INSERT INTO precios_historicos (id_categoria, tipo, precio_viejo, precio_nuevo, fecha_cambio) VALUES (?, ?, ?, ?, CURDATE())'
         )->execute([$categoryId, $type, $previousAmount, $newAmount]);

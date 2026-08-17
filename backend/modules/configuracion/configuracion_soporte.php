@@ -97,6 +97,8 @@ function configuracion_relaciones(array $definition): array
         'medios_pago' => [
             ['tabla' => 'pagos', 'columna' => 'id_medio_pago'],
             ['tabla' => 'pagos_inscripcion', 'columna' => 'id_medio_pago'],
+            ['tabla' => 'contable_ingresos', 'columna' => 'id_medio_pago'],
+            ['tabla' => 'contable_egresos', 'columna' => 'id_medio_pago'],
         ],
         'periodo' => [
             ['tabla' => 'pagos', 'columna' => 'id_periodo'],
@@ -126,6 +128,53 @@ function configuracion_cantidad_usos(PDO $db, array $definition, int $id): int
         $statement->execute([$id]);
         $total += (int)$statement->fetchColumn();
     }
+
+    // Categoría, cobrador y grupo se guardan también dentro de la auditoría de
+    // Socios. Aunque hoy ya no haya socios apuntando al catálogo, eliminarlo
+    // haría perder la etiqueta al reconstruir informes históricos.
+    $historicalField = match ((string)$definition['lista']) {
+        'categoria' => 'id_categoria',
+        'cobrador' => 'id_cobrador',
+        'grupo_sanguineo' => 'id_grupo_sanguineo',
+        default => null,
+    };
+    if ($historicalField !== null
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'datos_anteriores')
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'datos_nuevos')) {
+        $jsonPath = '$.' . $historicalField;
+        $statement = $db->prepare(
+            "SELECT COUNT(*)
+             FROM auditoria
+             WHERE tabla = 'socios'
+               AND (
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(datos_anteriores, ?)) AS UNSIGNED) = ?
+                 OR CAST(JSON_UNQUOTE(JSON_EXTRACT(datos_nuevos, ?)) AS UNSIGNED) = ?
+               )"
+        );
+        $statement->execute([$jsonPath, $id, $jsonPath, $id]);
+        $total += (int)$statement->fetchColumn();
+    }
+
+    // Los pagos no guardan id_categoria como columna propia, pero las altas
+    // creadas por Cuotas sí conservan ese dato en auditoría. Esto evita borrar
+    // una categoría que ya no usa ningún socio actual pero que sí clasificó
+    // movimientos financieros históricos.
+    if ((string)$definition['lista'] === 'categoria'
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'datos_anteriores')
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'datos_nuevos')) {
+        $statement = $db->prepare(
+            "SELECT COUNT(*)
+             FROM auditoria
+             WHERE tabla = 'pagos'
+               AND (
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(datos_anteriores, '$.id_categoria')) AS UNSIGNED) = ?
+                 OR CAST(JSON_UNQUOTE(JSON_EXTRACT(datos_nuevos, '$.id_categoria')) AS UNSIGNED) = ?
+               )"
+        );
+        $statement->execute([$id, $id]);
+        $total += (int)$statement->fetchColumn();
+    }
+
     return $total;
 }
 

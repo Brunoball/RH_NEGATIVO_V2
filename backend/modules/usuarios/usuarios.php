@@ -403,12 +403,23 @@ final class Usuarios
 
     private static function assertAnotherActiveAdmin(PDO $db, int $excludeId): void
     {
-        $statement = $db->prepare(
-            "SELECT COUNT(*) FROM sis_usuarios
-             WHERE rol = 'admin' AND activo = 1 AND idUsuario <> ?"
+        // Bloquea el conjunto de administradores activos dentro de la transacción.
+        // Así dos solicitudes concurrentes no pueden verse mutuamente como "el otro"
+        // y dejar al sistema sin ningún administrador activo.
+        $statement = $db->query(
+            "SELECT idUsuario FROM sis_usuarios
+             WHERE rol = 'admin' AND activo = 1
+             ORDER BY idUsuario
+             FOR UPDATE"
         );
-        $statement->execute([$excludeId]);
-        if ((int)$statement->fetchColumn() === 0) {
+        $hasAnother = false;
+        foreach ($statement->fetchAll(PDO::FETCH_COLUMN) as $adminId) {
+            if ((int)$adminId !== $excludeId) {
+                $hasAnother = true;
+                break;
+            }
+        }
+        if (!$hasAnother) {
             api_error(
                 'El sistema debe conservar al menos un administrador activo.',
                 'ULTIMO_ADMIN_ACTIVO',
