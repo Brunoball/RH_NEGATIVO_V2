@@ -54,17 +54,25 @@ async function parseResponse(response) {
   }
 }
 
+function authHeaders(session, extra = {}) {
+  return {
+    Accept: 'application/json',
+    ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+    ...extra,
+  };
+}
+
 async function apiResult(requestContext, action, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const hasSessionOverride = Object.prototype.hasOwnProperty.call(options, 'session');
   const session = hasSessionOverride ? options.session : readAuthSession();
-  const headers = {
-    Accept: 'application/json',
-    ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
-    ...(options.headers || {}),
+  const requestOptions = {
+    headers: authHeaders(session, options.headers || {}),
+    failOnStatusCode: false,
   };
-  const requestOptions = { headers, failOnStatusCode: false };
   if (options.data !== undefined) requestOptions.data = options.data;
+  if (options.form !== undefined) requestOptions.form = options.form;
+  if (options.multipart !== undefined) requestOptions.multipart = options.multipart;
 
   const response = await requestContext.fetch(actionUrl(action, options.params), {
     ...requestOptions,
@@ -96,6 +104,33 @@ async function apiCall(requestContext, action, options = {}) {
     throw error;
   }
   return result.body;
+}
+
+async function apiMultipartCall(requestContext, action, multipart, options = {}) {
+  return apiCall(requestContext, action, {
+    ...options,
+    method: options.method || 'POST',
+    multipart,
+  });
+}
+
+async function apiBinaryResult(requestContext, action, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const hasSessionOverride = Object.prototype.hasOwnProperty.call(options, 'session');
+  const session = hasSessionOverride ? options.session : readAuthSession();
+  const response = await requestContext.fetch(actionUrl(action, options.params), {
+    method,
+    headers: authHeaders(session, options.headers || {}),
+    failOnStatusCode: false,
+  });
+  const buffer = await response.body();
+  return {
+    ok: response.ok(),
+    status: response.status(),
+    buffer,
+    headers: response.headers(),
+    url: response.url(),
+  };
 }
 
 async function expectApiError(requestContext, action, options, expected = {}) {
@@ -159,7 +194,9 @@ async function closeApiSession(requestContext, session) {
 module.exports = {
   AUTH_FILE,
   actionUrl,
+  apiBinaryResult,
   apiCall,
+  apiMultipartCall,
   apiResult,
   closeApiSession,
   createApiSession,

@@ -10,6 +10,7 @@ export const contableApi = {
   catalogos: () => apiGet("contable_catalogos"),
   opcionesConfiguracion: () => apiGet("contable_opciones_configuracion"),
   ingresosSocios: (params) => apiGet("contable_ingresos_socios", params),
+  balance: (params) => apiGet("contable_balance", params),
   ingresos: (params) => apiGet("contable_ingresos_listar", params),
   egresos: (params) => apiGet("contable_egresos_listar", params),
   guardarOpcion: (payload) => apiPost("contable_opcion_guardar", payload),

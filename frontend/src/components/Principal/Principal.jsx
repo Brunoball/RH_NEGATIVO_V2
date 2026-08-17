@@ -134,6 +134,7 @@ export default function Principal() {
   const location = useLocation();
   const navigate = useNavigate();
   const session = getSession();
+  const writable = session?.usuario?.rol === "admin";
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [perfilOpen, setPerfilOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -142,6 +143,12 @@ export default function Principal() {
   );
   const groupClickTimer = useRef(null);
   const logoutInProgress = useRef(false);
+
+  useEffect(() => {
+    if (!writable && location.pathname.startsWith("/configuracion")) {
+      navigate("/panel", { replace: true });
+    }
+  }, [location.pathname, navigate, writable]);
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -251,15 +258,17 @@ export default function Principal() {
 
         <div className="mov-topbar__right">
           <div className="mov-topbar__section">{activeLabel}</div>
-          <button
-            className={`pp-topbarConfig ${location.pathname.startsWith("/configuracion") ? "is-active" : ""}`}
-            type="button"
-            onClick={() => navigate("/configuracion")}
-            title="Configuración"
-            aria-label="Abrir configuración"
-          >
-            <FontAwesomeIcon icon={faGear} />
-          </button>
+          {writable ? (
+            <button
+              className={`pp-topbarConfig ${location.pathname.startsWith("/configuracion") ? "is-active" : ""}`}
+              type="button"
+              onClick={() => navigate("/configuracion")}
+              title="Configuración"
+              aria-label="Abrir configuración"
+            >
+              <FontAwesomeIcon icon={faGear} />
+            </button>
+          ) : null}
           <button
             className="mov-topbar__usericon has-logo"
             type="button"
@@ -407,10 +416,14 @@ export default function Principal() {
         open={perfilOpen}
         onClose={() => setPerfilOpen(false)}
         usuario={session?.usuario}
-        onConfigRequest={() => {
-          setPerfilOpen(false);
-          navigate("/configuracion");
-        }}
+        onConfigRequest={
+          writable
+            ? () => {
+                setPerfilOpen(false);
+                navigate("/configuracion");
+              }
+            : undefined
+        }
       />
 
       <LogoutModal

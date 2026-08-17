@@ -12,7 +12,7 @@ async function openDesktopGroup(page, name) {
 }
 
 test.describe('Shell · navegación de módulos incluidos', () => {
-  test('sidebar navega Dashboard, Socios/Familias, Cuotas y Categorías/Descuentos', async ({ page }) => {
+  test('sidebar navega Dashboard, Socios/Familias, Cuotas, Categorías y Contabilidad completa', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto('/panel');
     await expect(page.getByRole('heading', { name: 'Panel de gestión' })).toBeVisible();
@@ -36,6 +36,18 @@ test.describe('Shell · navegación de módulos incluidos', () => {
     await openDesktopGroup(page, 'Categorías');
     await page.getByRole('link', { name: 'Descuentos familiares', exact: true }).click();
     await expect(page).toHaveURL(/\/categorias\/descuentos$/);
+
+    await openDesktopGroup(page, 'Contabilidad');
+    await page.getByRole('link', { name: 'Ingresos', exact: true }).click();
+    await expect(page).toHaveURL(/\/contable\/ingresos$/);
+
+    await openDesktopGroup(page, 'Contabilidad');
+    await page.getByRole('link', { name: 'Egresos', exact: true }).click();
+    await expect(page).toHaveURL(/\/contable\/egresos$/);
+
+    await openDesktopGroup(page, 'Contabilidad');
+    await page.getByRole('link', { name: 'Resumen', exact: true }).click();
+    await expect(page).toHaveURL(/\/contable\/resumen$/);
 
     await page.locator('.pp-sidebar').hover();
     await page.getByRole('link', { name: 'Administración', exact: true }).click();

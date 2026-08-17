@@ -13,14 +13,16 @@
 }
 
 .contable-head-filters > .contable-filter--year,
-.contable-head-filters > .contable-filter--month {
+.contable-head-filters > .contable-filter--month,
+.contable-head-filters > .contable-filter--period {
   width: 100%;
   flex: 0 0 120px;
   max-width: 120px;
 }
 
 .contable-head-filters > .contable-filter--year select,
-.contable-head-filters > .contable-filter--month select {
+.contable-head-filters > .contable-filter--month select,
+.contable-head-filters > .contable-filter--period select {
   width: 100%;
   max-width: 120px;
 }

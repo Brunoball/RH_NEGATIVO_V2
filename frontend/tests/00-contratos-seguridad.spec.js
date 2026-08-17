@@ -19,6 +19,12 @@ const protectedActions = [
   ['configuracion_obtener', 'GET'], ['configuracion_lista_guardar', 'POST'], ['configuracion_lista_eliminar', 'POST'],
   ['configuracion_lista_baja', 'POST'], ['configuracion_lista_reactivar', 'POST'], ['configuracion_lista_eliminar_definitivo', 'POST'],
   ['usuarios_listar', 'GET'], ['usuarios_guardar', 'POST'], ['usuarios_cambiar_estado', 'POST'], ['usuarios_eliminar', 'POST'],
+  ['contable_resumen', 'GET'], ['contable_catalogos', 'GET'], ['contable_opciones_configuracion', 'GET'],
+  ['contable_ingresos_socios', 'GET'], ['contable_balance', 'GET'], ['contable_ingresos_listar', 'GET'], ['contable_egresos_listar', 'GET'],
+  ['contable_opcion_guardar', 'POST'], ['contable_opcion_cambiar_estado', 'POST'], ['contable_opcion_eliminar', 'POST'],
+  ['contable_ingreso_guardar', 'POST'], ['contable_ingreso_eliminar', 'POST'],
+  ['contable_egreso_guardar', 'POST'], ['contable_egreso_eliminar', 'POST'], ['contable_egreso_archivo', 'GET'],
+  ['e2e_cleanup', 'POST'],
 ];
 
 test.describe('Contratos, routing y seguridad transversal', () => {

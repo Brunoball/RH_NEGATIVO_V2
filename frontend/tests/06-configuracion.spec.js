@@ -277,12 +277,24 @@ test.describe('Configuración · usuarios y permisos', () => {
       ['descuentos_familiares_listar', { estado: 'todos' }],
       ['cuotas_catalogos', { anio: currentYear(), mes: 1 }],
       ['configuracion_obtener', {}],
+      ['contable_resumen', { anio: currentYear(), mes: 1 }],
+      ['contable_catalogos', {}],
+      ['contable_ingresos_socios', { anio: currentYear(), periodo: 1, pagina: 1 }],
+      ['contable_balance', { desde: `${currentYear()}-01-01`, hasta: `${currentYear()}-02-28` }],
+      ['contable_ingresos_listar', { anio: currentYear(), mes: 1 }],
+      ['contable_egresos_listar', { anio: currentYear(), mes: 1 }],
     ];
     for (const [action, params] of reads) {
       const result = await apiResult(request, action, { params, session: viewSession });
       expect(result.status, action).toBe(200);
     }
     await expectApiError(request, 'usuarios_listar', { session: viewSession }, { status: 403, code: 'FORBIDDEN_ROLE' });
+    await expectApiError(request, 'contable_opciones_configuracion', { session: viewSession }, { status: 403, code: 'FORBIDDEN_ROLE' });
+    // Un comprobante inexistente debe llegar al 404 funcional, no quedar
+    // bloqueado por rol: Vista puede consultar/descargar adjuntos contables.
+    await expectApiError(request, 'contable_egreso_archivo', {
+      params: { id: 2147483647 }, session: viewSession,
+    }, { status: 404, code: 'ARCHIVO_NO_ENCONTRADO' });
 
     const writes = [
       'socios_guardar', 'socios_eliminar', 'socios_eliminar_definitivo', 'socios_reactivar', 'socios_contacto_guardar', 'socios_cumpleanios_cerrar',
@@ -291,6 +303,8 @@ test.describe('Configuración · usuarios y permisos', () => {
       'cuotas_registrar_pago', 'cuotas_registrar_pagos', 'cuotas_condonar_pago', 'cuotas_eliminar_pago', 'cuotas_registrar_cobro', 'cuotas_anular',
       'configuracion_lista_guardar', 'configuracion_lista_eliminar', 'configuracion_lista_baja', 'configuracion_lista_reactivar', 'configuracion_lista_eliminar_definitivo',
       'usuarios_guardar', 'usuarios_cambiar_estado', 'usuarios_eliminar',
+      'contable_opcion_guardar', 'contable_opcion_cambiar_estado', 'contable_opcion_eliminar',
+      'contable_ingreso_guardar', 'contable_ingreso_eliminar', 'contable_egreso_guardar', 'contable_egreso_eliminar',
     ];
     for (const action of writes) {
       await expectApiError(request, action, { method: 'POST', data: {}, session: viewSession }, { status: 403, code: 'FORBIDDEN_ROLE' });
@@ -310,9 +324,26 @@ test.describe('Configuración · usuarios y permisos', () => {
     await page.goto('/cuotas');
     await expect(page.getByRole('button', { name: 'Código de barras' })).toHaveCount(0);
     await expect(page.getByText(/permiso de consulta/i).first()).toBeVisible();
-    await page.goto('/configuracion/catalogos?lista=cobrador');
-    await expect(page.getByRole('button', { name: 'Nuevo cobrador' })).toHaveCount(0);
-    await expect(page.getByText(/modificaciones están deshabilitadas/i)).toBeVisible();
+
+    await page.goto('/contable/ingresos');
+    await expect(page.getByRole('heading', { name: 'Ingresos' })).toBeVisible();
+    await page.getByRole('button', { name: 'Otros ingresos', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Registrar ingreso' })).toHaveCount(0);
+    await expect(page.getByText(/modificaciones están deshabilitadas/i).first()).toBeVisible();
+
+    await page.goto('/contable/egresos');
+    await expect(page.getByRole('heading', { name: 'Egresos' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Registrar egreso' })).toHaveCount(0);
+    await expect(page.locator('button[title="Editar"]')).toHaveCount(0);
+    await expect(page.locator('button[title="Anular"]')).toHaveCount(0);
+
+    await page.goto('/contable/resumen');
+    await expect(page.getByText('Resumen contable', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Detalle', exact: true })).toBeVisible();
+
+    await expect(page.getByRole('button', { name: 'Abrir configuración' })).toHaveCount(0);
+    await page.goto('/configuracion');
+    await expect(page).toHaveURL(/\/panel$/);
     await context.close();
 
     await closeApiSession(request, viewSession);

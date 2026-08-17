@@ -21,9 +21,14 @@ const privateRoutes = [
   '/categorias',
   '/categorias/descuentos',
   '/cuotas',
+  '/contable',
+  '/contable/ingresos',
+  '/contable/egresos',
+  '/contable/resumen',
   '/configuracion',
   '/configuracion/usuarios',
   '/configuracion/catalogos',
+  '/configuracion/contable',
   '/ruta-inexistente',
 ];
 

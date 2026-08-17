@@ -24,8 +24,8 @@ function parseEnv(text) {
   return result;
 }
 
-function isLocalApi(apiUrl) {
-  const value = String(apiUrl || '').trim();
+function isLocalUrl(url) {
+  const value = String(url || '').trim();
   if (!value) return true;
 
   try {
@@ -36,23 +36,50 @@ function isLocalApi(apiUrl) {
   }
 }
 
+function isLocalApi(apiUrl) {
+  return isLocalUrl(apiUrl);
+}
+
+function explicitBoolean(name) {
+  if (process.env[name] === undefined) return null;
+  const value = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!value) return null;
+  if (['1', 'true', 'yes', 'si', 'sí', 'on'].includes(value)) return true;
+  if (['0', 'false', 'no', 'off'].includes(value)) return false;
+  return null;
+}
+
 function resolveEnvironment() {
+  const baseUrl = String(process.env.PW_BASE_URL || 'http://localhost:3000')
+    .trim()
+    .replace(/\/+$/, '');
   const apiUrl = String(process.env.PW_API_URL || 'http://localhost:3001/routes')
     .trim()
     .replace(/\/+$/, '');
-  const local = isLocalApi(apiUrl);
+  const localFrontend = isLocalUrl(baseUrl);
+  const localApi = isLocalUrl(apiUrl);
 
+  process.env.PW_BASE_URL = baseUrl;
   process.env.PW_API_URL = apiUrl;
-  process.env.PW_ENVIRONMENT = local ? 'local' : 'hostinger';
+  process.env.PW_ENVIRONMENT = localFrontend && localApi
+    ? 'local'
+    : (!localFrontend && !localApi ? 'hostinger' : 'mixto');
 
-  // Una sola PW_API_URL controla también a qué API apunta el frontend React local.
+  // Si el frontend se ejecuta local, React debe apuntar exactamente a la API
+  // elegida (local o Hostinger). En un frontend ya desplegado esta variable no
+  // cambia el bundle remoto y por eso queda sólo como referencia del runner.
   process.env.REACT_APP_API_URL = apiUrl;
 
-  // El frontend siempre se ejecuta local. El backend PHP solo se levanta para API local.
-  process.env.PW_START_FRONTEND = 'true';
-  process.env.PW_START_BACKEND = local ? 'true' : 'false';
+  const requestedFrontendStart = explicitBoolean('PW_START_FRONTEND');
+  const requestedBackendStart = explicitBoolean('PW_START_BACKEND');
+  process.env.PW_START_FRONTEND = String(
+    requestedFrontendStart === null ? localFrontend : requestedFrontendStart,
+  );
+  process.env.PW_START_BACKEND = String(
+    requestedBackendStart === null ? localApi : requestedBackendStart,
+  );
 
-  if (local) {
+  if (localApi) {
     process.env.PW_USER = String(process.env.PW_LOCAL_USER || process.env.PW_USER || '').trim();
     process.env.PW_PASSWORD = String(
       process.env.PW_LOCAL_PASSWORD || process.env.PW_PASSWORD || '',
@@ -65,14 +92,18 @@ function resolveEnvironment() {
       process.env.PW_HOSTINGER_PASSWORD || process.env.PW_PASSWORD || '',
     );
 
-    // Nunca permitir limpieza SQL directa al apuntar a producción.
+    // Nunca se permite una limpieza SQL directa al apuntar a una API remota.
+    // La limpieza E2E válida pasa exclusivamente por e2e_cleanup y prefijos PW.
     process.env.PW_ALLOW_DB_CLEANUP = 'false';
   }
 
   return {
     apiUrl,
+    baseUrl,
     environment: process.env.PW_ENVIRONMENT,
-    isLocal: local,
+    isLocal: localFrontend && localApi,
+    isLocalApi: localApi,
+    isLocalFrontend: localFrontend,
   };
 }
 
@@ -99,6 +130,7 @@ function envBoolean(name, fallback = false) {
 module.exports = {
   envBoolean,
   isLocalApi,
+  isLocalUrl,
   loadTestEnv,
   parseEnv,
   resolveEnvironment,

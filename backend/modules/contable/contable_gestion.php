@@ -39,15 +39,17 @@ trait ContableGestion
                     api_error('La opción no pertenece a la lista seleccionada.', 'TIPO_OPCION_INVALIDO', 409);
                 }
 
+                $oldName = (string)$before['nombre'];
                 $statement = $db->prepare(
                     'UPDATE contable_opciones
                      SET nombre = ?
                      WHERE id_opcion = ?'
                 );
                 $statement->execute([$name, $id]);
+                $renamedUses = self::renombrarOpcionContable($db, $type, $oldName, $name);
                 $savedId = $id;
                 $action = 'EDITAR_OPCION';
-                $description = "Se modificó la opción contable {$name}.";
+                $description = "Se modificó la opción contable {$oldName} a {$name}; {$renamedUses} movimientos conservaron su clasificación.";
             }
 
             $after = self::opcionConfiguracion($db, $savedId);
@@ -125,11 +127,14 @@ trait ContableGestion
             if (!$before) api_error('La opción que intentás eliminar no existe.', 'OPCION_CONTABLE_NO_ENCONTRADA', 404);
 
             $usageCount = self::cantidadUsosOpcion($db, (string)$before['tipo'], (string)$before['nombre']);
-            $unlinkedCount = self::desvincularOpcionContable(
-                $db,
-                (string)$before['tipo'],
-                (string)$before['nombre']
-            );
+            if ($usageCount > 0) {
+                api_error(
+                    'La opción está utilizada por movimientos contables y no puede eliminarse. Podés darla de baja para conservar el historial.',
+                    'OPCION_CONTABLE_EN_USO',
+                    409,
+                    ['cantidad_usos' => $usageCount]
+                );
+            }
 
             $db->prepare('DELETE FROM contable_opciones WHERE id_opcion = ?')->execute([$id]);
             audit_change(
@@ -139,7 +144,7 @@ trait ContableGestion
                 'ELIMINAR_OPCION',
                 'contable_opciones',
                 $id,
-                "Se eliminó definitivamente la opción contable {$before['nombre']} y {$unlinkedCount} movimientos asociados quedaron sin esa información.",
+                "Se eliminó definitivamente la opción contable {$before['nombre']} sin alterar movimientos históricos.",
                 $before,
                 null
             );
@@ -148,13 +153,14 @@ trait ContableGestion
                 'id_opcion' => $id,
                 'eliminado_definitivo' => true,
                 'cantidad_usos' => $usageCount,
-                'registros_desvinculados' => $unlinkedCount,
+                'registros_desvinculados' => 0,
             ];
         });
     }
 
-    protected static function desvincularOpcionContable(PDO $db, string $type, string $name): int
+    protected static function renombrarOpcionContable(PDO $db, string $type, string $oldName, string $newName): int
     {
+        if ($oldName === $newName) return 0;
         $targets = match ($type) {
             'PROVEEDOR' => [
                 ['contable_ingresos', 'proveedor'],
@@ -169,8 +175,8 @@ trait ContableGestion
 
         $updated = 0;
         foreach ($targets as [$table, $column]) {
-            $statement = $db->prepare("UPDATE {$table} SET {$column} = NULL WHERE {$column} = ?");
-            $statement->execute([$name]);
+            $statement = $db->prepare("UPDATE {$table} SET {$column} = ? WHERE {$column} = ?");
+            $statement->execute([$newName, $oldName]);
             $updated += $statement->rowCount();
         }
         return $updated;

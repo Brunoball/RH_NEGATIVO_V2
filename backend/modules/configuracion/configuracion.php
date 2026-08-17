@@ -15,7 +15,7 @@ final class Configuracion
 
     public static function obtener(): never
     {
-        $auth = auth_context();
+        $auth = require_admin();
         api_success(self::obtenerDatos($auth['db']));
     }
 

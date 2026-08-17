@@ -32,6 +32,17 @@ module.exports = async function globalSetup() {
   let realSession = null;
 
   try {
+    // Antes de crear o limpiar cualquier dato verificamos que la URL realmente
+    // sea la API de RH Negativo. Esto evita ejecutar la suite por accidente
+    // contra otro sistema al cambiar PW_API_URL (especialmente en Hostinger).
+    const health = await apiResult(api, 'health', { session: null });
+    if (!health.ok || health.body?.servicio !== 'rh-negativo-api') {
+      throw new Error(
+        `La API configurada no se identificó como RH Negativo (${process.env.PW_API_URL}). ` +
+          `health respondió servicio=${String(health.body?.servicio || 'desconocido')}.`,
+      );
+    }
+
     realSession = await createApiSession(api, {
       username: realUsername,
       password: realPassword,

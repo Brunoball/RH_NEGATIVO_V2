@@ -22,6 +22,9 @@ final class Router
         if ($method !== $route['method']) json_response(['exito' => false, 'mensaje' => 'Método HTTP no permitido.'], 405);
         if ($route['protected']) {
             $auth = require_auth();
+            if ($method !== 'GET' && $action !== 'auth_logout' && ($auth['rol'] ?? '') !== 'admin') {
+                api_error('Tu usuario es de solo lectura.', 'FORBIDDEN_ROLE', 403);
+            }
             if ($method !== 'GET' && ($auth['auth_source'] ?? '') === 'cookie') {
                 api_error(
                     'Por seguridad, actualizá la página e iniciá sesión nuevamente antes de modificar información.',

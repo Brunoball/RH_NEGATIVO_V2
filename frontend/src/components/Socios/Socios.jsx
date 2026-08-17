@@ -307,6 +307,21 @@ function contactLabel(value) {
   return "SIN GESTIÓN";
 }
 
+function contactToneClass(value) {
+  const key = String(value || "").toUpperCase();
+  if (key === "CONTACTADO") return "is-contactado";
+  if (key === "PENDIENTE") return "is-pendiente";
+  if (key === "NO_CONTACTADO") return "is-no-contactado";
+  return "is-sin-gestion";
+}
+
+const CONTACT_LEGEND = [
+  { value: "CONTACTADO", label: "Contactado" },
+  { value: "PENDIENTE", label: "Pendiente" },
+  { value: "NO_CONTACTADO", label: "No contactado" },
+  { value: "SIN_GESTION", label: "Sin gestión" },
+];
+
 function debtLabel(months) {
   const count = Number(months || 0);
   if (count <= 0) return "AL DÍA";
@@ -664,9 +679,10 @@ function BirthdayContactCard({ items, onView, onClose, writable }) {
 const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState, onDelete }) {
   return items.map((item) => (
     <div
-      className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid"
+      className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid socios-contactRow ${contactToneClass(item.ultimo_contacto_estado)}`}
       role="row"
       key={item.id_socio}
+      data-contact-status={String(item.ultimo_contacto_estado || "SIN_GESTION").toUpperCase()}
     >
       <div className="mov-gridCell is-strong is-center socios-idCell">{item.id_socio}</div>
       <div className="mov-gridCell entity-main-cell">
@@ -1395,6 +1411,21 @@ export default function Socios() {
           ) : null}
           <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
         </GlobalDivTable>
+
+        <div className="socios-contactLegend" aria-label="Referencia de último contacto">
+          <span className="socios-contactLegend__title">Último contacto</span>
+          <div className="socios-contactLegend__items">
+            {CONTACT_LEGEND.map((item) => (
+              <span
+                className={`socios-contactLegend__item ${contactToneClass(item.value)}`}
+                key={item.value}
+              >
+                <i aria-hidden="true" />
+                {item.label}
+              </span>
+            ))}
+          </div>
+        </div>
 
         {Number(paginacion?.total || 0) > 0 || activeAdvancedFilters.length ? (
           <footer className="socios-pagination">

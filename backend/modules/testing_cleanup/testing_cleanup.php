@@ -12,6 +12,8 @@ declare(strict_types=1);
  * - descuentos familiares: descripcion PW E2E DESC *
  * - logins inválidos:      usuario pw_e2e_*
  * - login de preparación:  User-Agent PW-RH-E2E-SETUP/*
+ * - contabilidad opciones:   PW E2E CT *
+ * - contabilidad movimientos: detalle PW E2E CONTABLE * / comprobante PW-E2E-*
  *
  * Nunca borra por fechas, IDs altos, dominios genéricos ni coincidencias amplias.
  */
@@ -122,12 +124,17 @@ final class TestingCleanup
             'grupos_sanguineos' => 0,
             'medios_pago' => 0,
             'periodos' => 0,
+            'contable_ingresos' => 0,
+            'contable_egresos' => 0,
+            'contable_opciones' => 0,
+            'contable_archivos' => 0,
             'sesiones' => 0,
             'login_auditoria' => 0,
             'auditoria' => 0,
             'usuarios' => 0,
         ];
         $skipped = [];
+        $contableFiles = [];
 
         $db->beginTransaction();
         try {
@@ -185,6 +192,45 @@ final class TestingCleanup
                  WHERE id_periodo > 7 AND nombre LIKE 'PW E2E PER %'"
             );
 
+            // Contabilidad usa marcadores todavía más específicos para que la
+            // limpieza pueda ejecutarse también contra Hostinger sin tocar datos reales.
+            $testContableOptions = self::tableExists($db, 'contable_opciones')
+                ? self::ids(
+                    $db,
+                    "SELECT id_opcion FROM contable_opciones WHERE nombre LIKE 'PW E2E CT %'"
+                )
+                : [];
+            $testContableIncome = self::tableExists($db, 'contable_ingresos')
+                ? self::ids(
+                    $db,
+                    "SELECT id_ingreso FROM contable_ingresos
+                     WHERE proveedor LIKE 'PW E2E CT %'
+                        OR categoria LIKE 'PW E2E CT %'
+                        OR concepto LIKE 'PW E2E CT %'
+                        OR detalle LIKE 'PW E2E CONTABLE %'"
+                )
+                : [];
+            $testContableExpenses = [];
+            if (self::tableExists($db, 'contable_egresos')) {
+                $statement = $db->prepare(
+                    "SELECT id_egreso, archivo_path FROM contable_egresos
+                     WHERE proveedor LIKE 'PW E2E CT %'
+                        OR categoria LIKE 'PW E2E CT %'
+                        OR concepto LIKE 'PW E2E CT %'
+                        OR detalle LIKE 'PW E2E CONTABLE %'
+                        OR numero_comprobante LIKE 'PW-E2E-%'"
+                );
+                $statement->execute();
+                foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $id = (int)($row['id_egreso'] ?? 0);
+                    if ($id > 0) $testContableExpenses[] = $id;
+                    $file = trim((string)($row['archivo_path'] ?? ''));
+                    if ($file !== '') $contableFiles[] = $file;
+                }
+                $testContableExpenses = array_values(array_unique($testContableExpenses));
+                $contableFiles = array_values(array_unique($contableFiles));
+            }
+
             // Guardamos las referencias de auditoría ANTES de borrar las entidades.
             // También se elimina toda auditoría generada por el usuario temporal E2E,
             // lo que cubre incluso entidades que el propio test ya eliminó definitivamente.
@@ -199,6 +245,9 @@ final class TestingCleanup
                 'grupo_sanguineo' => $testBloodGroups,
                 'medios_pago' => $testPaymentMethods,
                 'periodo' => $testPeriods,
+                'contable_opciones' => $testContableOptions,
+                'contable_ingresos' => $testContableIncome,
+                'contable_egresos' => $testContableExpenses,
                 'sis_usuarios' => $testUsers,
             ];
 
@@ -320,7 +369,35 @@ final class TestingCleanup
                 );
             }
 
-            // 5) Catálogos auxiliares creados por Configuración E2E. Una corrida
+            // 5) Movimientos y opciones contables E2E. Los movimientos se
+            // eliminan primero; las opciones guardan nombres históricos por texto y
+            // no se usa ningún patrón amplio ni fecha para decidir qué borrar.
+            if (self::tableExists($db, 'contable_ingresos')) {
+                $counts['contable_ingresos'] += self::deleteByIds(
+                    $db,
+                    'contable_ingresos',
+                    'id_ingreso',
+                    $testContableIncome
+                );
+            }
+            if (self::tableExists($db, 'contable_egresos')) {
+                $counts['contable_egresos'] += self::deleteByIds(
+                    $db,
+                    'contable_egresos',
+                    'id_egreso',
+                    $testContableExpenses
+                );
+            }
+            if (self::tableExists($db, 'contable_opciones')) {
+                $counts['contable_opciones'] += self::deleteByIds(
+                    $db,
+                    'contable_opciones',
+                    'id_opcion',
+                    $testContableOptions
+                );
+            }
+
+            // 6) Catálogos auxiliares creados por Configuración E2E. Una corrida
             // interrumpida no debe dejar opciones activas que contaminen Cuotas o
             // futuros tests. Solo se borran IDs con prefijo Playwright y sin usos.
             $safeCollectors = self::withoutReferences($db, $testCollectors, [
@@ -337,6 +414,8 @@ final class TestingCleanup
             $safePaymentMethods = self::withoutReferences($db, $testPaymentMethods, [
                 ['pagos', 'id_medio_pago'],
                 ['pagos_inscripcion', 'id_medio_pago'],
+                ['contable_ingresos', 'id_medio_pago'],
+                ['contable_egresos', 'id_medio_pago'],
             ]);
             $safePeriods = self::withoutReferences($db, $testPeriods, [
                 ['pagos', 'id_periodo'],
@@ -358,7 +437,7 @@ final class TestingCleanup
                 if ($blockedIds !== []) $skipped[$key . '_en_uso'] = $blockedIds;
             }
 
-            // 6) Sesiones, auditoría de login y usuario administrador temporal.
+            // 7) Sesiones, auditoría de login y usuario administrador temporal.
             // Se borra al final para que el request de cleanup ya haya sido autenticado.
             $counts['sesiones'] += self::deleteByIds($db, 'sis_sesiones', 'idUsuario', $testUsers);
             $counts['login_auditoria'] += self::deleteByIds(
@@ -379,6 +458,7 @@ final class TestingCleanup
             $counts['usuarios'] += self::deleteByIds($db, 'sis_usuarios', 'idUsuario', $testUsers);
 
             $db->commit();
+            $counts['contable_archivos'] += self::deleteContableFiles($contableFiles);
         } catch (Throwable $error) {
             if ($db->inTransaction()) $db->rollBack();
             throw $error;
@@ -398,8 +478,35 @@ final class TestingCleanup
                 'grupos_sanguineos' => 'PWE2E-* / PWE2E+*',
                 'medios_pago' => 'PW E2E MED *',
                 'periodos' => 'id > 7 y PW E2E PER *',
+                'contable_opciones' => 'PW E2E CT *',
+                'contable_movimientos' => 'PW E2E CT * / PW E2E CONTABLE * / PW-E2E-*',
             ],
         ];
+    }
+
+    private static function deleteContableFiles(array $paths): int
+    {
+        if ($paths === []) return 0;
+
+        $root = dirname(__DIR__, 2) . '/uploads/contable';
+        $rootReal = realpath($root);
+        if ($rootReal === false) return 0;
+
+        $deleted = 0;
+        foreach (array_values(array_unique($paths)) as $path) {
+            $clean = str_replace('\\', '/', trim((string)$path));
+            $clean = ltrim($clean, '/');
+            if ($clean === '' || str_contains($clean, '..')) continue;
+
+            $candidate = $rootReal . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $clean);
+            $fileReal = realpath($candidate);
+            if ($fileReal === false || !is_file($fileReal)) continue;
+
+            $prefix = rtrim($rootReal, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            if (!str_starts_with($fileReal, $prefix)) continue;
+            if (@unlink($fileReal)) $deleted++;
+        }
+        return $deleted;
     }
 
     private static function ids(PDO $db, string $sql, array $params = []): array

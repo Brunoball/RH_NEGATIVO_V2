@@ -4,12 +4,14 @@ declare(strict_types=1);
 require_once __DIR__ . '/contable_schema.php';
 require_once __DIR__ . '/contable_soporte.php';
 require_once __DIR__ . '/contable_consultas.php';
+require_once __DIR__ . '/contable_socios.php';
 require_once __DIR__ . '/contable_gestion.php';
 
 final class Contable
 {
     use ContableSoporte;
     use ContableConsultas;
+    use ContableSocios;
     use ContableGestion;
 
     public static function resumen(): never
@@ -30,7 +32,7 @@ final class Contable
 
     public static function opcionesConfiguracion(): never
     {
-        $auth = auth_context();
+        $auth = require_admin();
         ensure_contable_schema($auth['db']);
         api_success(self::opcionesConfiguracionDatos($auth['db']));
     }
@@ -39,7 +41,14 @@ final class Contable
     {
         $auth = auth_context();
         ensure_contable_schema($auth['db']);
-        api_success(self::listarIngresosSociosDatos($auth['db'], $_GET));
+        api_success(self::ingresosSociosDatos($auth['db'], $_GET));
+    }
+
+    public static function balance(): never
+    {
+        $auth = auth_context();
+        ensure_contable_schema($auth['db']);
+        api_success(['balance' => self::balanceDatos($auth['db'], $_GET)]);
     }
 
     public static function listarIngresos(): never

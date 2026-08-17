@@ -47,6 +47,7 @@ import {
 } from "../Global/Formularios/inputSanitizers";
 import { canWrite } from "../_shared/auth/session";
 import { contableApi } from "./api/contableApi";
+import IngresosSociosView from "./IngresosSociosView";
 import "./Contable.css";
 
 const now = new Date();
@@ -319,7 +320,8 @@ function SummaryView({ summary, loading, mode }) {
   const income = Number(visibleTotals.ingresos || 0);
   const expenses = Number(visibleTotals.egresos || 0);
   const result = Number(visibleTotals.resultado || income - expenses);
-  const partnerIncome = Number(visibleTotals.ingresos_socios || 0);
+  const feeIncome = Number(visibleTotals.ingresos_cuotas || 0);
+  const registrationIncome = Number(visibleTotals.ingresos_inscripciones || 0);
   const otherIncome = Number(visibleTotals.otros_ingresos || 0);
   const sum = income + expenses;
   const incomeDegrees = sum > 0 ? (income / sum) * 360 : 0;
@@ -394,7 +396,7 @@ function SummaryView({ summary, loading, mode }) {
             {
               key: "income",
               label: "Ingresos",
-              detail: `Cuotas ${money(partnerIncome)} · Otros ${money(otherIncome)}`,
+              detail: `Cuotas ${money(feeIncome)} · Inscripciones ${money(registrationIncome)} · Otros ${money(otherIncome)}`,
               value: money(income),
             },
             {
@@ -570,7 +572,9 @@ export default function ContableModule({ view = "summary" }) {
   const [summaryMode, setSummaryMode] = useState("annual");
   const [incomeTab, setIncomeTab] = useState("partners");
   const isFeeIncomeTab = incomeTab === "partners";
-  const feeEntityType = "PERSONA";
+  const [feePeriod, setFeePeriod] = useState(String(Math.ceil(CURRENT_MONTH / 2)));
+  const [feeDetailSearch, setFeeDetailSearch] = useState("");
+  const [feeDetailPage, setFeeDetailPage] = useState(1);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [mean, setMean] = useState("");
@@ -616,6 +620,8 @@ export default function ContableModule({ view = "summary" }) {
     setCategory("");
     setMean("");
     setSearch("");
+    setFeeDetailSearch("");
+    setFeeDetailPage(1);
     setPage(1);
     // Evita mostrar datos de la pestaña anterior mientras se carga la nueva.
     // También evita mezclar filas de socios y otros ingresos al cambiar de pestaña.
@@ -625,7 +631,11 @@ export default function ContableModule({ view = "summary" }) {
   useEffect(() => {
     pendingTableScrollRef.current = null;
     setPage(1);
-  }, [year, month, search, category, mean]);
+  }, [year, month, feePeriod, search, category, mean]);
+
+  useEffect(() => {
+    setFeeDetailPage(1);
+  }, [year, feePeriod, feeDetailSearch]);
 
   const loadData = useCallback(async () => {
     const currentRequest = ++requestId.current;
@@ -644,19 +654,26 @@ export default function ContableModule({ view = "summary" }) {
           medio: mean,
         };
         let response;
-        if (view === "income" && isFeeIncomeTab)
+        if (view === "income" && isFeeIncomeTab) {
           response = await contableApi.ingresosSocios({
-            ...filters,
-            tipo: feeEntityType,
+            anio: year,
+            periodo: feePeriod,
+            buscar: feeDetailSearch,
+            pagina: feeDetailPage,
           });
-        else if (view === "income")
+        } else if (view === "income") {
           response = await contableApi.ingresos(filters);
-        else response = await contableApi.egresos(filters);
-        if (requestId.current === currentRequest)
-          setData({
-            items: response.items || [],
-            resumen: response.resumen || {},
-          });
+        } else {
+          response = await contableApi.egresos(filters);
+        }
+        if (requestId.current === currentRequest) {
+          if (view === "income" && isFeeIncomeTab) setData(response || {});
+          else
+            setData({
+              items: response.items || [],
+              resumen: response.resumen || {},
+            });
+        }
       }
     } catch (error) {
       if (requestId.current === currentRequest)
@@ -668,9 +685,11 @@ export default function ContableModule({ view = "summary" }) {
     view,
     incomeTab,
     isFeeIncomeTab,
-    feeEntityType,
     year,
     month,
+    feePeriod,
+    feeDetailSearch,
+    feeDetailPage,
     search,
     category,
     mean,
@@ -682,12 +701,13 @@ export default function ContableModule({ view = "summary" }) {
   }, [loadData]);
 
   useEffect(() => {
-    const timer = window.setTimeout(loadData, search ? 250 : 0);
+    const activeSearch = view === "income" && isFeeIncomeTab ? feeDetailSearch : search;
+    const timer = window.setTimeout(loadData, activeSearch ? 250 : 0);
     return () => {
       window.clearTimeout(timer);
       requestId.current += 1;
     };
-  }, [loadData, search]);
+  }, [loadData, search, feeDetailSearch, view, isFeeIncomeTab]);
 
   useEffect(() => {
     if (loading || pendingTableScrollRef.current == null) return undefined;
@@ -1098,6 +1118,19 @@ export default function ContableModule({ view = "summary" }) {
       })),
     },
   ];
+  const feePeriodFilter = {
+    key: "periodo-cuotas",
+    label: "Período",
+    type: "select",
+    className: "contable-filter--period",
+    value: feePeriod,
+    onChange: setFeePeriod,
+    includeEmptyOption: false,
+    options: [1, 2, 3, 4, 5, 6, 7].map((item) => ({
+      value: String(item),
+      label: item === 7 ? "CONTADO ANUAL" : `${item * 2 - 1} Y ${item * 2}`,
+    })),
+  };
   const detailFilters = [
     {
       key: "buscar",
@@ -1165,7 +1198,9 @@ export default function ContableModule({ view = "summary" }) {
                 { value: "manual", label: "Otros ingresos" },
               ],
             },
-            ...detailFilters,
+            ...(isFeeIncomeTab
+              ? [periodFilters[0], feePeriodFilter]
+              : detailFilters),
           ]
         : detailFilters;
   const canCreateMovement =
@@ -1282,7 +1317,7 @@ export default function ContableModule({ view = "summary" }) {
               <FontAwesomeIcon icon={faList} />
               Detalle
             </button>
-          ) : !compactActions ? (
+          ) : view === "income" && isFeeIncomeTab ? null : !compactActions ? (
             <BotonExportarGlobal
               className="contable-export-top"
               onClick={() => setExportOpen(true)}
@@ -1304,6 +1339,15 @@ export default function ContableModule({ view = "summary" }) {
 
         {view === "summary" ? (
           <SummaryView summary={summary} loading={loading} mode={summaryMode} />
+        ) : view === "income" && isFeeIncomeTab ? (
+          <IngresosSociosView
+            data={data}
+            loading={loading}
+            detailSearch={feeDetailSearch}
+            onDetailSearchChange={setFeeDetailSearch}
+            onDetailPageChange={setFeeDetailPage}
+            onFeedback={setFeedback}
+          />
         ) : (
           <div className="contable-table">
             <GlobalDivTable

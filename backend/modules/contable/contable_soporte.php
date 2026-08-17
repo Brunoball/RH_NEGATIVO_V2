@@ -33,6 +33,17 @@ trait ContableSoporte
         return (int)$month;
     }
 
+    protected static function filtroPeriodo(mixed $value): int
+    {
+        $text = trim((string)$value);
+        if ($text === '') return (int)ceil((int)date('n') / 2);
+        $period = filter_var($text, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 7],
+        ]);
+        if ($period === false) api_error('El período seleccionado no es válido.', 'FILTRO_PERIODO_INVALIDO');
+        return (int)$period;
+    }
+
     protected static function tipoOpcion(mixed $value): string
     {
         $type = clean_text($value, 40);
@@ -46,13 +57,11 @@ trait ContableSoporte
     {
         $statement = $db->prepare(
             'SELECT id_opcion, tipo, nombre, activo, creado_en, actualizado_en
-             FROM contable_opciones
-             WHERE id_opcion = ?
-             LIMIT 1'
+             FROM contable_opciones WHERE id_opcion = ? LIMIT 1'
         );
         $statement->execute([$id]);
         $row = $statement->fetch();
-        if (!$row || (string)$row['tipo'] !== $expectedType) {
+        if (!$row || (string)$row['tipo'] !== $expectedType || !(bool)$row['activo']) {
             api_error('Una de las opciones seleccionadas ya no está disponible.', 'OPCION_CONTABLE_INVALIDA', 409);
         }
         return [
@@ -68,18 +77,12 @@ trait ContableSoporte
     protected static function medioPago(PDO $db, int $id): array
     {
         $statement = $db->prepare(
-            'SELECT id_medio_pago, nombre
-             FROM medios_pago
-             WHERE id_medio_pago = ? AND activo = 1
-             LIMIT 1'
+            'SELECT id_medio_pago, nombre FROM medios_pago WHERE id_medio_pago = ? AND activo = 1 LIMIT 1'
         );
         $statement->execute([$id]);
         $row = $statement->fetch();
         if (!$row) api_error('El medio de pago seleccionado no está disponible.', 'MEDIO_PAGO_INVALIDO', 409);
-        return [
-            'id_medio_pago' => (int)$row['id_medio_pago'],
-            'nombre' => (string)$row['nombre'],
-        ];
+        return ['id_medio_pago' => (int)$row['id_medio_pago'], 'nombre' => (string)$row['nombre']];
     }
 
     protected static function textoBusqueda(mixed $value): string
@@ -104,6 +107,53 @@ trait ContableSoporte
         return [$start->format('Y-m-d'), $start->modify('+1 month')->format('Y-m-d')];
     }
 
+    protected static function rangoPeriodo(int $year, int $periodId): array
+    {
+        if ($periodId === 7) {
+            return self::rangoAnio($year);
+        }
+        if ($periodId < 1 || $periodId > 6) {
+            api_error('El período seleccionado no es válido.', 'FILTRO_PERIODO_INVALIDO');
+        }
+        $startMonth = (($periodId - 1) * 2) + 1;
+        $start = new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $startMonth));
+        return [$start->format('Y-m-d'), $start->modify('+2 months')->format('Y-m-d')];
+    }
+
+    protected static function etiquetaPeriodo(int $periodId, int $year, bool $withWord = false): string
+    {
+        if ($periodId === 7) return 'CONTADO ANUAL ' . $year;
+        $start = (($periodId - 1) * 2) + 1;
+        $end = $start + 1;
+        $prefix = $withWord ? 'PERÍODO ' : '';
+        return $prefix . $start . '/' . $end . ' / ' . $year;
+    }
+
+    protected static function mesesPeriodo(int $periodId): string
+    {
+        return [
+            1 => 'ENERO - FEBRERO',
+            2 => 'MARZO - ABRIL',
+            3 => 'MAYO - JUNIO',
+            4 => 'JULIO - AGOSTO',
+            5 => 'SEPTIEMBRE - OCTUBRE',
+            6 => 'NOVIEMBRE - DICIEMBRE',
+            7 => 'TODO EL AÑO',
+        ][$periodId] ?? '';
+    }
+
+    protected static function periodoDeFecha(string $date): array
+    {
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if (!$parsed || $parsed->format('Y-m-d') !== $date) {
+            api_error('La fecha indicada no es válida.', 'FECHA_INVALIDA');
+        }
+        $month = (int)$parsed->format('n');
+        $year = (int)$parsed->format('Y');
+        $period = (int)ceil($month / 2);
+        return ['anio' => $year, 'id_periodo' => $period, 'etiqueta' => self::etiquetaPeriodo($period, $year)];
+    }
+
     protected static function centavos(mixed $value): int
     {
         return (int)round((float)$value * 100, 0, PHP_ROUND_HALF_UP);
@@ -123,33 +173,61 @@ trait ContableSoporte
         ][$month] ?? '';
     }
 
+    /** SQL para recuperar el importe real; sólo estima si un histórico migrado no tiene monto. */
     protected static function importePagoSql(
         string $paymentAlias = 'p',
         string $partnerAlias = 's',
         string $categoryAlias = 'c'
     ): string {
+        $periodDate = "STR_TO_DATE(CONCAT({$paymentAlias}.anio_aplicado, '-', CASE {$paymentAlias}.id_periodo WHEN 1 THEN '01' WHEN 2 THEN '03' WHEN 3 THEN '05' WHEN 4 THEN '07' WHEN 5 THEN '09' WHEN 6 THEN '11' ELSE '01' END, '-01'), '%Y-%m-%d')";
+        $type = "CASE WHEN {$paymentAlias}.id_periodo = 7 THEN 'anual' ELSE 'mensual' END";
+        $current = "CASE WHEN {$paymentAlias}.id_periodo = 7 THEN {$categoryAlias}.monto_anual ELSE {$categoryAlias}.monto_mensual END";
         return "COALESCE(
             {$paymentAlias}.monto,
-            (
-                SELECT hp.monto_nuevo
-                FROM categorias_historial_precios hp
-                WHERE hp.id_categoria = {$partnerAlias}.id_categoria
-                  AND DATE(hp.fecha_cambio) <= LAST_DAY(
-                      STR_TO_DATE(CONCAT({$paymentAlias}.anio, '-', LPAD({$paymentAlias}.mes, 2, '0'), '-01'), '%Y-%m-%d')
-                  )
-                ORDER BY hp.fecha_cambio DESC, hp.id_historial_precio DESC
-                LIMIT 1
-            ),
-            (
-                SELECT hp0.monto_anterior
-                FROM categorias_historial_precios hp0
-                WHERE hp0.id_categoria = {$partnerAlias}.id_categoria
-                ORDER BY hp0.fecha_cambio ASC, hp0.id_historial_precio ASC
-                LIMIT 1
-            ),
-            {$categoryAlias}.monto_cuota,
-            0
+            (SELECT ph.precio_nuevo FROM precios_historicos ph
+             WHERE ph.id_categoria = {$partnerAlias}.id_categoria
+               AND ph.tipo = {$type}
+               AND ph.fecha_cambio <= {$periodDate}
+             ORDER BY ph.fecha_cambio DESC, ph.id_historial DESC LIMIT 1),
+            (SELECT ph0.precio_viejo FROM precios_historicos ph0
+             WHERE ph0.id_categoria = {$partnerAlias}.id_categoria
+               AND ph0.tipo = {$type}
+             ORDER BY ph0.fecha_cambio ASC, ph0.id_historial ASC LIMIT 1),
+            {$current}, 0
         )";
+    }
+
+    protected static function precioHistorico(PDO $db, int $categoryId, string $type, string $date): float
+    {
+        static $cache = [];
+        $key = spl_object_id($db) . '|' . $categoryId . '|' . $type . '|' . $date;
+        if (array_key_exists($key, $cache)) return $cache[$key];
+
+        $statement = $db->prepare(
+            'SELECT precio_nuevo
+             FROM precios_historicos
+             WHERE id_categoria = ? AND tipo = ? AND fecha_cambio <= ?
+             ORDER BY fecha_cambio DESC, id_historial DESC LIMIT 1'
+        );
+        $statement->execute([$categoryId, $type, $date]);
+        $value = $statement->fetchColumn();
+        if ($value !== false) return $cache[$key] = round((float)$value, 2);
+
+        $statement = $db->prepare(
+            'SELECT precio_viejo
+             FROM precios_historicos
+             WHERE id_categoria = ? AND tipo = ?
+             ORDER BY fecha_cambio ASC, id_historial ASC LIMIT 1'
+        );
+        $statement->execute([$categoryId, $type]);
+        $value = $statement->fetchColumn();
+        if ($value !== false) return $cache[$key] = round((float)$value, 2);
+
+        $field = $type === 'anual' ? 'monto_anual' : 'monto_mensual';
+        $statement = $db->prepare("SELECT {$field} FROM categoria WHERE id_categoria = ? LIMIT 1");
+        $statement->execute([$categoryId]);
+        $value = $statement->fetchColumn();
+        return $cache[$key] = round((float)($value === false ? 0 : $value), 2);
     }
 
     protected static function opcionConfiguracion(PDO $db, int $id, bool $lock = false): ?array
@@ -157,20 +235,15 @@ trait ContableSoporte
         $suffix = $lock ? ' FOR UPDATE' : '';
         $statement = $db->prepare(
             'SELECT id_opcion, tipo, nombre, activo, creado_en, actualizado_en
-             FROM contable_opciones
-             WHERE id_opcion = ?' . $suffix
+             FROM contable_opciones WHERE id_opcion = ?' . $suffix
         );
         $statement->execute([$id]);
         $row = $statement->fetch();
         if (!$row) return null;
-
         return [
-            'id_opcion' => (int)$row['id_opcion'],
-            'tipo' => (string)$row['tipo'],
-            'nombre' => (string)$row['nombre'],
-            'activo' => (bool)$row['activo'],
-            'creado_en' => (string)$row['creado_en'],
-            'actualizado_en' => (string)$row['actualizado_en'],
+            'id_opcion' => (int)$row['id_opcion'], 'tipo' => (string)$row['tipo'],
+            'nombre' => (string)$row['nombre'], 'activo' => (bool)$row['activo'],
+            'creado_en' => (string)$row['creado_en'], 'actualizado_en' => (string)$row['actualizado_en'],
         ];
     }
 
@@ -178,10 +251,8 @@ trait ContableSoporte
     {
         $rows = $db->query(
             'SELECT id_opcion, tipo, nombre, activo, creado_en, actualizado_en
-             FROM contable_opciones
-             ORDER BY tipo ASC, activo DESC, nombre ASC, id_opcion ASC'
+             FROM contable_opciones ORDER BY tipo ASC, activo DESC, nombre ASC, id_opcion ASC'
         )->fetchAll();
-
         $lists = [];
         $summary = [];
         foreach (self::TIPOS_OPCION as $type) {
@@ -190,53 +261,36 @@ trait ContableSoporte
             $summary[$type . '_activos'] = 0;
             $summary[$type . '_inactivos'] = 0;
         }
-
         foreach ($rows as $row) {
             $type = (string)$row['tipo'];
             $active = (bool)$row['activo'];
             $usageCount = self::cantidadUsosOpcion($db, $type, (string)$row['nombre']);
             $lists[$type][] = [
-                'id_opcion' => (int)$row['id_opcion'],
-                'tipo' => $type,
-                'nombre' => (string)$row['nombre'],
-                'activo' => $active,
-                'cantidad_usos' => $usageCount,
-                'creado_en' => (string)$row['creado_en'],
+                'id_opcion' => (int)$row['id_opcion'], 'tipo' => $type,
+                'nombre' => (string)$row['nombre'], 'activo' => $active,
+                'cantidad_usos' => $usageCount, 'creado_en' => (string)$row['creado_en'],
                 'actualizado_en' => (string)$row['actualizado_en'],
             ];
             $summary[$type . '_total']++;
             $summary[$type . ($active ? '_activos' : '_inactivos')]++;
         }
-
         return ['listas' => $lists, 'resumen' => $summary];
     }
 
     protected static function cantidadUsosOpcion(PDO $db, string $type, string $name): int
     {
         $queries = match ($type) {
-            'PROVEEDOR' => [
-                ['SELECT COUNT(*) FROM contable_ingresos WHERE proveedor = ?', $name],
-                ['SELECT COUNT(*) FROM contable_egresos WHERE proveedor = ?', $name],
-            ],
-            'CATEGORIA_INGRESO' => [
-                ['SELECT COUNT(*) FROM contable_ingresos WHERE categoria = ?', $name],
-            ],
-            'CONCEPTO_INGRESO' => [
-                ['SELECT COUNT(*) FROM contable_ingresos WHERE concepto = ?', $name],
-            ],
-            'CATEGORIA_EGRESO' => [
-                ['SELECT COUNT(*) FROM contable_egresos WHERE categoria = ?', $name],
-            ],
-            'CONCEPTO_EGRESO' => [
-                ['SELECT COUNT(*) FROM contable_egresos WHERE concepto = ?', $name],
-            ],
+            'PROVEEDOR' => [['contable_ingresos','proveedor'], ['contable_egresos','proveedor']],
+            'CATEGORIA_INGRESO' => [['contable_ingresos','categoria']],
+            'CONCEPTO_INGRESO' => [['contable_ingresos','concepto']],
+            'CATEGORIA_EGRESO' => [['contable_egresos','categoria']],
+            'CONCEPTO_EGRESO' => [['contable_egresos','concepto']],
             default => [],
         };
-
         $total = 0;
-        foreach ($queries as [$sql, $value]) {
-            $statement = $db->prepare($sql);
-            $statement->execute([$value]);
+        foreach ($queries as [$table, $column]) {
+            $statement = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE {$column} = ?");
+            $statement->execute([$name]);
             $total += (int)$statement->fetchColumn();
         }
         return $total;
@@ -245,9 +299,7 @@ trait ContableSoporte
     protected static function catalogosBase(PDO $db): array
     {
         $options = $db->query(
-            'SELECT id_opcion, tipo, nombre, activo
-             FROM contable_opciones
-             ORDER BY tipo, activo DESC, nombre'
+            'SELECT id_opcion, tipo, nombre, activo FROM contable_opciones ORDER BY tipo, activo DESC, nombre'
         )->fetchAll();
         $grouped = [];
         foreach (self::TIPOS_OPCION as $type) $grouped[$type] = [];
@@ -260,37 +312,35 @@ trait ContableSoporte
         }
 
         $means = $db->query(
-            'SELECT id_medio_pago, nombre
-             FROM medios_pago
-             WHERE activo = 1
-             ORDER BY nombre'
+            'SELECT id_medio_pago, nombre FROM medios_pago WHERE activo = 1 ORDER BY nombre'
         )->fetchAll();
         foreach ($means as &$mean) $mean['id_medio_pago'] = (int)$mean['id_medio_pago'];
         unset($mean);
 
         $partnerCategories = $db->query(
-            'SELECT id_categoria, nombre, activo FROM categorias ORDER BY nombre'
+            'SELECT id_categoria, nombre, monto_mensual, monto_anual, activo FROM categoria ORDER BY nombre'
         )->fetchAll();
-        foreach ($partnerCategories as &$partnerCategory) {
-            $partnerCategory['id_categoria'] = (int)$partnerCategory['id_categoria'];
-            $partnerCategory['activo'] = (bool)$partnerCategory['activo'];
+        foreach ($partnerCategories as &$category) {
+            $category['id_categoria'] = (int)$category['id_categoria'];
+            $category['monto_mensual'] = number_format((float)$category['monto_mensual'], 2, '.', '');
+            $category['monto_anual'] = number_format((float)$category['monto_anual'], 2, '.', '');
+            $category['activo'] = (bool)$category['activo'];
         }
-        unset($partnerCategory);
-
-        // Los años de Contabilidad se determinan por la fecha real del
-        // movimiento de dinero, no por el período al que se imputó una cuota.
-        // Ej.: una cuota 2025 cobrada en 2026 es un ingreso contable de 2026.
-        $years = self::aniosContables($db);
+        unset($category);
 
         return [
             'opciones' => $grouped,
             'medios_pago' => $means,
             'categorias_socios' => $partnerCategories,
-            'anios' => array_values($years),
+            'anios' => self::aniosContables($db),
             'meses' => array_map(static fn(int $month): array => [
-                'numero' => $month,
-                'nombre' => self::nombreMes($month),
+                'numero' => $month, 'nombre' => self::nombreMes($month),
             ], range(1, 12)),
+            'periodos' => array_map(static fn(int $id): array => [
+                'id_periodo' => $id,
+                'nombre' => self::etiquetaPeriodo($id, (int)date('Y'), true),
+                'meses' => self::mesesPeriodo($id),
+            ], range(1, 6)),
         ];
     }
 
@@ -298,38 +348,19 @@ trait ContableSoporte
     {
         $currentYear = (int)date('Y');
         $years = [$currentYear => $currentYear];
-
         $statement = $db->query(
-            "SELECT movimientos.anio
-             FROM (
-                 SELECT YEAR(p.fecha_pago) AS anio
-                 FROM pagos p
-                 WHERE p.estado = 'PAGADO'
-                   AND p.fecha_pago IS NOT NULL
-
-                 UNION
-
-                 SELECT YEAR(i.fecha) AS anio
-                 FROM contable_ingresos i
-                 WHERE i.fecha IS NOT NULL
-
-                 UNION
-
-                 SELECT YEAR(e.fecha) AS anio
-                 FROM contable_egresos e
-                 WHERE e.fecha IS NOT NULL
+            "SELECT movimientos.anio FROM (
+                SELECT YEAR(fecha_pago) AS anio FROM pagos WHERE estado = 'PAGADO' AND fecha_pago IS NOT NULL
+                UNION SELECT YEAR(fecha_pago) AS anio FROM pagos_inscripcion WHERE fecha_pago IS NOT NULL
+                UNION SELECT YEAR(fecha) AS anio FROM contable_ingresos WHERE fecha IS NOT NULL
+                UNION SELECT YEAR(fecha) AS anio FROM contable_egresos WHERE fecha IS NOT NULL
              ) movimientos
-             WHERE movimientos.anio BETWEEN 2000 AND 2100
-             ORDER BY movimientos.anio DESC"
+             WHERE movimientos.anio BETWEEN 2000 AND 2100 ORDER BY movimientos.anio DESC"
         );
-
         foreach ($statement->fetchAll() as $row) {
             $year = (int)($row['anio'] ?? 0);
-            if ($year >= 2000 && $year <= 2100) {
-                $years[$year] = $year;
-            }
+            if ($year >= 2000 && $year <= 2100) $years[$year] = $year;
         }
-
         rsort($years, SORT_NUMERIC);
         return array_values($years);
     }

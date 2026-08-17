@@ -9,6 +9,7 @@ function register_contable_routes(Router $router): void
     $router->register('contable_catalogos', 'GET', [Contable::class, 'catalogos'], true);
     $router->register('contable_opciones_configuracion', 'GET', [Contable::class, 'opcionesConfiguracion'], true);
     $router->register('contable_ingresos_socios', 'GET', [Contable::class, 'listarIngresosSocios'], true);
+    $router->register('contable_balance', 'GET', [Contable::class, 'balance'], true);
     $router->register('contable_ingresos_listar', 'GET', [Contable::class, 'listarIngresos'], true);
     $router->register('contable_egresos_listar', 'GET', [Contable::class, 'listarEgresos'], true);
     $router->register('contable_opcion_guardar', 'POST', [Contable::class, 'guardarOpcion'], true);

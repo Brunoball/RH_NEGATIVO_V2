@@ -424,41 +424,40 @@ const CuotasTableRows = React.memo(function CuotasTableRows({
                   <FontAwesomeIcon icon={faPrint} />
                 </button>
               ) : null}
-              {isResolved ? (
-                <button
-                  type="button"
-                  className="mov-iconBtn mov-iconBtn--danger"
-                  title={isCondoned ? "Eliminar condonación" : "Eliminar pago"}
-                  aria-label={`${isCondoned ? "Eliminar condonación" : "Eliminar pago"} de ${item.denominacion}`}
-                  onClick={() => actionsRef.current.setDeleteRow(item)}
-                  disabled={!writable}
-                >
-                  <FontAwesomeIcon icon={faTimes} />
-                </button>
-              ) : (
-                <>
+              {writable ? (
+                isResolved ? (
                   <button
                     type="button"
-                    className="mov-iconBtn cuotas-condone-btn"
-                    title="Condonar cuota"
-                    aria-label={`Condonar cuota de ${item.denominacion}`}
-                    onClick={() => actionsRef.current.setCondoneRow(item)}
-                    disabled={!writable}
+                    className="mov-iconBtn mov-iconBtn--danger"
+                    title={isCondoned ? "Eliminar condonación" : "Eliminar pago"}
+                    aria-label={`${isCondoned ? "Eliminar condonación" : "Eliminar pago"} de ${item.denominacion}`}
+                    onClick={() => actionsRef.current.setDeleteRow(item)}
                   >
-                    <FontAwesomeIcon icon={faBan} />
+                    <FontAwesomeIcon icon={faTimes} />
                   </button>
-                  <button
-                    type="button"
-                    className="mov-iconBtn"
-                    title="Registrar pago"
-                    aria-label={`Registrar pago de ${item.denominacion}`}
-                    onClick={() => actionsRef.current.openPayment(item)}
-                    disabled={!writable}
-                  >
-                    <FontAwesomeIcon icon={faDollarSign} />
-                  </button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="mov-iconBtn cuotas-condone-btn"
+                      title="Condonar cuota"
+                      aria-label={`Condonar cuota de ${item.denominacion}`}
+                      onClick={() => actionsRef.current.setCondoneRow(item)}
+                    >
+                      <FontAwesomeIcon icon={faBan} />
+                    </button>
+                    <button
+                      type="button"
+                      className="mov-iconBtn"
+                      title="Registrar pago"
+                      aria-label={`Registrar pago de ${item.denominacion}`}
+                      onClick={() => actionsRef.current.openPayment(item)}
+                    >
+                      <FontAwesomeIcon icon={faDollarSign} />
+                    </button>
+                  </>
+                )
+              ) : null}
             </div>
           </div>
         ) : null}
