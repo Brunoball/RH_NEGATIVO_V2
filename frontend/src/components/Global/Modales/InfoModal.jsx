@@ -64,9 +64,9 @@ export function InfoSummary({ items = [] }) {
           className={`entity-info-summary__item ${item.tone ? `is-${item.tone}` : ""}`.trim()}
           key={item.key || `${item.label}-${index}`}
         >
-          <h3 className="entity-info-summary__title">{item.label}</h3>
-          <div className="entity-info-summary__content">
-            {item.icon ? <FontAwesomeIcon icon={item.icon} /> : null}
+          {item.icon ? <FontAwesomeIcon icon={item.icon} /> : null}
+          <div>
+            <span>{item.label}</span>
             <strong>{item.value ?? "—"}</strong>
           </div>
         </article>

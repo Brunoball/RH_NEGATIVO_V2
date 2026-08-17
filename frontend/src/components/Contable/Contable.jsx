@@ -572,6 +572,7 @@ export default function ContableModule({ view = "summary" }) {
   const [summaryMode, setSummaryMode] = useState("annual");
   const [incomeTab, setIncomeTab] = useState("partners");
   const isFeeIncomeTab = incomeTab === "partners";
+  const [feeDetailTab, setFeeDetailTab] = useState("detail");
   const [feePeriod, setFeePeriod] = useState(String(Math.ceil(CURRENT_MONTH / 2)));
   const [feeDetailSearch, setFeeDetailSearch] = useState("");
   const [feeDetailPage, setFeeDetailPage] = useState(1);
@@ -621,6 +622,7 @@ export default function ContableModule({ view = "summary" }) {
     setMean("");
     setSearch("");
     setFeeDetailSearch("");
+    setFeeDetailTab("detail");
     setFeeDetailPage(1);
     setPage(1);
     // Evita mostrar datos de la pestaña anterior mientras se carga la nueva.
@@ -1199,7 +1201,38 @@ export default function ContableModule({ view = "summary" }) {
               ],
             },
             ...(isFeeIncomeTab
-              ? [periodFilters[0], feePeriodFilter]
+              ? [
+                  {
+                    key: "detalle-ingresos-socios",
+                    label: "Vista",
+                    type: "tabs",
+                    value: feeDetailTab,
+                    onChange: (nextTab) => {
+                      setFeeDetailTab(nextTab);
+                      setFeeDetailPage(1);
+                    },
+                    options: [
+                      { value: "detail", label: "Detalle" },
+                      { value: "partners", label: "Detalle de socios" },
+                      { value: "collection", label: "Detalle de cobranza" },
+                    ],
+                  },
+                  ...(feeDetailTab === "detail"
+                    ? [
+                        {
+                          key: "buscar-ingresos-socios",
+                          label: "Buscar",
+                          type: "search",
+                          className: "contable-filter--partner-search",
+                          placeholder: "Socio, categoría, cobrador, período...",
+                          value: feeDetailSearch,
+                          onChange: setFeeDetailSearch,
+                        },
+                      ]
+                    : []),
+                  periodFilters[0],
+                  feePeriodFilter,
+                ]
               : detailFilters),
           ]
         : detailFilters;
@@ -1343,8 +1376,8 @@ export default function ContableModule({ view = "summary" }) {
           <IngresosSociosView
             data={data}
             loading={loading}
+            activeTab={feeDetailTab}
             detailSearch={feeDetailSearch}
-            onDetailSearchChange={setFeeDetailSearch}
             onDetailPageChange={setFeeDetailPage}
             onFeedback={setFeedback}
           />

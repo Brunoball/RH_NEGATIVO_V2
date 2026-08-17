@@ -12,6 +12,25 @@
   flex: 1 1 145px;
 }
 
+.contable-head-filters > .module-filter--tabs {
+  width: clamp(470px, 34vw, 530px);
+  flex: 0 0 clamp(470px, 34vw, 530px);
+  min-width: 470px;
+  max-width: 530px;
+}
+
+.contable-head-filters > .module-filter--tabs .module-filterTab {
+  min-width: max-content;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
+.contable-head-filters > .module-filter--tabs .module-tabContent,
+.contable-head-filters > .module-filter--tabs .module-tabLabel {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .contable-head-filters > .contable-filter--year,
 .contable-head-filters > .contable-filter--month,
 .contable-head-filters > .contable-filter--period {
@@ -47,6 +66,15 @@
   max-width: 250px;
   margin-left: auto;
   justify-self: end;
+}
+
+.contable-head-filters > .contable-filter--partner-search {
+  order: 0;
+  flex: 0 1 250px;
+  width: 250px;
+  min-width: 190px;
+  max-width: 250px;
+  margin-left: 0;
 }
 
 .contable-table .entity-table-wrap {
@@ -966,6 +994,28 @@
   }
 }
 
+@media (max-width: 1180px) {
+  .module-headFilters.contable-head-filters {
+    flex-wrap: wrap;
+  }
+
+  .contable-head-filters > .module-filter--tabs {
+    width: 100%;
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .contable-head-filters > .module-filter--tabs .module-filterTabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .contable-head-filters > .module-filter--tabs .module-filterTab {
+    flex: 1 0 max-content;
+  }
+}
+
 @media (max-width: 720px) {
   .ct-summary {
     padding: 10px;
@@ -1006,7 +1056,8 @@
   }
 
   .contable-head-filters > .contable-filter--year,
-  .contable-head-filters > .contable-filter--month {
+  .contable-head-filters > .contable-filter--month,
+  .contable-head-filters > .contable-filter--period {
     width: 120px;
     flex-basis: 120px;
   }

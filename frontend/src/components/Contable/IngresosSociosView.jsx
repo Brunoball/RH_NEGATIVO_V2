@@ -1,19 +1,20 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalculator,
   faFileExcel,
-  faLayerGroup,
   faMagnifyingGlass,
   faPeopleGroup,
-  faTableCellsLarge,
   faTimes,
   faTriangleExclamation,
   faUserMinus,
   faUserPlus,
 } from "@fortawesome/free-solid-svg-icons";
+import GlobalDivTable from "../Global/GlobalDivTable";
+import BotonExportarGlobal from "../Global/Botones/BotonExportarGlobal";
 import ModalExportarGlobal from "../Global/Modales/ModalExportarGlobal";
+import SummaryCards from "../Global/SummaryCards";
 import { contableApi } from "./api/contableApi";
 import "./IngresosSociosView.css";
 
@@ -35,6 +36,8 @@ const normalize = (value) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+
+const PAGE_SIZE = 10;
 
 function paginationItems(currentPage, totalPages) {
   if (totalPages <= 7) {
@@ -91,73 +94,52 @@ function Tabs({ value, onChange, options }) {
   );
 }
 
-function IncomeDetail({ section, search, onSearchChange, onPageChange, loading }) {
-  const items = section?.items || [];
-  const pagination = section?.paginacion || {};
-  const currentPage = Number(pagination.pagina || 1);
-  const totalPages = Number(pagination.total_paginas || 0);
+function IncomePagination({
+  actions,
+  currentPage,
+  firstRecord,
+  lastRecord,
+  loading = false,
+  noun = "registros",
+  onPageChange,
+  pageSize,
+  summaryAriaLabel,
+  summaryItems = [],
+  summaryTitle = "Resumen",
+  totalPages,
+  totalRecords,
+}) {
+  if (!totalRecords && !summaryItems.length) return null;
+
   const pageOptions = paginationItems(currentPage, totalPages);
-  const totalRecords = Number(pagination.total ?? section?.resumen?.registros ?? 0);
-  const firstRecord = Number(pagination.desde || 0);
-  const lastRecord = Number(pagination.hasta || 0);
 
   return (
-    <>
-      <div className="ct-old-pane-head">
-        <div>
-          <strong>Detalle de cobros recibidos</strong>
-          <span>
-            {(section?.resumen?.registros || 0).toLocaleString("es-AR")} pagos · {money(section?.resumen?.importe)}
-          </span>
-        </div>
-        <SearchBox
-          value={search}
-          onChange={onSearchChange}
-          placeholder="Buscar por socio, categoría, cobrador, período..."
-        />
-      </div>
-      <div className={`ct-old-table-wrap ${totalRecords > 0 ? "has-pagination" : ""}`.trim()}>
-        <table className="ct-old-table">
-          <thead>
-            <tr>
-              <th>Apellido y Nombre</th>
-              <th>Categoría</th>
-              <th>Cobrador</th>
-              <th>Fecha de Pago</th>
-              <th>Período pago</th>
-              <th>Medio</th>
-              <th className="is-right">Monto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.clave}>
-                <td><strong>{item.socio}</strong></td>
-                <td>{item.categoria_etiqueta}</td>
-                <td>{item.cobrador}</td>
-                <td>{dateText(item.fecha)}</td>
-                <td>{item.periodo}</td>
-                <td>{item.medio}</td>
-                <td className="is-right"><strong>{money(item.monto)}</strong></td>
-              </tr>
-            ))}
-            {!items.length ? (
-              <tr><td colSpan="7" className="ct-old-empty">No hay cobros que coincidan con la búsqueda.</td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-      {totalRecords > 0 ? (
-        <nav className="global-pagination ct-old-pagination" aria-label="Paginación del detalle de cobros">
+    <footer
+      className="global-pagination ct-income-pagination"
+      aria-label={`Resumen, paginación y acciones de ${noun}`}
+    >
+      <SummaryCards
+        title={summaryTitle}
+        ariaLabel={summaryAriaLabel}
+        className="ct-income-pagination__cards"
+        items={summaryItems}
+      />
+      {totalRecords ? (
+        <div
+          className="ct-income-pagination__navigation"
+          role="navigation"
+          aria-label={`Paginación de ${noun}`}
+        >
           <p className="global-pagination__summary">
-            Mostrando <strong>{firstRecord}</strong>–<strong>{lastRecord}</strong> de <strong>{totalRecords}</strong> pagos
-            <span>100 por página</span>
+            Mostrando <strong>{firstRecord}</strong>–<strong>{lastRecord}</strong> de{" "}
+            <strong>{totalRecords}</strong> {noun}
+            {pageSize ? <span>{pageSize} por página</span> : null}
           </p>
           <div className="global-pagination__right">
             <div className="global-pagination__controls">
               <button
                 type="button"
-                onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
+                onClick={() => onPageChange(Math.max(1, currentPage - 1))}
                 disabled={loading || currentPage <= 1}
               >
                 Anterior
@@ -169,69 +151,262 @@ function IncomeDetail({ section, search, onSearchChange, onPageChange, loading }
                     key={item}
                     className={item === currentPage ? "is-active" : ""}
                     aria-current={item === currentPage ? "page" : undefined}
-                    onClick={() => onPageChange?.(item)}
+                    onClick={() => onPageChange(item)}
                     disabled={loading}
                   >
                     {item}
                   </button>
                 ) : (
-                  <span className="global-pagination__ellipsis" key={item} aria-hidden="true">…</span>
+                  <span className="global-pagination__ellipsis" key={item} aria-hidden="true">
+                    …
+                  </span>
                 ),
               )}
               <button
                 type="button"
-                onClick={() => onPageChange?.(Math.min(totalPages, currentPage + 1))}
+                onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
                 disabled={loading || totalPages === 0 || currentPage >= totalPages}
               >
                 Siguiente
               </button>
             </div>
           </div>
-        </nav>
+        </div>
       ) : null}
-    </>
+      {actions ? (
+        <div
+          className="global-tableActions ct-income-pagination__actions"
+          aria-label="Acciones de ingresos de socios"
+        >
+          {actions}
+        </div>
+      ) : null}
+    </footer>
   );
 }
 
-function PartnerDetail({ section }) {
-  const summary = section?.resumen || {};
+function IncomeDetail({ actions, section, onPageChange, loading, period }) {
+  const items = section?.items || [];
+  const pagination = section?.paginacion || {};
+  const currentPage = Number(pagination.pagina || 1);
+  const totalRecords = Number(pagination.total ?? section?.resumen?.registros ?? 0);
+  const pageSize = Number(pagination.por_pagina || pagination.limite || items.length || 0);
+  const totalPages = Number(
+    pagination.total_paginas ||
+      (totalRecords && pageSize ? Math.ceil(totalRecords / pageSize) : 0),
+  );
+  const firstRecord = Number(
+    pagination.desde ?? (totalRecords ? (currentPage - 1) * pageSize + 1 : 0),
+  );
+  const lastRecord = Number(
+    pagination.hasta ?? Math.min(currentPage * pageSize, totalRecords),
+  );
+
   return (
     <>
-      <div className="ct-old-cards ct-old-cards--three">
-        <SummaryBox label="Total ACTIVO" value={(summary.activos || 0).toLocaleString("es-AR")} sub={`Año ${section?.anio || ""}`} />
-        <SummaryBox label="Total PASIVO" value={(summary.pasivos || 0).toLocaleString("es-AR")} sub={`Año ${section?.anio || ""}`} tone="warn" />
-        <SummaryBox label="TOTAL GENERAL" value={(summary.total || 0).toLocaleString("es-AR")} sub="= Activo + Pasivo + Sin estado" tone="primary" />
-      </div>
-      <div className="ct-old-table-wrap">
-        <table className="ct-old-table">
-          <thead><tr><th>Estado</th><th>Categoría</th><th className="is-right">Cantidad</th></tr></thead>
-          <tbody>
-            {(section?.items || []).map((item, index) => (
-              <tr key={`${item.servicio}-${item.categoria}-${index}`}>
-                <td>{item.servicio}</td><td>{item.categoria}</td><td className="is-right">{item.cantidad.toLocaleString("es-AR")}</td>
-              </tr>
-            ))}
-            <tr className="ct-old-total is-active"><td><strong>TOTAL ACTIVO</strong></td><td>—</td><td className="is-right"><strong>{(summary.activos || 0).toLocaleString("es-AR")}</strong></td></tr>
-            <tr className="ct-old-total is-passive"><td><strong>TOTAL PASIVO</strong></td><td>—</td><td className="is-right"><strong>{(summary.pasivos || 0).toLocaleString("es-AR")}</strong></td></tr>
-            {summary.sin_estado ? <tr className="ct-old-total"><td><strong>SIN ESTADO</strong></td><td>—</td><td className="is-right"><strong>{summary.sin_estado.toLocaleString("es-AR")}</strong></td></tr> : null}
-          </tbody>
-        </table>
-      </div>
+      <GlobalDivTable
+        className="ct-income-table has-bottom-pagination"
+        bodyClassName="entity-table-wrap"
+        gridClassName="ct-income-grid ct-income-grid--detail"
+        columns={[
+          "Apellido y nombre",
+          "Categoría",
+          "Cobrador",
+          "Fecha de pago",
+          "Período pago",
+          "Medio",
+          { label: "Monto", align: "right" },
+        ]}
+        ariaLabel="Detalle de cobros recibidos"
+        empty={!loading && !items.length}
+        loading={loading}
+        loadingLabel="Cargando cobros de socios..."
+        skeletonActionColumn={false}
+        skeletonRows={7}
+      >
+        {!loading && !items.length ? (
+          <div className="module-empty">
+            <FontAwesomeIcon icon={faPeopleGroup} />
+            <strong>Sin cobros para mostrar</strong>
+            <span>No hay cobros que coincidan con la búsqueda.</span>
+          </div>
+        ) : null}
+        {items.map((item) => (
+          <div
+            className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--detail"
+            role="row"
+            key={item.clave}
+          >
+            <div className="mov-gridCell entity-main-cell">
+              <strong>{item.socio}</strong>
+              <small>DNI: {item.dni || "—"}</small>
+            </div>
+            <div className="mov-gridCell"><span className="mov-categoryChip">{item.categoria_etiqueta || "Sin categoría"}</span></div>
+            <div className="mov-gridCell">{item.cobrador || "—"}</div>
+            <div className="mov-gridCell is-center">{dateText(item.fecha)}</div>
+            <div className="mov-gridCell is-center">{item.periodo || "—"}</div>
+            <div className="mov-gridCell is-center">{item.medio || "—"}</div>
+            <div className="mov-gridCell is-right is-strong ct-income-money">{money(item.monto)}</div>
+          </div>
+        ))}
+      </GlobalDivTable>
+      <IncomePagination
+        actions={actions}
+        currentPage={currentPage}
+        firstRecord={firstRecord}
+        lastRecord={lastRecord}
+        loading={loading}
+        noun="pagos"
+        onPageChange={(nextPage) => onPageChange?.(nextPage)}
+        pageSize={pageSize}
+        summaryAriaLabel="Resumen de cobros recibidos"
+        summaryItems={[
+          {
+            key: "payments",
+            label: "Detalle de cobros recibidos",
+            detail: `${Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR")} pagos`,
+            value: money(section?.resumen?.importe),
+          },
+          {
+            key: "range",
+            label: "Rango del período",
+            detail: period?.anio ? `Año ${period.anio}` : "Año seleccionado",
+            value: period?.desde && period?.hasta
+              ? `${dateText(period.desde)}–${dateText(period.hasta)}`
+              : "—",
+          },
+        ]}
+        summaryTitle="Resumen del período"
+        totalPages={totalPages}
+        totalRecords={totalRecords}
+      />
     </>
   );
 }
 
-function CollectionDetail({ section, period }) {
+function PartnerDetail({ actions, section, loading }) {
+  const summary = section?.resumen || {};
+  const items = section?.items || [];
+  const [page, setPage] = useState(1);
+  const totalRecords = items.length;
+  const totalPages = totalRecords ? Math.ceil(totalRecords / PAGE_SIZE) : 0;
+  const firstRecord = totalRecords ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const lastRecord = totalRecords ? Math.min(page * PAGE_SIZE, totalRecords) : 0;
+  const visibleItems = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return items.slice(start, start + PAGE_SIZE);
+  }, [items, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [section]);
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) setPage(totalPages);
+  }, [page, totalPages]);
+
+  return (
+    <>
+      <GlobalDivTable
+        className="ct-income-table has-bottom-pagination"
+        bodyClassName="entity-table-wrap"
+        gridClassName="ct-income-grid ct-income-grid--partners"
+        columns={["Estado", "Categoría", { label: "Cantidad", align: "right" }]}
+        ariaLabel="Detalle de socios por estado y categoría"
+        empty={!loading && !totalRecords}
+        loading={loading}
+        loadingLabel="Cargando detalle de socios..."
+        skeletonActionColumn={false}
+        skeletonRows={7}
+      >
+        {!loading && !totalRecords ? (
+          <div className="module-empty">
+            <FontAwesomeIcon icon={faPeopleGroup} />
+            <strong>Sin socios para mostrar</strong>
+            <span>No hay datos para el período seleccionado.</span>
+          </div>
+        ) : null}
+        {visibleItems.map((item, index) => (
+          <div
+            className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--partners"
+            role="row"
+            key={`${item.servicio}-${item.categoria}-${index}`}
+          >
+            <div className="mov-gridCell is-strong">{item.servicio}</div>
+            <div className="mov-gridCell"><span className="mov-categoryChip">{item.categoria || "Sin categoría"}</span></div>
+            <div className="mov-gridCell is-right is-strong ct-income-number">{Number(item.cantidad || 0).toLocaleString("es-AR")}</div>
+          </div>
+        ))}
+      </GlobalDivTable>
+      <IncomePagination
+        actions={actions}
+        currentPage={page}
+        firstRecord={firstRecord}
+        lastRecord={lastRecord}
+        loading={loading}
+        noun="categorías"
+        onPageChange={setPage}
+        pageSize={PAGE_SIZE}
+        summaryAriaLabel="Totales de socios por estado"
+        summaryItems={[
+          {
+            key: "active",
+            label: "Total activos",
+            detail: `Año ${section?.anio || "—"}`,
+            value: Number(summary.activos || 0).toLocaleString("es-AR"),
+          },
+          {
+            key: "passive",
+            label: "Total pasivos",
+            detail: `Año ${section?.anio || "—"}`,
+            value: Number(summary.pasivos || 0).toLocaleString("es-AR"),
+          },
+          {
+            key: "total",
+            label: "Total general",
+            detail: "Activos, pasivos y sin estado",
+            value: Number(summary.total || 0).toLocaleString("es-AR"),
+          },
+        ]}
+        summaryTitle="Resumen de socios"
+        totalPages={totalPages}
+        totalRecords={totalRecords}
+      />
+    </>
+  );
+}
+
+function CollectionDetail({ actions, section, period, loading }) {
   const summary = section?.resumen || {};
   const difference = Number(summary.diferencia_cuotas || 0);
-  const rows = [];
-  (section?.items || []).forEach((collector) => {
-    rows.push({ ...collector, depth: 0 });
-    (collector.hijos || []).forEach((state) => {
-      rows.push({ ...state, depth: 1 });
-      (state.hijos || []).forEach((mean) => rows.push({ ...mean, depth: 2 }));
+  const rows = useMemo(() => {
+    const flattenedRows = [];
+    (section?.items || []).forEach((collector) => {
+      flattenedRows.push({ ...collector, depth: 0 });
+      (collector.hijos || []).forEach((state) => {
+        flattenedRows.push({ ...state, depth: 1 });
+        (state.hijos || []).forEach((mean) => flattenedRows.push({ ...mean, depth: 2 }));
+      });
     });
-  });
+    return flattenedRows;
+  }, [section?.items]);
+  const [page, setPage] = useState(1);
+  const totalRecords = rows.length;
+  const totalPages = totalRecords ? Math.ceil(totalRecords / PAGE_SIZE) : 0;
+  const firstRecord = totalRecords ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const lastRecord = totalRecords ? Math.min(page * PAGE_SIZE, totalRecords) : 0;
+  const visibleRows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return rows.slice(start, start + PAGE_SIZE);
+  }, [page, rows]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [section]);
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) setPage(totalPages);
+  }, [page, totalPages]);
 
   return (
     <>
@@ -245,39 +420,96 @@ function CollectionDetail({ section, period }) {
           ))}
         </div>
       </section>
-      <div className="ct-old-cards ct-old-cards--four">
-        <SummaryBox label="Cuotas recaudadas" value={money(summary.cuotas_recaudadas)} sub="Solo pagos de cuotas" />
-        <SummaryBox label="Inscripciones recaudadas" value={money(summary.inscripciones_recaudadas)} sub={`${summary.inscripciones_socios || 0} socios · Total ingresado: ${money(summary.total_ingresado)}`} />
-        <SummaryBox label="Cuotas esperadas" value={money(summary.cuotas_esperadas)} sub={`${summary.socios_esperados || 0} socios · ${period?.etiqueta || ""}`} />
-        <SummaryBox label="Faltante / Superávit" value={money(Math.abs(difference))} sub={difference >= 0 ? "Cuotas esperadas menos cuotas recaudadas" : "Cuotas recaudadas por encima de lo esperado"} tone={difference >= 0 ? "danger" : "success"} />
-      </div>
-      <div className="ct-old-table-wrap">
-        <table className="ct-old-table ct-old-table--collection">
-          <thead><tr><th>Período / Grupo</th><th className="is-right">Esperado</th><th className="is-right">Recaudado</th><th className="is-right">Socios</th><th className="is-right">Dif. (Esp-Rec)</th></tr></thead>
-          <tbody>
-            <tr className="ct-old-period-row">
-              <td><strong>{period?.etiqueta || "PERÍODO"}</strong></td>
-              <td className="is-right">{money(summary.cuotas_esperadas)}</td>
-              <td className="is-right">{money(summary.cuotas_recaudadas)}</td>
-              <td className="is-right">{(summary.socios_esperados || 0).toLocaleString("es-AR")}</td>
-              <td className="is-right ct-old-difference">{money(summary.diferencia_cuotas)}</td>
-            </tr>
-            {rows.map((row, index) => (
-              <tr key={`${row.tipo}-${row.nombre}-${index}`} className={`ct-old-depth-${row.depth}`}>
-                <td><span className={`ct-old-badge is-${row.tipo}`}>{row.nombre}</span></td>
-                <td className="is-right">{row.esperado === null ? "—" : money(row.esperado)}</td>
-                <td className="is-right">{money(row.recaudado)}</td>
-                <td className="is-right">{Number(row.socios || 0).toLocaleString("es-AR")}</td>
-                <td className="is-right ct-old-difference">{row.diferencia === null ? "—" : money(row.diferencia)}</td>
-              </tr>
-            ))}
-            <tr className="ct-old-total"><td><strong>INSCRIPCIONES</strong></td><td className="is-right">—</td><td className="is-right"><strong>{money(summary.inscripciones_recaudadas)}</strong></td><td className="is-right"><strong>{summary.inscripciones_socios || 0}</strong></td><td className="is-right">—</td></tr>
-            <tr className="ct-old-total"><td><strong>TOTAL CUOTAS</strong></td><td className="is-right"><strong>{money(summary.cuotas_esperadas)}</strong></td><td className="is-right"><strong>{money(summary.cuotas_recaudadas)}</strong></td><td className="is-right"><strong>{(summary.socios_esperados || 0).toLocaleString("es-AR")}</strong></td><td className="is-right ct-old-difference"><strong>{money(summary.diferencia_cuotas)}</strong></td></tr>
-            <tr className="ct-old-total is-registration"><td><strong>TOTAL INSCRIPCIONES</strong></td><td className="is-right">—</td><td className="is-right"><strong>{money(summary.inscripciones_recaudadas)}</strong></td><td className="is-right"><strong>{summary.inscripciones_socios || 0}</strong></td><td className="is-right">—</td></tr>
-            <tr className="ct-old-total is-grand"><td><strong>TOTAL INGRESADO</strong></td><td className="is-right">—</td><td className="is-right"><strong>{money(summary.total_ingresado)}</strong></td><td className="is-right">—</td><td className="is-right">—</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <GlobalDivTable
+        className="ct-income-table has-bottom-pagination"
+        bodyClassName="entity-table-wrap"
+        gridClassName="ct-income-grid ct-income-grid--collection"
+        columns={[
+          "Período / grupo",
+          { label: "Esperado", align: "right" },
+          { label: "Recaudado", align: "right" },
+          { label: "Socios", align: "right" },
+          { label: "Dif. (Esp-Rec)", align: "right" },
+        ]}
+        ariaLabel="Detalle de cobranza"
+        empty={!loading && !totalRecords}
+        loading={loading}
+        loadingLabel="Cargando detalle de cobranza..."
+        skeletonActionColumn={false}
+        skeletonRows={7}
+      >
+        {!loading && !totalRecords ? (
+          <div className="module-empty">
+            <FontAwesomeIcon icon={faPeopleGroup} />
+            <strong>Sin cobranza para mostrar</strong>
+            <span>No hay datos para el período seleccionado.</span>
+          </div>
+        ) : null}
+        {totalRecords ? (
+          <div className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-income-period-row" role="row">
+            <div className="mov-gridCell is-strong">{period?.etiqueta || "PERÍODO"}</div>
+            <div className="mov-gridCell is-right">{money(summary.cuotas_esperadas)}</div>
+            <div className="mov-gridCell is-right">{money(summary.cuotas_recaudadas)}</div>
+            <div className="mov-gridCell is-right">{Number(summary.socios_esperados || 0).toLocaleString("es-AR")}</div>
+            <div className="mov-gridCell is-right ct-income-difference">{money(summary.diferencia_cuotas)}</div>
+          </div>
+        ) : null}
+        {visibleRows.map((row, index) => (
+          <div
+            className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-income-depth-${row.depth}`}
+            role="row"
+            key={`${row.tipo}-${row.nombre}-${index}`}
+          >
+            <div className="mov-gridCell"><span className={`ct-old-badge is-${row.tipo}`}>{row.nombre}</span></div>
+            <div className="mov-gridCell is-right">{row.esperado === null ? "—" : money(row.esperado)}</div>
+            <div className="mov-gridCell is-right">{money(row.recaudado)}</div>
+            <div className="mov-gridCell is-right">{Number(row.socios || 0).toLocaleString("es-AR")}</div>
+            <div className="mov-gridCell is-right ct-income-difference">{row.diferencia === null ? "—" : money(row.diferencia)}</div>
+          </div>
+        ))}
+      </GlobalDivTable>
+      <IncomePagination
+        actions={actions}
+        currentPage={page}
+        firstRecord={firstRecord}
+        lastRecord={lastRecord}
+        loading={loading}
+        noun="grupos"
+        onPageChange={setPage}
+        pageSize={PAGE_SIZE}
+        summaryAriaLabel="Totales de cobranza del período"
+        summaryItems={[
+          {
+            key: "fees",
+            label: "Cuotas recaudadas",
+            detail: "Sólo pagos de cuotas",
+            value: money(summary.cuotas_recaudadas),
+          },
+          {
+            key: "registrations",
+            label: "Inscripciones recaudadas",
+            detail: `${summary.inscripciones_socios || 0} socios`,
+            value: money(summary.inscripciones_recaudadas),
+          },
+          {
+            key: "expected",
+            label: "Cuotas esperadas",
+            detail: `${summary.socios_esperados || 0} socios · ${period?.etiqueta || "Período"}`,
+            value: money(summary.cuotas_esperadas),
+          },
+          {
+            key: "difference",
+            label: difference >= 0 ? "Faltante" : "Superávit",
+            detail: difference >= 0
+              ? "Esperado menos recaudado"
+              : "Recaudado sobre lo esperado",
+            value: money(Math.abs(difference)),
+          },
+        ]}
+        summaryTitle="Resumen de cobranza"
+        totalPages={totalPages}
+        totalRecords={totalRecords}
+      />
     </>
   );
 }
@@ -565,14 +797,13 @@ function BalanceModal({ open, onClose, onFeedback }) {
 }
 
 export default function IngresosSociosView({
+  activeTab = "detail",
   data,
   loading,
   detailSearch = "",
-  onDetailSearchChange,
   onDetailPageChange,
   onFeedback,
 }) {
-  const [tab, setTab] = useState("detail");
   const [balanceOpen, setBalanceOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const period = data?.periodo;
@@ -614,40 +845,55 @@ export default function IngresosSociosView({
     };
   }, [data?.detalle?.items, period]);
 
-  if (loading) return <div className="ct-old-loading">Cargando información contable de socios...</div>;
-  if (!data?.periodo) return <div className="ct-old-loading">No se pudo cargar la información del período.</div>;
+  const tableActions = (
+    <>
+      <BotonExportarGlobal
+        label="Exportar"
+        onClick={() => setExportOpen(true)}
+        disabled={loading || !Number(detailPagination.total || data?.detalle?.items?.length || 0)}
+        title="Exportar detalle de ingresos de socios"
+      />
+      <button
+        type="button"
+        className="mov-btn mov-btn--primary ct-income-balance-button"
+        onClick={() => setBalanceOpen(true)}
+        disabled={loading || !period}
+      >
+        <FontAwesomeIcon icon={faCalculator} />
+        Balance anual
+      </button>
+    </>
+  );
 
   return (
-    <section className="ct-old-income">
-      <div className="ct-old-main-toolbar">
-        <Tabs value={tab} onChange={setTab} options={[
-          { value: "detail", label: "Detalle", icon: faTableCellsLarge },
-          { value: "partners", label: "Detalle de Socios", icon: faPeopleGroup },
-          { value: "collection", label: "Detalle de Cobranza", icon: faLayerGroup },
-        ]} />
-        <div className="ct-old-main-actions">
-          <button type="button" onClick={() => setExportOpen(true)}><FontAwesomeIcon icon={faFileExcel} /> Exportar detalle</button>
-          <button type="button" className="ct-old-primary" onClick={() => setBalanceOpen(true)}><FontAwesomeIcon icon={faCalculator} /> Balance anual</button>
-        </div>
-      </div>
-      <div className="ct-old-income-body">
-        {tab === "detail" ? (
+    <section className="ct-income">
+      <div className="ct-income-body">
+        {activeTab === "detail" ? (
           <IncomeDetail
-            section={data.detalle}
-            search={detailSearch}
-            onSearchChange={onDetailSearchChange}
+            actions={tableActions}
+            section={data?.detalle}
             onPageChange={onDetailPageChange}
+            loading={loading}
+            period={period}
+          />
+        ) : null}
+        {activeTab === "partners" ? (
+          <PartnerDetail actions={tableActions} section={data?.socios} loading={loading} />
+        ) : null}
+        {activeTab === "collection" ? (
+          <CollectionDetail
+            actions={tableActions}
+            section={data?.cobranza}
+            period={period}
             loading={loading}
           />
         ) : null}
-        {tab === "partners" ? <PartnerDetail section={data.socios} /> : null}
-        {tab === "collection" ? <CollectionDetail section={data.cobranza} period={period} /> : null}
       </div>
       <ModalExportarGlobal
         open={exportOpen}
         title={exportConfig.title}
         tituloArchivo={exportConfig.fileTitle}
-        subtituloArchivoActual={`${dateText(period.desde)} al ${dateText(period.hasta)}`}
+        subtituloArchivoActual={`${dateText(period?.desde)} al ${dateText(period?.hasta)}`}
         nombreArchivo={exportConfig.fileName}
         columnas={exportConfig.columns}
         registrosActuales={exportConfig.records}
