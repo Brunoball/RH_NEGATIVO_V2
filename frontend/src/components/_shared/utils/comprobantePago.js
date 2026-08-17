@@ -250,14 +250,20 @@ const receiptLegacyEntries = (source) => {
       ? orderedLines.reduce((total, line) => total + Number(line.monto || 0), 0)
       : receipt.monto;
 
+    const collectionAddress = firstValue(
+      ...orderedLines.map((line) => line.domicilioCobro),
+    );
+    const regularAddress = firstValue(
+      ...orderedLines.map((line) => line.domicilio),
+    );
+    const preferredAddress = firstValue(collectionAddress, regularAddress, "—");
+
     return {
       receipt,
       id: first.partnerId || "—",
       name: (people.join(" · ") || receipt.socios || "—").toUpperCase(),
-      address: firstValue(...orderedLines.map((line) => line.domicilio)),
-      collectionAddress: firstValue(
-        ...orderedLines.map((line) => line.domicilioCobro),
-      ),
+      address: preferredAddress,
+      collectionAddress,
       phone: firstValue(
         ...orderedLines.map((line) => line.telefonoMovil),
         ...orderedLines.map((line) => line.telefonoFijo),
@@ -275,7 +281,6 @@ const receiptPanelHtml = (data, withBarcode) => `
   <div class="legacy-receipt-panel">
     <div class="legacy-receipt-row"><div class="legacy-receipt-cell legacy-receipt-cell--full"><strong>Socio:</strong>&nbsp;${htmlEscape(data.id)} - ${htmlEscape(data.name)}</div></div>
     <div class="legacy-receipt-row"><div class="legacy-receipt-cell legacy-receipt-cell--full"><strong>Domicilio:</strong>&nbsp;${htmlEscape(data.address)}</div></div>
-    <div class="legacy-receipt-row"><div class="legacy-receipt-cell legacy-receipt-cell--full"><strong>Domicilio de cobro:</strong>&nbsp;${htmlEscape(data.collectionAddress)}</div></div>
     <div class="legacy-receipt-row">
       <div class="legacy-receipt-cell"><strong>Tel:</strong>&nbsp;${htmlEscape(data.phone)}</div>
       <div class="legacy-receipt-cell"><div class="legacy-receipt-amount">Importe: ${htmlEscape(data.amount)}</div></div>
@@ -434,10 +439,9 @@ const paymentReceiptPdfContent = (data) => {
   commands.push("0.82 0.82 0.82 RG 0.8 w 56 742 m 539 742 l S");
   commands.push(pdfText(74, 696, 11, `Socio: ${data.id} - ${fitted(data.name, 62)}`, { bold: true }));
   commands.push(pdfText(74, 666, 10, `Domicilio: ${fitted(data.address, 68)}`));
-  commands.push(pdfText(74, 638, 10, `Domicilio de cobro: ${fitted(data.collectionAddress, 55)}`));
-  commands.push(pdfText(74, 610, 10, `Tel: ${fitted(data.phone, 28)}`));
-  commands.push(pdfText(74, 582, 10, `Periodo: ${fitted(data.periodText, 48)}`));
-  commands.push(pdfText(74, 554, 10, `Grupo: ${fitted(data.category, 28)}   Estado: ${data.state}`));
+  commands.push(pdfText(74, 638, 10, `Tel: ${fitted(data.phone, 28)}`));
+  commands.push(pdfText(74, 610, 10, `Periodo: ${fitted(data.periodText, 48)}`));
+  commands.push(pdfText(74, 582, 10, `Grupo: ${fitted(data.category, 28)}   Estado: ${data.state}`));
   commands.push(pdfText(390, 666, 11, `Importe: ${data.amount}`, { bold: true }));
   commands.push("0.85 0.85 0.85 RG 0.7 w 382 652 m 520 652 l S");
   commands.push(pdfText(420, 590, 10, TREASURER));

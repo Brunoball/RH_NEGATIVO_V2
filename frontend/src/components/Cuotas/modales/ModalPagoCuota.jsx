@@ -3,7 +3,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDays,
   faChevronDown,
+  faIdCard,
   faMoneyBillWave,
+  faTrashCan,
   faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 import CrudModal from "../../Global/Modales/CrudModal";
@@ -114,11 +116,14 @@ export default function ModalPagoCuota({
   entityLabel,
   closePayment,
   submitPayment,
+  submitRegistration,
+  requestDeleteRegistration,
   saving,
   selectedMonthIds,
   family,
   familyPaymentCount,
   contextLoading,
+  registrationContext,
   paymentTotal,
   money,
   selectedPartner,
@@ -138,6 +143,7 @@ export default function ModalPagoCuota({
   updateMonthAmountOption,
   toggleMonthCustomAmount,
   updateMonthCustomAmount,
+  updateRegistrationAmount,
   updateBatchAmountOption,
 }) {
   const [activePaymentTab, setActivePaymentTab] = useState("periods");
@@ -215,6 +221,32 @@ export default function ModalPagoCuota({
     (monthId) => String(monthId) !== "7",
   );
 
+  const registrationTabActive =
+    paymentMode === "single" && activePaymentTab === "registration";
+  const registrationPaid = Boolean(registrationContext?.pagada);
+  const registrationPayment = registrationContext?.pago || null;
+  const registrationAmount = Number(
+    paymentForm.monto_inscripcion || registrationContext?.monto_sugerido || 0,
+  );
+  const registrationMedia = useMemo(
+    () =>
+      (catalogos.medios_pago || []).filter((item) => {
+        const name = String(item?.nombre || "").toLocaleUpperCase("es-AR");
+        return name.includes("EFECTIVO") || name.includes("TRANSFERENCIA");
+      }),
+    [catalogos.medios_pago],
+  );
+  const registrationMediumSelected = registrationMedia.some(
+    (item) => String(item.id_medio_pago) === String(paymentForm.id_medio_pago),
+  );
+  const registrationReady = Boolean(registrationContext);
+  const registrationFooterAmount = registrationPaid
+    ? Number(registrationPayment?.monto || 0)
+    : registrationAmount;
+  const footerAmount = registrationTabActive
+    ? registrationFooterAmount
+    : paymentTotal;
+
   return (
     <CrudModal
       open={paymentOpen}
@@ -248,7 +280,7 @@ export default function ModalPagoCuota({
         )
       }
       onClose={closePayment}
-      onSubmit={submitPayment}
+      onSubmit={registrationTabActive ? submitRegistration : submitPayment}
       saving={saving}
       loading={paymentMode === "single" && contextLoading}
       loadingLabel="Cargando datos del pago..."
@@ -256,29 +288,48 @@ export default function ModalPagoCuota({
       submitLabel={
         paymentMode === "multiple"
           ? `Registrar ${paymentForm.pagos.length} pagos`
-          : paymentForm.aplicar_familia && family
-            ? `Registrar pago familiar (${familyPaymentCount} ${familyPaymentCount === 1 ? "cuota" : "cuotas"})`
-            : selectedMonthIds.length > 1
-              ? `Registrar ${selectedMonthIds.length} cuotas`
-              : "Registrar pago"
+          : registrationTabActive
+            ? registrationPaid
+              ? "Inscripción ya registrada"
+              : "Registrar inscripción"
+            : paymentForm.aplicar_familia && family
+              ? `Registrar pago familiar (${familyPaymentCount} ${familyPaymentCount === 1 ? "cuota" : "cuotas"})`
+              : selectedMonthIds.length > 1
+                ? `Registrar ${selectedMonthIds.length} cuotas`
+                : "Registrar pago"
       }
       submitDisabled={
         contextLoading ||
-        (paymentMode === "single" && !selectedMonthIds.length) ||
-        !(paymentTotal > 0)
+        (registrationTabActive
+          ? !registrationReady ||
+            registrationPaid ||
+            !(registrationAmount > 0) ||
+            !paymentForm.fecha_pago ||
+            !registrationMediumSelected
+          : paymentMode === "single"
+            ? !selectedMonthIds.length || !(paymentTotal > 0)
+            : !(paymentTotal > 0))
       }
       wide
       closeOnBackdrop={false}
       footerStart={
         <div className="cuotas-payment-footer-total">
-          <span>Total a pagar</span>
-          <strong>{money(paymentTotal)}</strong>
+          <span>
+            {registrationTabActive && registrationPaid
+              ? "Inscripción registrada"
+              : "Total a pagar"}
+          </span>
+          <strong>{money(footerAmount)}</strong>
           <small>
             {paymentMode === "multiple"
               ? `${paymentForm.pagos.length} cuotas seleccionadas`
-              : annualSelected
-                ? "Contado anual seleccionado"
-                : `${selectedMonthIds.length} ${selectedMonthIds.length === 1 ? "período seleccionado" : "períodos seleccionados"}`}
+              : registrationTabActive
+                ? registrationPaid
+                  ? `Pagada el ${formatOptionDate(registrationPayment?.fecha_pago)}`
+                  : "Pago único de inscripción"
+                : annualSelected
+                  ? "Contado anual seleccionado"
+                  : `${selectedMonthIds.length} ${selectedMonthIds.length === 1 ? "período seleccionado" : "períodos seleccionados"}`}
           </small>
         </div>
       }
@@ -293,6 +344,12 @@ export default function ModalPagoCuota({
                 label: "Meses a pagar",
                 icon: faCalendarDays,
                 badge: selectedMonthIds.length,
+              },
+              {
+                value: "registration",
+                label: "Inscripción",
+                icon: faIdCard,
+                badge: registrationPaid ? "✓" : null,
               },
               {
                 value: "family",
@@ -473,7 +530,121 @@ export default function ModalPagoCuota({
               </div>
             ) : null}
 
-          {activePaymentTab !== "family" ? (
+          {activePaymentTab === "registration" ? (
+            <section
+              className={`cuotas-registration-card ${registrationPaid ? "is-paid" : ""}`.trim()}
+              aria-label="Pago de inscripción"
+            >
+              {registrationPaid ? (
+                <div className="cuotas-registration-paid">
+                  <span className="cuotas-registration-paid__icon" aria-hidden="true">
+                    <FontAwesomeIcon icon={faIdCard} />
+                  </span>
+                  <div className="cuotas-registration-paid__content">
+                    <span>Inscripción ya registrada</span>
+                    <strong>{money(registrationPayment?.monto || 0)}</strong>
+                    <small>
+                      Se pagó el {formatOptionDate(registrationPayment?.fecha_pago)}
+                      {registrationPayment?.medio_pago
+                        ? ` · ${registrationPayment.medio_pago}`
+                        : " · medio no informado"}
+                    </small>
+                    <p>
+                      La inscripción se cobra una sola vez por socio. Si este pago
+                      fue cargado por error, podés eliminarlo para que vuelva a
+                      quedar pendiente.
+                    </p>
+                    <button
+                      type="button"
+                      className="mov-btn mov-btn--danger"
+                      style={{ justifySelf: "start", marginTop: 8 }}
+                      onClick={requestDeleteRegistration}
+                    >
+                      <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
+                      Eliminar pago de inscripción
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <header className="cuotas-registration-card__header">
+                    <div>
+                      <span>Inscripción única</span>
+                      <strong>Registrar pago de ingreso</strong>
+                    </div>
+                    <small>Este cobro se realiza una sola vez por socio.</small>
+                  </header>
+
+                  <div className="cuotas-registration-fields">
+                    <FloatingField
+                      label="Monto de inscripción *"
+                      active={Boolean(paymentForm.monto_inscripcion)}
+                    >
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={10}
+                        value={paymentForm.monto_inscripcion ?? ""}
+                        onChange={(event) =>
+                          updateRegistrationAmount(event.target.value)
+                        }
+                        aria-label="Monto de inscripción *"
+                        placeholder="0"
+                      />
+                    </FloatingField>
+
+                    <FloatingField
+                      label="Fecha de pago *"
+                      active={Boolean(paymentForm.fecha_pago)}
+                    >
+                      <input
+                        type="date"
+                        value={paymentForm.fecha_pago}
+                        onChange={(event) => updatePaymentDate(event.target.value)}
+                        aria-label="Fecha de pago de inscripción *"
+                      />
+                    </FloatingField>
+
+                    <FloatingField label="Medio de pago *" active>
+                      <select
+                        value={
+                          registrationMediumSelected
+                            ? paymentForm.id_medio_pago
+                            : ""
+                        }
+                        onChange={(event) =>
+                          setPaymentForm((current) => ({
+                            ...current,
+                            id_medio_pago: event.target.value,
+                          }))
+                        }
+                        aria-label="Medio de pago de inscripción *"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {registrationMedia.map((item) => (
+                          <option key={item.id_medio_pago} value={item.id_medio_pago}>
+                            {item.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </FloatingField>
+                  </div>
+
+                  <div className="cuotas-registration-note" role="note">
+                    <FontAwesomeIcon icon={faIdCard} aria-hidden="true" />
+                    <span>
+                      El importe sugerido se completa automáticamente con el valor
+                      de inscripción vigente. Podés reemplazarlo por otro monto
+                      antes de registrar el pago.
+                    </span>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : null}
+
+          {!["family", "registration"].includes(activePaymentTab) ? (
             <div
               className={`cuotas-payment-main-row ${tipo !== "PERSONA" ? "is-date-only" : ""}`.trim()}
             >

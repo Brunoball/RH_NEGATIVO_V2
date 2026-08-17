@@ -50,6 +50,7 @@ trait SociosConsultas
             $params['letra'] = $letter;
         }
 
+        self::appendPositiveIdFilter($where, $params, $filters, 'id_socio', 'q.id_socio');
         self::appendPositiveIdFilter($where, $params, $filters, 'grupo_sanguineo', 'q.id_grupo_sanguineo');
         self::appendPositiveIdFilter($where, $params, $filters, 'estado', 'q.id_estado');
         self::appendPositiveIdFilter($where, $params, $filters, 'categoria', 'q.id_categoria');
@@ -427,6 +428,8 @@ trait SociosConsultas
                     uc.fecha_contacto AS ultimo_contacto_fecha,
                     uc.estado_contacto AS ultimo_contacto_estado,
                     uc.detalle_contacto AS ultimo_contacto_detalle,
+                    hb.fecha_evento AS fecha_baja,
+                    hb.motivo AS motivo_baja,
                     {$debtExpression} AS meses_adeudados
                 FROM socios s
                 INNER JOIN cobrador cob ON cob.id_cobrador = s.id_cobrador
@@ -439,6 +442,16 @@ trait SociosConsultas
                       FROM socios_contactos sc2
                       WHERE sc2.id_socio = s.id_socio
                       ORDER BY sc2.fecha_contacto DESC, sc2.id_contacto DESC
+                      LIMIT 1
+                  )
+                LEFT JOIN socios_historial_estados hb
+                  ON hb.id_historial = (
+                      SELECT h2.id_historial
+                      FROM socios_historial_estados h2
+                      WHERE h2.id_socio = s.id_socio
+                        AND h2.tipo_evento = 'BAJA'
+                      ORDER BY COALESCE(h2.fecha_evento, h2.creado_en) DESC,
+                               h2.id_historial DESC
                       LIMIT 1
                   )";
     }
@@ -503,6 +516,10 @@ trait SociosConsultas
         $row['meses_adeudados'] = (int)($row['meses_adeudados'] ?? 0);
         $row['categoria_monto_mensual'] = (float)$row['categoria_monto_mensual'];
         $row['categoria_monto_anual'] = (float)$row['categoria_monto_anual'];
+        $fechaBaja = trim((string)($row['fecha_baja'] ?? ''));
+        $row['fecha_baja'] = $fechaBaja !== '' ? substr($fechaBaja, 0, 10) : null;
+        $motivoBaja = trim((string)($row['motivo_baja'] ?? ''));
+        $row['motivo_baja'] = $motivoBaja !== '' ? $motivoBaja : null;
         $row['denominacion'] = (string)$row['nombre'];
         return $row;
     }

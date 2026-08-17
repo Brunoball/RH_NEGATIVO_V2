@@ -11,6 +11,12 @@ final class Cuotas extends CuotasRegistros
         api_success(self::listarDatos($auth['db'], $_GET));
     }
 
+    public static function totalesEstado(): never
+    {
+        $auth = auth_context();
+        api_success(self::totalesEstadoDatos($auth['db'], $_GET));
+    }
+
     public static function catalogos(): never
     {
         $auth = auth_context();
@@ -46,7 +52,25 @@ final class Cuotas extends CuotasRegistros
             'anio' => $year,
             'fecha_pago' => $date,
             'periodos' => self::contextosPagoDatos($auth['db'], $partnerId, $year, $date),
+            'inscripcion' => self::contextoInscripcionDatos($auth['db'], $partnerId),
         ]);
+    }
+
+    public static function registrarInscripcion(): never
+    {
+        $auth = require_admin();
+        $item = self::registrarInscripcionDatos($auth, request_body());
+        api_success(['item' => $item], 'Inscripción pagada correctamente.');
+    }
+
+    public static function eliminarInscripcion(): never
+    {
+        $auth = require_admin();
+        $item = self::eliminarInscripcionDatos($auth, request_body());
+        api_success(
+            ['item' => $item],
+            'Pago de inscripción eliminado correctamente. La inscripción volvió a quedar pendiente.'
+        );
     }
 
     public static function registrarPago(): never

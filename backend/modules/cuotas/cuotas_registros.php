@@ -11,8 +11,214 @@ abstract class CuotasRegistros extends CuotasConsultas
         self::validarEsquema($db);
         $date = self::fechaPago($body['fecha_pago'] ?? date('Y-m-d'));
         $medium = self::medioPago($db, $body['id_medio_pago'] ?? null);
-        $targets = self::normalizarObjetivos($db, $body, $date);
+        $targets = self::normalizarObjetivos($db, $body);
         return self::guardarObjetivos($auth, $targets, $date, $medium, false, null);
+    }
+
+    protected static function registrarInscripcionDatos(array $auth, array $body): array
+    {
+        $db = $auth['db'];
+        self::validarEsquema($db);
+        $partnerId = positive_id($body['id_socio'] ?? null, 'socio');
+        $date = self::fechaPago($body['fecha_pago'] ?? date('Y-m-d'));
+        $medium = self::medioPago($db, $body['id_medio_pago'] ?? null);
+
+        $mediumName = function_exists('mb_strtoupper')
+            ? mb_strtoupper(trim((string)$medium['nombre']), 'UTF-8')
+            : strtoupper(trim((string)$medium['nombre']));
+        if (!str_contains($mediumName, 'EFECTIVO') && !str_contains($mediumName, 'TRANSFERENCIA')) {
+            api_error(
+                'La inscripción sólo puede registrarse en efectivo o transferencia.',
+                'MEDIO_PAGO_INSCRIPCION_INVALIDO'
+            );
+        }
+
+        $rawAmount = trim((string)($body['monto'] ?? ''));
+        if ($rawAmount === '' || !preg_match('/^[0-9]{1,10}$/', $rawAmount)) {
+            api_error('Ingresá un monto de inscripción válido, sin decimales.', 'MONTO_INSCRIPCION_INVALIDO');
+        }
+        $amount = (int)$rawAmount;
+        if ($amount <= 0) {
+            api_error('El monto de inscripción debe ser mayor a cero.', 'MONTO_INSCRIPCION_INVALIDO');
+        }
+        if ($amount > 2147483647) {
+            api_error('El monto de inscripción supera el máximo permitido.', 'MONTO_INSCRIPCION_INVALIDO');
+        }
+
+        return transaction($db, static function () use (
+            $db,
+            $auth,
+            $partnerId,
+            $date,
+            $medium,
+            $amount
+        ): array {
+            // Bloquear la fila del socio serializa dos intentos simultáneos de
+            // inscripción aun en bases históricas que no tengan UNIQUE por socio.
+            $partnerStatement = $db->prepare(
+                'SELECT s.id_socio, s.nombre, s.dni, s.vigente,
+                        s.domicilio, s.numero, s.domicilio_cobro,
+                        s.telefono_fijo, s.telefono_movil,
+                        co.nombre AS cobrador
+                 FROM socios s
+                 LEFT JOIN cobrador co ON co.id_cobrador = s.id_cobrador
+                 WHERE s.id_socio = ?
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $partnerStatement->execute([$partnerId]);
+            $partner = $partnerStatement->fetch(PDO::FETCH_ASSOC);
+            if (!$partner) api_error('El socio seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!(bool)$partner['vigente']) {
+                api_error('No se puede registrar la inscripción a un socio dado de baja.', 'SOCIO_INACTIVO', 409);
+            }
+
+            $existing = $db->prepare(
+                'SELECT id_inscripcion, monto, fecha_pago
+                 FROM pagos_inscripcion
+                 WHERE id_socio = ?
+                 ORDER BY id_inscripcion ASC
+                 LIMIT 1'
+            );
+            $existing->execute([$partnerId]);
+            $existingRow = $existing->fetch(PDO::FETCH_ASSOC);
+            if ($existingRow) {
+                api_error(
+                    'Este socio ya tiene la inscripción registrada.',
+                    'INSCRIPCION_YA_REGISTRADA',
+                    409,
+                    [
+                        'id_inscripcion' => (int)$existingRow['id_inscripcion'],
+                        'fecha_pago' => (string)$existingRow['fecha_pago'],
+                        'monto' => (int)$existingRow['monto'],
+                    ]
+                );
+            }
+
+            $insert = $db->prepare(
+                'INSERT INTO pagos_inscripcion
+                 (id_socio, monto, fecha_pago, id_medio_pago)
+                 VALUES (?, ?, ?, ?)'
+            );
+            $insert->execute([
+                $partnerId,
+                $amount,
+                $date,
+                (int)$medium['id_medio_pago'],
+            ]);
+            $registrationId = (int)$db->lastInsertId();
+
+            $item = [
+                'id_inscripcion' => $registrationId,
+                'id_socio' => $partnerId,
+                'socio' => (string)$partner['nombre'],
+                'documento' => $partner['dni'],
+                'fecha_pago' => $date,
+                'monto' => $amount,
+                'id_medio_pago' => (int)$medium['id_medio_pago'],
+                'medio_pago' => (string)$medium['nombre'],
+                'domicilio' => trim((string)$partner['domicilio'] . ' ' . (string)$partner['numero']),
+                'domicilio_cobro' => $partner['domicilio_cobro'],
+                'telefono_fijo' => $partner['telefono_fijo'],
+                'telefono_movil' => $partner['telefono_movil'],
+                'cobrador' => $partner['cobrador'],
+            ];
+
+            audit_change(
+                $db,
+                $auth,
+                'cuotas',
+                'INSERT',
+                'pagos_inscripcion',
+                $registrationId,
+                sprintf('Se registró la inscripción de %s.', (string)$partner['nombre']),
+                null,
+                $item
+            );
+
+            return $item;
+        });
+    }
+
+    protected static function eliminarInscripcionDatos(array $auth, array $body): array
+    {
+        $db = $auth['db'];
+        self::validarEsquema($db);
+        $registrationId = positive_id(
+            $body['id_inscripcion'] ?? $body['id'] ?? null,
+            'inscripción'
+        );
+
+        return transaction($db, static function () use (
+            $db,
+            $auth,
+            $registrationId
+        ): array {
+            $statement = $db->prepare(
+                'SELECT pi.id_inscripcion, pi.id_socio, pi.monto, pi.fecha_pago,
+                        pi.id_medio_pago, pi.creado_en,
+                        s.nombre AS socio, s.dni,
+                        mp.nombre AS medio_pago
+                 FROM pagos_inscripcion pi
+                 INNER JOIN socios s ON s.id_socio = pi.id_socio
+                 LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
+                 WHERE pi.id_inscripcion = ?
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $statement->execute([$registrationId]);
+            $row = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                api_error(
+                    'El pago de inscripción ya no existe.',
+                    'INSCRIPCION_NO_ENCONTRADA',
+                    404
+                );
+            }
+
+            $delete = $db->prepare(
+                'DELETE FROM pagos_inscripcion WHERE id_inscripcion = ?'
+            );
+            $delete->execute([$registrationId]);
+            if ($delete->rowCount() !== 1) {
+                api_error(
+                    'No se pudo eliminar el pago de inscripción.',
+                    'INSCRIPCION_NO_ELIMINADA',
+                    409
+                );
+            }
+
+            $item = [
+                'id_inscripcion' => (int)$row['id_inscripcion'],
+                'id_socio' => (int)$row['id_socio'],
+                'socio' => (string)$row['socio'],
+                'documento' => $row['dni'],
+                'monto' => number_format((float)$row['monto'], 2, '.', ''),
+                'fecha_pago' => (string)$row['fecha_pago'],
+                'id_medio_pago' => $row['id_medio_pago'] === null
+                    ? null
+                    : (int)$row['id_medio_pago'],
+                'medio_pago' => $row['medio_pago'],
+                'creado_en' => $row['creado_en'],
+            ];
+
+            audit_change(
+                $db,
+                $auth,
+                'cuotas',
+                'ELIMINAR',
+                'pagos_inscripcion',
+                $registrationId,
+                sprintf(
+                    'Se eliminó el pago de inscripción de %s.',
+                    (string)$row['socio']
+                ),
+                $item,
+                null
+            );
+
+            return $item;
+        });
     }
 
     protected static function condonarPagoDatos(array $auth, array $body): array
@@ -84,7 +290,7 @@ abstract class CuotasRegistros extends CuotasConsultas
         });
     }
 
-    private static function normalizarObjetivos(PDO $db, array $body, string $date): array
+    private static function normalizarObjetivos(PDO $db, array $body): array
     {
         $raw = [];
         if (is_array($body['pagos'] ?? null)) {
@@ -98,22 +304,36 @@ abstract class CuotasRegistros extends CuotasConsultas
             if ($periodIds === []) api_error('Seleccioná al menos un período.', 'VALIDATION_ERROR');
 
             $applyFamily = filter_var($body['aplicar_familia'] ?? false, FILTER_VALIDATE_BOOL);
-            $partnerIds = [$partnerId];
-            if ($applyFamily) {
-                $family = self::familiaDeSocio($db, $partnerId, $date);
-                if ($family) {
-                    $partnerIds = self::integrantesFamilia($db, (int)$family['id_familia'], $date);
-                    if (!in_array($partnerId, $partnerIds, true)) $partnerIds[] = $partnerId;
-                }
-            }
 
-            foreach ($partnerIds as $targetPartnerId) {
-                foreach ($periodIds as $periodId) {
+            // Compatibilidad con el endpoint legacy aplicar_familia=true. La
+            // composición familiar se resuelve en la fecha histórica de CADA
+            // período, no en la fecha en la que se está registrando el pago.
+            // Así un pago retroactivo nunca agrega/quita integrantes por
+            // cambios familiares ocurridos después del período adeudado.
+            foreach ($periodIds as $periodId) {
+                $period = self::periodo($db, $periodId);
+                $resolvedPeriodId = (int)$period['id_periodo'];
+                $partnerIds = [$partnerId];
+
+                if ($applyFamily) {
+                    $referenceDate = self::inicioPeriodo($year, $resolvedPeriodId);
+                    $family = self::familiaDeSocio($db, $partnerId, $referenceDate);
+                    if ($family) {
+                        $partnerIds = self::integrantesFamilia(
+                            $db,
+                            (int)$family['id_familia'],
+                            $referenceDate
+                        );
+                        if (!in_array($partnerId, $partnerIds, true)) $partnerIds[] = $partnerId;
+                    }
+                }
+
+                foreach ($partnerIds as $targetPartnerId) {
                     $raw[] = [
                         'id_socio' => $targetPartnerId,
                         'anio' => $year,
-                        'mes' => $periodId,
-                        // El pago familiar calcula el monto vigente de cada socio.
+                        'mes' => $resolvedPeriodId,
+                        // El pago familiar calcula el monto histórico de cada socio.
                         'monto' => $applyFamily ? null : ($body['monto'] ?? null),
                     ];
                 }

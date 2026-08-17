@@ -22,7 +22,24 @@ abstract class CuotasConsultas extends CuotasSoporte
         $periodEnd = self::finPeriodo($year, $periodId);
         $periodReference = self::inicioPeriodo($year, $periodId);
         $search = clean_text($filters['buscar'] ?? '', 160, false);
+        $partnerFilterId = self::idOpcional($filters['id_socio'] ?? null, 'socio');
         $categoryId = self::idOpcional($filters['categoria'] ?? null, 'categoría');
+        // "Estado" en RH Negativo es el estado propio del socio (ACTIVO/PASIVO),
+        // no si el registro está vigente o dado de baja. Se filtra por el
+        // catálogo `estado`, igual que en el módulo Socios.
+        $personStateId = self::idOpcional(
+            $filters['estado_persona'] ?? $filters['id_estado'] ?? null,
+            'estado'
+        );
+        $collectorId = self::idOpcional(
+            $filters['cobrador'] ?? $filters['id_cobrador'] ?? null,
+            'cobrador'
+        );
+        $paymentMediumId = self::idOpcional(
+            $filters['medio_pago'] ?? $filters['id_medio_pago'] ?? null,
+            'medio de pago'
+        );
+
         $page = max(1, (int)($filters['pagina'] ?? 1));
         $perPage = max(1, min(200, (int)($filters['por_pagina'] ?? 100)));
         $includeCatalogs = filter_var(
@@ -38,6 +55,18 @@ abstract class CuotasConsultas extends CuotasSoporte
             $where[] = 's.vigente = 1';
             $where[] = '(s.fecha_ingreso IS NULL OR s.fecha_ingreso <= ?)';
             $params[] = $periodEnd;
+        }
+        if ($personStateId !== null) {
+            $where[] = 's.id_estado = ?';
+            $params[] = $personStateId;
+        }
+        if ($collectorId !== null) {
+            $where[] = 's.id_cobrador = ?';
+            $params[] = $collectorId;
+        }
+        if ($partnerFilterId !== null) {
+            $where[] = 's.id_socio = ?';
+            $params[] = $partnerFilterId;
         }
         $rows = self::consultarSocios($db, implode(' AND ', $where), $params, $periodReference);
         $partnerIds = array_map('intval', array_column($rows, 'id_socio'));
@@ -105,6 +134,13 @@ abstract class CuotasConsultas extends CuotasSoporte
             if ($state === 'PAGADOS' && ($payment === null || (string)$payment['estado'] !== 'PAGADO')) continue;
             if ($state === 'CONDONADOS' && ($payment === null || (string)$payment['estado'] !== 'CONDONADO')) continue;
 
+            if (
+                $paymentMediumId !== null
+                && ($payment === null || (int)($payment['id_medio_pago'] ?? 0) !== $paymentMediumId)
+            ) {
+                continue;
+            }
+
             $category = $categories[(int)$row['id_categoria']] ?? null;
             $historicalPeriod = $periodEnd < date('Y-m-d');
             if ($state === 'DEUDORES' && (!$category || (!(bool)$category['activo'] && !$historicalPeriod))) continue;
@@ -163,6 +199,185 @@ abstract class CuotasConsultas extends CuotasSoporte
         return $result;
     }
 
+    /**
+     * Devuelve los tres contadores de estado en una sola pasada.
+     *
+     * Antes el frontend llamaba tres veces a listarDatos() (DEUDORES,
+     * PAGADOS y CONDONADOS), lo que repetía toda la reconstrucción histórica,
+     * familiar y de importes únicamente para leer tres totales. Este resumen
+     * comparte las mismas reglas de clasificación, pero evita armar filas,
+     * precios, descuentos y paginación.
+     */
+    protected static function totalesEstadoDatos(PDO $db, array $filters): array
+    {
+        self::validarEsquema($db);
+
+        $type = strtoupper(trim((string)($filters['tipo'] ?? 'PERSONA')));
+        if ($type !== 'PERSONA') api_error('El tipo de cuota solicitado no es válido.', 'FILTRO_INVALIDO');
+
+        $year = self::validarAnio($filters['anio'] ?? date('Y'));
+        $period = self::periodo($db, $filters['mes'] ?? $filters['id_periodo'] ?? 1);
+        $periodId = (int)$period['id_periodo'];
+        $periodEnd = self::finPeriodo($year, $periodId);
+        $periodReference = self::inicioPeriodo($year, $periodId);
+        $search = clean_text($filters['buscar'] ?? '', 160, false);
+        $partnerFilterId = self::idOpcional($filters['id_socio'] ?? null, 'socio');
+        $categoryId = self::idOpcional($filters['categoria'] ?? null, 'categoría');
+        // "Estado" en RH Negativo es el estado propio del socio (ACTIVO/PASIVO),
+        // no si el registro está vigente o dado de baja. Se filtra por el
+        // catálogo `estado`, igual que en el módulo Socios.
+        $personStateId = self::idOpcional(
+            $filters['estado_persona'] ?? $filters['id_estado'] ?? null,
+            'estado'
+        );
+        $collectorId = self::idOpcional(
+            $filters['cobrador'] ?? $filters['id_cobrador'] ?? null,
+            'cobrador'
+        );
+        $paymentMediumId = self::idOpcional(
+            $filters['medio_pago'] ?? $filters['id_medio_pago'] ?? null,
+            'medio de pago'
+        );
+
+
+        // En el caso habitual (sin búsqueda) no necesitamos cargar joins de
+        // familia/domicilios: para contar alcanza un conjunto mínimo de
+        // columnas, incluyendo estado y cobrador para respetar los filtros. Si hay búsqueda reutilizamos consultarSocios() para que
+        // los términos admitidos sean exactamente los mismos que en el listado.
+        if ($search === '') {
+            if ($partnerFilterId !== null) {
+                $statement = $db->prepare(
+                    'SELECT id_socio, nombre, dni, id_categoria, id_cobrador, id_estado, fecha_ingreso, vigente '
+                    . 'FROM socios WHERE id_socio = ? ORDER BY id_socio ASC'
+                );
+                $statement->execute([$partnerFilterId]);
+                $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $rows = $db->query(
+                    'SELECT id_socio, nombre, dni, id_categoria, id_cobrador, id_estado, fecha_ingreso, vigente '
+                    . 'FROM socios ORDER BY id_socio ASC'
+                )->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } else {
+            $whereSearch = $partnerFilterId !== null ? 's.id_socio = ?' : '1 = 1';
+            $paramsSearch = $partnerFilterId !== null ? [$partnerFilterId] : [];
+            $rows = self::consultarSocios($db, $whereSearch, $paramsSearch, $periodReference);
+        }
+
+        if ($personStateId !== null) {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn(array $row): bool => (int)($row['id_estado'] ?? 0) === $personStateId
+            ));
+        }
+        if ($collectorId !== null) {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn(array $row): bool => (int)($row['id_cobrador'] ?? 0) === $collectorId
+            ));
+        }
+
+        $partnerIds = array_map('intval', array_column($rows, 'id_socio'));
+        $historicalCategories = self::categoriasSociosEnFecha($db, $partnerIds, $periodReference);
+        foreach ($rows as &$row) {
+            $partnerId = (int)$row['id_socio'];
+            if (isset($historicalCategories[$partnerId])) {
+                $row['id_categoria'] = (int)$historicalCategories[$partnerId];
+            }
+        }
+        unset($row);
+
+        $categoryIds = array_values(array_unique(array_map('intval', array_column($rows, 'id_categoria'))));
+        $categories = self::mapaCategorias($db, $categoryIds);
+
+        if ($categoryId !== null) {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn(array $row): bool => (int)$row['id_categoria'] === $categoryId
+            ));
+        }
+
+        if ($search !== '') {
+            // La categoría pudo cambiar históricamente. Igualamos el nombre
+            // que mostraría listarDatos() antes de aplicar el mismo buscador.
+            foreach ($rows as &$row) {
+                $category = $categories[(int)$row['id_categoria']] ?? null;
+                if ($category) $row['categoria'] = (string)$category['nombre'];
+            }
+            unset($row);
+
+            $needle = function_exists('mb_strtoupper')
+                ? mb_strtoupper($search, 'UTF-8')
+                : strtoupper($search);
+            $rows = array_values(array_filter($rows, static function (array $row) use ($needle): bool {
+                $haystack = implode(' ', [
+                    $row['nombre'] ?? '',
+                    $row['dni'] ?? '',
+                    $row['categoria'] ?? '',
+                    $row['cobrador'] ?? '',
+                    $row['familia'] ?? '',
+                ]);
+                $haystack = function_exists('mb_strtoupper')
+                    ? mb_strtoupper($haystack, 'UTF-8')
+                    : strtoupper($haystack);
+                return str_contains($haystack, $needle);
+            }));
+        }
+
+        $partnerIds = array_map('intval', array_column($rows, 'id_socio'));
+        $payments = self::pagosRegistrados($db, $partnerIds, $year);
+        $historicalPeriod = $periodEnd < date('Y-m-d');
+        $totals = [
+            'DEUDORES' => 0,
+            'PAGADOS' => 0,
+            'CONDONADOS' => 0,
+        ];
+
+        foreach ($rows as $row) {
+            $partnerId = (int)$row['id_socio'];
+            $directPayment = $payments[$partnerId . '-' . $periodId] ?? null;
+            $annualPayment = $periodId !== 7 ? ($payments[$partnerId . '-7'] ?? null) : null;
+            $payment = $directPayment ?? $annualPayment;
+
+            if ($payment !== null) {
+                if (
+                    $paymentMediumId !== null
+                    && (int)($payment['id_medio_pago'] ?? 0) !== $paymentMediumId
+                ) {
+                    continue;
+                }
+                $paymentState = (string)($payment['estado'] ?? '');
+                if ($paymentState === 'PAGADO') $totals['PAGADOS']++;
+                elseif ($paymentState === 'CONDONADO') $totals['CONDONADOS']++;
+                continue;
+            }
+
+            // Si se filtra por medio de pago, una deuda sin pago asociado no
+            // puede pertenecer a ese medio.
+            if ($paymentMediumId !== null) continue;
+
+            // Un anual solicitado queda indisponible si ya existe cualquier
+            // período bimestral. Es la misma regla de conflictoModalidad().
+            if (self::conflictoModalidad($payments, $partnerId, $periodId) !== null) continue;
+            if (!(bool)($row['vigente'] ?? false)) continue;
+            if ($row['fecha_ingreso'] !== null && (string)$row['fecha_ingreso'] > $periodEnd) continue;
+
+            $category = $categories[(int)$row['id_categoria']] ?? null;
+            if (!$category || (!(bool)$category['activo'] && !$historicalPeriod)) continue;
+            $totals['DEUDORES']++;
+        }
+
+        return [
+            'totales' => $totals,
+            'periodo' => [
+                'anio' => $year,
+                'mes' => $periodId,
+                'id_periodo' => $periodId,
+                'nombre' => (string)$period['nombre'],
+            ],
+        ];
+    }
+
     protected static function catalogosDatos(PDO $db, ?int $year = null, ?int $periodId = null): array
     {
         self::validarEsquema($db);
@@ -195,6 +410,22 @@ abstract class CuotasConsultas extends CuotasSoporte
             'id_medio_pago' => (int)$row['id_medio_pago'],
             'nombre' => (string)$row['nombre'],
         ], $mediaRows);
+
+        $collectorRows = $db->query(
+            'SELECT id_cobrador, nombre FROM cobrador WHERE activo = 1 ORDER BY id_cobrador ASC'
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $collectors = array_map(static fn(array $row): array => [
+            'id_cobrador' => (int)$row['id_cobrador'],
+            'nombre' => (string)$row['nombre'],
+        ], $collectorRows);
+
+        $stateRows = $db->query(
+            'SELECT id_estado, nombre FROM estado WHERE activo = 1 ORDER BY nombre ASC'
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $states = array_map(static fn(array $row): array => [
+            'id_estado' => (int)$row['id_estado'],
+            'nombre' => (string)$row['nombre'],
+        ], $stateRows);
 
         $partnerRows = self::consultarSocios($db, 's.vigente = 1', [], $date);
         $categoryIds = array_map('intval', array_column($partnerRows, 'id_categoria'));
@@ -242,12 +473,77 @@ abstract class CuotasConsultas extends CuotasSoporte
 
         return ['catalogos' => [
             'categorias' => $categories,
+            'estados' => $states,
+            'cobradores' => $collectors,
             'medios_pago' => $media,
             'socios' => $partners,
             'anios' => array_values(array_unique($years)),
             'meses' => self::periodos($db),
             'periodos' => self::periodos($db),
         ]];
+    }
+
+    protected static function contextoInscripcionDatos(PDO $db, int $partnerId): array
+    {
+        self::validarEsquema($db);
+
+        $partner = $db->prepare(
+            'SELECT id_socio, nombre, dni, vigente
+             FROM socios
+             WHERE id_socio = ?
+             LIMIT 1'
+        );
+        $partner->execute([$partnerId]);
+        $partnerRow = $partner->fetch(PDO::FETCH_ASSOC);
+        if (!$partnerRow) api_error('El socio seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+
+        $payment = $db->prepare(
+            'SELECT pi.id_inscripcion, pi.id_socio, pi.monto, pi.fecha_pago,
+                    pi.id_medio_pago, mp.nombre AS medio_pago
+             FROM pagos_inscripcion pi
+             LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
+             WHERE pi.id_socio = ?
+             ORDER BY pi.fecha_pago ASC, pi.id_inscripcion ASC
+             LIMIT 1'
+        );
+        $payment->execute([$partnerId]);
+        $paymentRow = $payment->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        // La base histórica no posee una tabla de configuración específica
+        // para el valor de inscripción. Se toma como sugerido el último monto
+        // positivo efectivamente cobrado; si la tabla estuviera vacía, se usa
+        // el valor vigente con el que fue migrado RH Negativo ($ 6.000).
+        $suggested = $db->query(
+            'SELECT monto
+             FROM pagos_inscripcion
+             WHERE monto > 0
+             ORDER BY fecha_pago DESC, id_inscripcion DESC
+             LIMIT 1'
+        )->fetchColumn();
+        $suggestedAmount = $suggested === false ? 6000 : (int)$suggested;
+
+        if ($paymentRow !== null) {
+            $paymentRow = [
+                'id_inscripcion' => (int)$paymentRow['id_inscripcion'],
+                'id_socio' => (int)$paymentRow['id_socio'],
+                'monto' => (int)$paymentRow['monto'],
+                'fecha_pago' => (string)$paymentRow['fecha_pago'],
+                'id_medio_pago' => $paymentRow['id_medio_pago'] === null
+                    ? null
+                    : (int)$paymentRow['id_medio_pago'],
+                'medio_pago' => $paymentRow['medio_pago'],
+            ];
+        }
+
+        return [
+            'id_socio' => (int)$partnerRow['id_socio'],
+            'socio' => (string)$partnerRow['nombre'],
+            'documento' => $partnerRow['dni'],
+            'vigente' => (bool)$partnerRow['vigente'],
+            'pagada' => $paymentRow !== null,
+            'monto_sugerido' => $suggestedAmount,
+            'pago' => $paymentRow,
+        ];
     }
 
     protected static function contextosPagoDatos(
@@ -367,17 +663,19 @@ abstract class CuotasConsultas extends CuotasSoporte
     private static function consultarSocios(PDO $db, string $where, array $params, string $familyDate): array
     {
         $sql =
-            "SELECT s.id_socio, s.nombre, s.dni, s.id_categoria, s.id_cobrador,
+            "SELECT s.id_socio, s.nombre, s.dni, s.id_categoria, s.id_cobrador, s.id_estado,
                     s.domicilio, s.numero, s.domicilio_cobro,
                     s.telefono_fijo, s.telefono_movil,
                     s.fecha_ingreso, s.vigente,
                     c.nombre AS categoria, c.activo AS categoria_activa,
                     co.nombre AS cobrador,
+                    es.nombre AS estado_persona,
                     f.id_familia, f.nombre_familia AS familia,
                     fc.cantidad_integrantes
              FROM socios s
              INNER JOIN categoria c ON c.id_categoria = s.id_categoria
              LEFT JOIN cobrador co ON co.id_cobrador = s.id_cobrador
+             LEFT JOIN estado es ON es.id_estado = s.id_estado
              LEFT JOIN familias_socios fs ON fs.id_familia_socio = (
                 SELECT MAX(fs2.id_familia_socio)
                 FROM familias_socios fs2
@@ -431,7 +729,11 @@ abstract class CuotasConsultas extends CuotasSoporte
         return [
             'id_socio' => (int)$row['id_socio'],
             'tipo_socio' => 'PERSONA',
+            // `estado_socio` se conserva para compatibilidad con la marca de
+            // registro dado de baja. El estado ACTIVO/PASIVO real viaja aparte.
             'estado_socio' => (bool)$row['vigente'] ? 'ACTIVO' : 'INACTIVO',
+            'id_estado' => isset($row['id_estado']) ? (int)$row['id_estado'] : null,
+            'estado_persona' => $row['estado_persona'] ?? null,
             'fecha_alta' => $row['fecha_ingreso'],
             'id_categoria' => (int)$row['id_categoria'],
             'denominacion' => (string)$row['nombre'],

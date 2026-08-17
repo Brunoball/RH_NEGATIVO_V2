@@ -49,6 +49,7 @@ import {
   addressInput,
   addressNumberInput,
   dniInput,
+  onlyDigits,
   personNameInput,
   phoneInput,
   upperLimitedText,
@@ -676,10 +677,10 @@ function BirthdayContactCard({ items, onView, onClose, writable }) {
   );
 }
 
-const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit, onState, onDelete }) {
+const SociosRows = memo(function SociosRows({ items, writable, showBajas, onHistory, onEdit, onState, onDelete }) {
   return items.map((item) => (
     <div
-      className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid socios-contactRow ${contactToneClass(item.ultimo_contacto_estado)}`}
+      className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid ${showBajas ? "socios-grid--bajas" : ""} socios-contactRow ${contactToneClass(item.ultimo_contacto_estado)}`}
       role="row"
       key={item.id_socio}
       data-contact-status={String(item.ultimo_contacto_estado || "SIN_GESTION").toUpperCase()}
@@ -691,23 +692,36 @@ const SociosRows = memo(function SociosRows({ items, writable, onHistory, onEdit
           {[item.domicilio, item.numero].filter(Boolean).join(" ") || "SIN DOMICILIO"}
         </small>
       </div>
-      <div className="mov-gridCell is-center">
-        <span className="socios-bloodChip">{item.grupo_sanguineo || "SIN DATO"}</span>
-      </div>
-      <div className="mov-gridCell socios-statusCell is-center">
-        <span className={`socios-statusChip ${statusChipTone(item)}`}>
-          {item.vigente ? (item.estado || "ACTIVO") : "BAJA"}
-        </span>
-      </div>
-      <div className="mov-gridCell is-center">
-        <span className={`socios-debtChip ${Number(item.meses_adeudados) ? "is-due" : "is-ok"}`}>
-          {debtLabel(item.meses_adeudados)}
-        </span>
-      </div>
-      <div className="mov-gridCell entity-main-cell socios-contactCell">
-        <strong>{contactLabel(item.ultimo_contacto_estado)}</strong>
-        <small>{item.ultimo_contacto_fecha ? formatDate(item.ultimo_contacto_fecha) : "SIN FECHA"}</small>
-      </div>
+      {showBajas ? (
+        <>
+          <div className="mov-gridCell is-center socios-bajaDateCell">
+            <strong>{item.fecha_baja ? formatDate(item.fecha_baja) : "SIN FECHA"}</strong>
+          </div>
+          <div className="mov-gridCell socios-bajaReasonCell">
+            <span>{item.motivo_baja || "SIN MOTIVO INFORMADO"}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mov-gridCell is-center">
+            <span className="socios-bloodChip">{item.grupo_sanguineo || "SIN DATO"}</span>
+          </div>
+          <div className="mov-gridCell socios-statusCell is-center">
+            <span className={`socios-statusChip ${statusChipTone(item)}`}>
+              {item.vigente ? (item.estado || "ACTIVO") : "BAJA"}
+            </span>
+          </div>
+          <div className="mov-gridCell is-center">
+            <span className={`socios-debtChip ${Number(item.meses_adeudados) ? "is-due" : "is-ok"}`}>
+              {debtLabel(item.meses_adeudados)}
+            </span>
+          </div>
+          <div className="mov-gridCell entity-main-cell socios-contactCell">
+            <strong>{contactLabel(item.ultimo_contacto_estado)}</strong>
+            <small>{item.ultimo_contacto_fecha ? formatDate(item.ultimo_contacto_fecha) : "SIN FECHA"}</small>
+          </div>
+        </>
+      )}
       <div className="mov-gridCell mov-gridCell--actions">
         <div className="mov-actionsInline">
           <button className="mov-iconBtn" type="button" title="Ver ficha, contactos, pagos e historial" onClick={() => onHistory(item)}>
@@ -1024,6 +1038,8 @@ export default function Socios() {
   const tableBodyRef = useRef(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchId, setSearchId] = useState("");
+  const [debouncedSearchId, setDebouncedSearchId] = useState("");
   const [status, setStatus] = useState(readStatus);
   const [category, setCategory] = useState("");
   const [advanced, setAdvanced] = useState(emptyAdvancedFilters);
@@ -1038,10 +1054,19 @@ export default function Socios() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchId(searchId.trim());
+      setPage(1);
+    }, 280);
+    return () => window.clearTimeout(timeout);
+  }, [searchId]);
+
   const filters = useMemo(
     () => ({
       vigente: status,
       buscar: debouncedSearch,
+      id_socio: debouncedSearchId,
       categoria: category,
       letra: advanced.letra,
       grupo_sanguineo: advanced.grupo_sanguineo,
@@ -1052,7 +1077,7 @@ export default function Socios() {
       ingreso_hasta: advanced.ingreso_hasta,
       pagina: page,
     }),
-    [status, debouncedSearch, category, advanced, page],
+    [status, debouncedSearch, debouncedSearchId, category, advanced, page],
   );
 
   const {
@@ -1327,6 +1352,17 @@ export default function Socios() {
       placeholder: "",
       value: search,
       onChange: setSearch,
+      className: "socios-mainSearch",
+    },
+    {
+      type: "search",
+      key: "id_socio",
+      label: "ID socio",
+      placeholder: "",
+      value: searchId,
+      onChange: (value) =>
+        setSearchId(onlyDigits(value, 10).replace(/^0+/, "")),
+      className: "socios-idSearch",
     },
     {
       type: "select",
@@ -1348,6 +1384,7 @@ export default function Socios() {
 
   const info = infoModal?.data;
   const itemInfo = info?.item || infoModal?.item;
+  const isBajas = status === "BAJA";
   const filterDescription = [
     status === "BAJA" ? "Bajas" : "Vigentes",
     category ? `Categoría ${catalogos.categorias?.find((item) => String(item.id_categoria) === String(category))?.nombre || category}` : null,
@@ -1387,12 +1424,18 @@ export default function Socios() {
           className="socios-table has-bottom-pagination"
           bodyClassName="entity-table-wrap"
           bodyRef={tableBodyRef}
-          gridClassName="socios-grid"
-          ariaLabel="Listado de socios"
+          gridClassName={`socios-grid ${isBajas ? "socios-grid--bajas" : ""}`}
+          ariaLabel={isBajas ? "Listado de socios dados de baja" : "Listado de socios"}
           loading={loading}
           loadingLabel="Cargando socios..."
           skeletonRows={7}
-          columns={[
+          columns={isBajas ? [
+            { label: "ID socio", align: "center" },
+            "Socio",
+            { label: "Fecha de baja", align: "center" },
+            "Motivo",
+            { label: "Acciones", align: "center" },
+          ] : [
             { label: "ID", align: "center" },
             "Socio",
             { label: "Sangre", align: "center" },
@@ -1409,7 +1452,7 @@ export default function Socios() {
               <span>Cambiá los filtros o creá un nuevo registro.</span>
             </div>
           ) : null}
-          <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
+          <SociosRows items={items} writable={writable} showBajas={isBajas} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
         </GlobalDivTable>
 
         <footer className="socios-pagination">

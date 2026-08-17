@@ -1649,3 +1649,181 @@ html[data-theme="oscuro"] .cuotas-family-card .cuotas-family-members .cuotas-fam
 html[data-theme="oscuro"] .cuotas-family-card .cuotas-family-members .cuotas-family-paid-badge {
   background: rgb(22 101 52 / 0.38);
 }
+
+/* Inscripción: cobro único de ingreso del socio. */
+.cuotas-registration-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--mov-border) 92%, transparent);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cuotas-registration-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid color-mix(in srgb, var(--mov-border) 74%, transparent);
+}
+
+.cuotas-registration-card__header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.cuotas-registration-card__header span {
+  color: var(--balto-action);
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cuotas-registration-card__header strong {
+  color: var(--balto-ink);
+  font-size: 15px;
+}
+
+.cuotas-registration-card__header small {
+  max-width: 280px;
+  color: var(--balto-text);
+  font-size: 10.5px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.cuotas-registration-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.cuotas-registration-fields > * {
+  min-width: 0;
+}
+
+.cuotas-registration-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--balto-action) 18%, var(--mov-border));
+  border-radius: 9px;
+  color: var(--balto-text);
+  background: color-mix(in srgb, var(--balto-action) 4%, #fff);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.cuotas-registration-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--balto-action);
+}
+
+.cuotas-registration-card.is-paid {
+  border-color: rgb(34 197 94 / 0.34);
+  background: #f8fffa;
+}
+
+.cuotas-registration-paid {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  padding: 22px;
+}
+
+.cuotas-registration-paid__icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #166534;
+  background: #dcfce7;
+  font-size: 18px;
+}
+
+.cuotas-registration-paid__content {
+  display: grid;
+  gap: 4px;
+}
+
+.cuotas-registration-paid__content > span {
+  color: #166534;
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cuotas-registration-paid__content > strong {
+  color: #14532d;
+  font-size: 21px;
+}
+
+.cuotas-registration-paid__content > small {
+  color: #166534;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.cuotas-registration-paid__content > p {
+  max-width: 520px;
+  margin: 3px 0 0;
+  color: var(--balto-text);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .cuotas-registration-card__header {
+    display: grid;
+  }
+
+  .cuotas-registration-card__header small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .cuotas-registration-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .cuotas-registration-paid {
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 10px 2px;
+  }
+}
+
+html[data-theme="oscuro"] .cuotas-registration-card {
+  border-color: color-mix(in srgb, var(--mov-border) 90%, transparent);
+  background: var(--balto-surface, #111827);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-card.is-paid {
+  border-color: rgb(74 222 128 / 0.4);
+  background: rgb(22 101 52 / 0.12);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-note {
+  background: color-mix(in srgb, var(--balto-action) 8%, transparent);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-paid__icon {
+  color: #bbf7d0;
+  background: rgb(22 101 52 / 0.36);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-paid__content > span,
+html[data-theme="oscuro"] .cuotas-registration-paid__content > strong,
+html[data-theme="oscuro"] .cuotas-registration-paid__content > small {
+  color: #bbf7d0;
+}
