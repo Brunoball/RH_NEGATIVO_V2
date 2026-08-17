@@ -1384,7 +1384,7 @@ export default function Socios() {
         />
 
         <GlobalDivTable
-          className={`socios-table ${Number(paginacion?.total || 0) > 0 ? "has-bottom-pagination" : ""}`.trim()}
+          className="socios-table has-bottom-pagination"
           bodyClassName="entity-table-wrap"
           bodyRef={tableBodyRef}
           gridClassName="socios-grid"
@@ -1412,30 +1412,35 @@ export default function Socios() {
           <SociosRows items={items} writable={writable} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
         </GlobalDivTable>
 
-        <div className="socios-contactLegend" aria-label="Referencia de último contacto">
-          <span className="socios-contactLegend__title">Último contacto</span>
-          <div className="socios-contactLegend__items">
-            {CONTACT_LEGEND.map((item) => (
-              <span
-                className={`socios-contactLegend__item ${contactToneClass(item.value)}`}
-                key={item.value}
-              >
-                <i aria-hidden="true" />
-                {item.label}
-              </span>
-            ))}
-          </div>
-        </div>
+        <footer className="socios-pagination">
+          {Number(paginacion?.total || 0) > 0 || activeAdvancedFilters.length ? (
+            <div className="socios-pagination__left">
+              <p className="socios-pagination__summary">
+                Mostrando <strong>{paginacion?.desde || 0}</strong>–<strong>{paginacion?.hasta || 0}</strong> de <strong>{paginacion?.total || 0}</strong> socios
+              </p>
+              <ActiveFilterChips
+                chips={activeAdvancedFilters}
+                onRemove={removeAdvancedFilter}
+              />
+            </div>
+          ) : null}
 
-        {Number(paginacion?.total || 0) > 0 || activeAdvancedFilters.length ? (
-          <footer className="socios-pagination">
-            <p className="socios-pagination__summary">
-              Mostrando <strong>{paginacion?.desde || 0}</strong>–<strong>{paginacion?.hasta || 0}</strong> de <strong>{paginacion?.total || 0}</strong> socios
-            </p>
-            <ActiveFilterChips
-              chips={activeAdvancedFilters}
-              onRemove={removeAdvancedFilter}
-            />
+          <div className="socios-contactLegend" aria-label="Referencia de último contacto">
+            <span className="socios-contactLegend__title">Último contacto</span>
+            <div className="socios-contactLegend__items">
+              {CONTACT_LEGEND.map((item) => (
+                <span
+                  className={`socios-contactLegend__item ${contactToneClass(item.value)}`}
+                  key={item.value}
+                >
+                  <i aria-hidden="true" />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="socios-pagination__right">
             {Number(paginacion?.total || 0) > 0 ? (
               <nav className="socios-pagination__controls" aria-label="Paginación de socios">
                 <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1}>Anterior</button>
@@ -1445,8 +1450,8 @@ export default function Socios() {
                 <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={loading || totalPages === 0 || page >= totalPages}>Siguiente</button>
               </nav>
             ) : null}
-          </footer>
-        ) : null}
+          </div>
+        </footer>
         </ModulePage>
 
       </section>

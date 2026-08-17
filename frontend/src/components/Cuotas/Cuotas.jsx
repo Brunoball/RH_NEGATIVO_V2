@@ -381,21 +381,8 @@ const CuotasTableRows = React.memo(function CuotasTableRows({
             {item.categoria || "SIN CATEGORÍA"}
           </span>
         </div>
-        <div className="mov-gridCell is-strong is-center cuotas-period-cell">
-          <span>{item.periodo}</span>
-          {item.origen_anual ? (
-            <small>CUBIERTO POR CONTADO ANUAL</small>
-          ) : null}
-        </div>
         {isResolved ? (
           <>
-            <div className="mov-gridCell is-center">
-              <span
-                className={`cuotas-payment-state ${isCondoned ? "is-condoned" : "is-paid"}`}
-              >
-                {isCondoned ? "CONDONADO" : "PAGADO"}
-              </span>
-            </div>
             <div className="mov-gridCell is-center">
               {formatDate(item.fecha_pago)}
             </div>
@@ -1818,7 +1805,6 @@ export default function Cuotas() {
     "ID",
     "Socio",
     "Categoría",
-    "Período",
     "Importe",
     "Acciones",
   ];
@@ -1827,8 +1813,6 @@ export default function Cuotas() {
         "ID",
         "Socio",
         "Categoría",
-        "Período",
-        "Estado",
         "Fecha",
         "Medio",
         "Importe",

@@ -1242,6 +1242,12 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* En “Meses a pagar”, los datos de cobro se muestran antes que los períodos. */
+.cuotas-payment-main-row > .cuotas-payment-date-card:not(.is-amounts-only) {
+  order: -1;
+  height: auto;
+}
+
 .cuotas-payment-date-card {
   height: 100%;
   gap: 10px;

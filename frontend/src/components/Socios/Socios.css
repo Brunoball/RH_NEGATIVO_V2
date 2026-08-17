@@ -916,15 +916,36 @@
 
 /* Paginación */
 .socios-pagination {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  min-height: 58px;
+  gap: 10px 18px;
+  min-height: 60px;
   border-top: 1px solid #e6edf5;
-  padding: 10px 15px;
-  background: #fff;
+  padding: 9px 15px;
+  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+}
+
+.socios-pagination__left,
+.socios-pagination__right {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.socios-pagination__left {
+  grid-column: 1;
+  justify-self: start;
+  width: 100%;
+  gap: 10px 14px;
+}
+
+.socios-pagination__right {
+  grid-column: 3;
+  justify-self: end;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .socios-pagination__summary {
@@ -957,12 +978,20 @@
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, color .16s ease, box-shadow .16s ease;
+}
+
+.socios-pagination__controls button:hover:not(:disabled):not(.is-active) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .socios-pagination__controls button.is-active {
   border-color: #2563eb;
   background: #2563eb;
   color: #fff;
+  box-shadow: 0 4px 10px rgb(37 99 235 / 22%);
 }
 
 .socios-pagination__controls button:disabled {
@@ -1135,8 +1164,7 @@
     grid-template-columns: 1fr;
   }
 
-  .socios-contactForm__head,
-  .socios-pagination {
+  .socios-contactForm__head {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1180,61 +1208,116 @@
 }
 
 .socios-contactLegend {
-  display: flex;
+  grid-column: 2;
+  justify-self: center;
+  display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-end;
-  gap: 10px 14px;
-  min-height: 42px;
-  border-top: 1px solid #e6edf5;
-  padding: 7px 15px;
-  background: #fff;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 4px 5px 4px 9px;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
 }
 
 .socios-contactLegend__title {
-  color: #64748b;
-  font-size: 10px;
+  color: #475569;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: .055em;
+  letter-spacing: .045em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .socios-contactLegend__items {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 7px 12px;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .socios-contactLegend__item {
   --socios-contact-color: #9aa5b1;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: #475569;
-  font-size: 10px;
-  font-weight: 750;
+  gap: 5px;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--socios-contact-color) 24%, #e2e8f0);
+  border-radius: 999px;
+  padding: 3px 8px 3px 6px;
+  background: color-mix(in srgb, var(--socios-contact-color) 8%, #fff);
+  color: color-mix(in srgb, var(--socios-contact-color) 62%, #334155);
+  font-size: 9px;
+  font-weight: 800;
   white-space: nowrap;
 }
 
 .socios-contactLegend__item i {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 9px;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
   border-radius: 999px;
   background: var(--socios-contact-color);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--socios-contact-color) 16%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--socios-contact-color) 14%, transparent);
+}
+
+@media (max-width: 1220px) {
+  .socios-pagination {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .socios-pagination__left {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .socios-contactLegend {
+    grid-column: 1;
+  }
+
+  .socios-pagination__right {
+    grid-column: 2;
+  }
 }
 
 @media (max-width: 760px) {
-  .socios-contactLegend {
+  .socios-pagination {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .socios-pagination__left {
     align-items: flex-start;
-    justify-content: flex-start;
     flex-direction: column;
   }
 
+  .socios-contactLegend {
+    grid-column: 1;
+    width: 100%;
+    align-items: center;
+    flex-direction: column;
+    padding: 7px 8px;
+  }
+
   .socios-contactLegend__items {
-    justify-content: flex-start;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .socios-pagination__right {
+    grid-column: 1;
+    justify-self: center;
+    width: 100%;
+  }
+
+  .socios-pagination__controls {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
   }
 }
