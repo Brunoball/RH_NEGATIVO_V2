@@ -220,37 +220,33 @@
 .cuotas-grid--debt {
   grid-template-columns:
     72px
-    minmax(280px, 1.8fr)
-    minmax(130px, 0.82fr)
-    minmax(130px, 0.82fr)
+    minmax(300px, 1.8fr)
+    minmax(150px, 0.82fr)
     minmax(140px, 0.9fr)
     minmax(100px, 0.58fr);
-  min-width: 952px;
+  min-width: 762px;
 }
 
 .cuotas-grid--paid {
   grid-template-columns:
     72px
-    minmax(270px, 1.7fr)
-    minmax(125px, 0.78fr)
-    minmax(125px, 0.78fr)
+    minmax(300px, 1.7fr)
+    minmax(140px, 0.78fr)
     minmax(120px, 0.72fr)
-    minmax(115px, 0.72fr)
     minmax(130px, 0.82fr)
     minmax(120px, 0.75fr)
     minmax(100px, 0.56fr);
-  min-width: 1232px;
+  min-width: 982px;
 }
 
 .cuotas-grid--selecting {
   grid-template-columns:
     44px
     72px
-    minmax(280px, 1.8fr)
-    minmax(130px, 0.82fr)
-    minmax(130px, 0.82fr)
+    minmax(300px, 1.8fr)
+    minmax(150px, 0.82fr)
     minmax(140px, 0.9fr);
-  min-width: 922px;
+  min-width: 706px;
 }
 
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
@@ -258,33 +254,27 @@
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
   > .mov-gridCell--head:nth-child(3),
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
-  > .mov-gridCell--head:nth-child(4),
-.cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
-  > .mov-gridCell--head:nth-child(6),
+  > .mov-gridCell--head:nth-child(5),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(1),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(3),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(4),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(5),
-.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(6),
 .cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(7),
-.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(9),
 .cuotas-grid--selecting.mov-gridTable--head
   > .mov-gridCell--head:nth-child(1),
 .cuotas-grid--selecting.mov-gridTable--head
   > .mov-gridCell--head:nth-child(2),
 .cuotas-grid--selecting.mov-gridTable--head
-  > .mov-gridCell--head:nth-child(4),
-.cuotas-grid--selecting.mov-gridTable--head
-  > .mov-gridCell--head:nth-child(5) {
+  > .mov-gridCell--head:nth-child(4) {
   justify-content: center;
   text-align: center;
 }
 
 .cuotas-grid--debt:not(.cuotas-grid--selecting).mov-gridTable--head
-  > .mov-gridCell--head:nth-child(5),
-.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(8),
+  > .mov-gridCell--head:nth-child(4),
+.cuotas-grid--paid.mov-gridTable--head > .mov-gridCell--head:nth-child(6),
 .cuotas-grid--selecting.mov-gridTable--head
-  > .mov-gridCell--head:nth-child(6) {
+  > .mov-gridCell--head:nth-child(5) {
   justify-content: flex-end;
   text-align: right;
 }
@@ -653,13 +643,12 @@
 
 .cuotas-grid--selecting {
   grid-template-columns:
-    64px
-    minmax(230px, 1.5fr)
-    minmax(100px, 0.72fr)
-    minmax(120px, 0.75fr)
-    minmax(130px, 0.8fr)
-    minmax(130px, 0.82fr);
-  min-width: 920px;
+    44px
+    72px
+    minmax(300px, 1.8fr)
+    minmax(150px, 0.82fr)
+    minmax(140px, 0.9fr);
+  min-width: 706px;
 }
 
 .cuotas-grid.is-selected {
