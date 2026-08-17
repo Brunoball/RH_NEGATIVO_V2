@@ -276,7 +276,6 @@ test.describe('Configuración · usuarios y permisos', () => {
       ['categorias_listar', { estado: 'activo' }],
       ['descuentos_familiares_listar', { estado: 'todos' }],
       ['cuotas_catalogos', { anio: currentYear(), mes: 1 }],
-      ['configuracion_obtener', {}],
       ['contable_resumen', { anio: currentYear(), mes: 1 }],
       ['contable_catalogos', {}],
       ['contable_ingresos_socios', { anio: currentYear(), periodo: 1, pagina: 1 }],
@@ -288,6 +287,9 @@ test.describe('Configuración · usuarios y permisos', () => {
       const result = await apiResult(request, action, { params, session: viewSession });
       expect(result.status, action).toBe(200);
     }
+    // Configuración está completamente fuera del alcance del rol Vista:
+    // no aparece en la UI y tampoco se expone su catálogo por API.
+    await expectApiError(request, 'configuracion_obtener', { session: viewSession }, { status: 403, code: 'FORBIDDEN_ROLE' });
     await expectApiError(request, 'usuarios_listar', { session: viewSession }, { status: 403, code: 'FORBIDDEN_ROLE' });
     await expectApiError(request, 'contable_opciones_configuracion', { session: viewSession }, { status: 403, code: 'FORBIDDEN_ROLE' });
     // Un comprobante inexistente debe llegar al 404 funcional, no quedar
@@ -327,7 +329,7 @@ test.describe('Configuración · usuarios y permisos', () => {
 
     await page.goto('/contable/ingresos');
     await expect(page.getByRole('heading', { name: 'Ingresos' })).toBeVisible();
-    await page.getByRole('button', { name: 'Otros ingresos', exact: true }).click();
+    await page.getByRole('tab', { name: 'Otros ingresos', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Registrar ingreso' })).toHaveCount(0);
     await expect(page.getByText(/modificaciones están deshabilitadas/i).first()).toBeVisible();
 

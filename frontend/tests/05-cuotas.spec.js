@@ -546,9 +546,16 @@ test.describe('Cuotas · UI', () => {
     await expect(dialog.getByRole('button', { name: 'Seleccionar todos' })).toBeVisible();
 
     await dialog.getByRole('button', { name: new RegExp(`^${escapeRegExp(periodName)} ${current}: disponible$`, 'i') }).click();
+
+    // El editor de importes vive en su pestaña propia. Esto prueba la UI real
+    // en lugar de depender de que el control permanezca montado fuera de vista.
+    await dialog.getByRole('tab', { name: /Importe por período/ }).click();
     const customToggle = dialog.getByRole('checkbox', { name: 'Monto personalizado' });
     await customToggle.check();
     await dialog.getByLabel(`Monto personalizado para ${periodName}`).fill('3999,99');
+
+    // Fecha y medio de pago pertenecen a "Meses a pagar".
+    await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
     await dialog.getByLabel('Medio de pago *').selectOption(String(catalogs.medium.id_medio_pago));
     await dialog.getByRole('button', { name: 'Registrar pago', exact: true }).click();
 

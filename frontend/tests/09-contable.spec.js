@@ -7,6 +7,9 @@ const {
   expectApiError,
 } = require('./helpers/api.helper');
 const { exportFromGlobalModal } = require('./helpers/download.helper');
+const { createSocio } = require('./helpers/entities.helper');
+const { configValues } = require('./fixtures/configuracion.fixture');
+const { socioData } = require('./fixtures/socios.fixture');
 const { lettersFromSuffix, todayIso, uniqueSuffix } = require('./helpers/data.helper');
 
 function dateParts() {
@@ -165,6 +168,70 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
     await expectApiError(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: period, pagina: 0 },
     }, { status: 422, code: 'PAGINA_INVALIDA' });
+  });
+
+  test('estados auxiliares del catálogo no rompen Contabilidad y se clasifican como SIN ESTADO', async ({ request }) => {
+    const { year, period } = dateParts();
+    const definition = configValues().estado;
+    let stateId = null;
+    let socioId = null;
+
+    try {
+      const state = await apiCall(request, 'configuracion_lista_guardar', {
+        method: 'POST',
+        data: { lista: 'estado', nombre: definition.nombre },
+      });
+      stateId = Number(state.item.id_estado);
+
+      const socio = await createSocio(request, socioData('CONTABLE ESTADO AUX'), {
+        id_estado: stateId,
+        fecha_ingreso: todayIso(),
+      });
+      socioId = Number(socio.id_socio);
+
+      const report = await apiCall(request, 'contable_ingresos_socios', {
+        params: { anio: year, periodo: period, pagina: 1 },
+      });
+      expect(Number(report.socios.resumen.sin_estado)).toBeGreaterThanOrEqual(1);
+      expect(Number(report.socios.resumen.total)).toBe(
+        Number(report.socios.resumen.activos)
+          + Number(report.socios.resumen.pasivos)
+          + Number(report.socios.resumen.sin_estado),
+      );
+
+      const startMonth = (period - 1) * 2 + 1;
+      const endMonth = startMonth + 1;
+      const from = `${year}-${String(startMonth).padStart(2, '0')}-01`;
+      const endDay = new Date(Date.UTC(year, endMonth, 0)).getUTCDate();
+      const to = `${year}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+      const balance = await apiCall(request, 'contable_balance', {
+        params: { desde: from, hasta: to },
+      });
+      const debtItem = (balance.balance.deudores.items || [])
+        .find((item) => Number(item.id_socio) === socioId);
+      if (debtItem) expect(debtItem.estado).toBe('SIN ESTADO');
+
+      const registrationItem = (balance.balance.inscripciones.items || [])
+        .find((item) => Number(item.id_socio) === socioId);
+      if (registrationItem) expect(registrationItem.estado).toBe('SIN ESTADO');
+    } finally {
+      if (socioId) {
+        try {
+          await apiCall(request, 'socios_eliminar_definitivo', {
+            method: 'POST',
+            data: { id: socioId },
+          });
+        } catch (_error) {}
+      }
+      if (stateId) {
+        try {
+          await apiCall(request, 'configuracion_lista_eliminar_definitivo', {
+            method: 'POST',
+            data: { lista: 'estado', id: stateId },
+          });
+        } catch (_error) {}
+      }
+    }
   });
 
   test('Resumen y Balance anual mantienen todas sus identidades internas y validaciones de rango', async ({ request }) => {
@@ -574,7 +641,7 @@ test.describe('Contabilidad · UI completa', () => {
 
     try {
       await page.goto('/contable/ingresos');
-      await page.getByRole('button', { name: 'Otros ingresos', exact: true }).click();
+      await page.getByRole('tab', { name: 'Otros ingresos', exact: true }).click();
       await page.getByLabel('Año').selectOption(String(year));
       await page.getByLabel('Mes').selectOption(String(month));
       await page.getByRole('button', { name: 'Registrar ingreso' }).click();
@@ -709,10 +776,20 @@ test.describe('Contabilidad · UI completa', () => {
     await expect(page.getByText('Resumen contable', { exact: true })).toBeVisible();
     await page.getByLabel('Año').selectOption(String(year));
 
-    await page.getByRole('button', { name: 'Mensual', exact: true }).click();
+    const monthlyTab = page.getByRole('tab', { name: 'Mensual', exact: true });
+    await monthlyTab.click();
+    await expect(monthlyTab).toHaveAttribute('aria-selected', 'true');
     await page.getByLabel('Mes').selectOption(String(month));
-    await expect(page.getByText(/Ingresos/i).first()).toBeVisible();
-    await page.getByRole('button', { name: 'Anual', exact: true }).click();
+
+    // Acotar la comprobación al resumen visible evita tomar el rótulo oculto
+    // "Ingresos" del submenú lateral de Contabilidad.
+    const periodTotals = page.getByRole('region', { name: 'Totales del período' });
+    await expect(periodTotals).toBeVisible();
+    await expect(periodTotals).toContainText('Ingresos');
+    await expect(periodTotals).toContainText('Egresos');
+    await expect(periodTotals).toContainText('Resultado');
+
+    await page.getByRole('tab', { name: 'Anual', exact: true }).click();
 
     await page.getByRole('button', { name: 'Detalle', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Detalle mensual contable' });

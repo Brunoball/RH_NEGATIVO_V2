@@ -56,8 +56,10 @@ test.describe('Categorías y descuentos familiares', () => {
     await expect(page.getByRole('heading', { name: 'Categorías' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Activas' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Dadas de baja' })).toBeVisible();
-    await expect(page.getByText('Promedio mensual')).toBeVisible();
-    await expect(page.getByText('Promedio anual')).toBeVisible();
+    const categoriesTable = page.getByRole('table', { name: 'Listado de categorías' });
+    await expect(categoriesTable.getByRole('columnheader', { name: 'Mensual' })).toBeVisible();
+    await expect(categoriesTable.getByRole('columnheader', { name: 'Anual' })).toBeVisible();
+    await expect(categoriesTable.getByRole('columnheader', { name: 'Socios vigentes' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Nueva categoría' }).click();
     let dialog = page.getByRole('dialog', { name: 'Nueva categoría' });
@@ -198,7 +200,10 @@ test.describe('Categorías y descuentos familiares', () => {
     await expect(page.getByRole('heading', { name: 'Descuentos familiares' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Activas' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Historial' })).toBeVisible();
-    await expect(page.getByText(/total familiar/i).first()).toBeVisible();
+    const discountsTable = page.getByRole('table', { name: 'Descuentos familiares' });
+    await expect(discountsTable.getByRole('columnheader', { name: 'Integrantes' })).toBeVisible();
+    await expect(discountsTable.getByRole('columnheader', { name: 'Descuento' })).toBeVisible();
+    await expect(discountsTable.getByRole('columnheader', { name: 'Vigencia' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Nuevo descuento' }).click();
     let dialog = page.getByRole('dialog', { name: 'Nuevo descuento familiar' });

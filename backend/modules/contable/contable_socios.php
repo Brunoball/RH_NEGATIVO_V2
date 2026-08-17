@@ -16,12 +16,24 @@ trait ContableSocios
     abstract protected static function rangoPeriodo(int $year, int $periodId): array;
     abstract protected static function etiquetaPeriodo(int $periodId, int $year, bool $withWord = false): string;
     abstract protected static function mesesPeriodo(int $periodId): string;
+    abstract protected static function periodoDeFecha(string $date): array;
     abstract protected static function precioHistorico(PDO $db, int $categoryId, string $type, string $date): float;
     abstract protected static function centavos(mixed $value): int;
     abstract protected static function importeDesdeCentavos(int $cents): string;
     abstract protected static function importePagoSql(string $paymentAlias = 'p', string $partnerAlias = 's', string $categoryAlias = 'c'): string;
     abstract protected static function textoBusqueda(mixed $value): string;
     abstract protected static function idOpcional(mixed $value, string $label): ?int;
+
+    /**
+     * Contabilidad trabaja con las dos clasificaciones históricas del padrón
+     * (ACTIVO/PASIVO). Cualquier estado auxiliar creado desde Configuración se
+     * informa como SIN ESTADO para no romper conciliaciones ni ocultar socios.
+     */
+    private static function estadoContable(mixed $value): string
+    {
+        $state = strtoupper(trim((string)$value));
+        return in_array($state, ['ACTIVO', 'PASIVO'], true) ? $state : 'SIN ESTADO';
+    }
 
     protected static function ingresosSociosDatos(PDO $db, array $filters): array
     {
@@ -252,7 +264,7 @@ trait ContableSocios
         $states = ['ACTIVO' => 0, 'PASIVO' => 0, 'SIN ESTADO' => 0];
         $groups = [];
         foreach ($rows as $row) {
-            $state = strtoupper(trim((string)$row['estado'])) ?: 'SIN ESTADO';
+            $state = self::estadoContable($row['estado'] ?? null);
             if (!isset($states[$state])) $states[$state] = 0;
             $states[$state]++;
             $group = trim((string)$row['grupo']) ?: 'SIN GRUPO';
@@ -300,7 +312,7 @@ trait ContableSocios
             $expected = self::centavos(round($base * (1 - $discount / 100), 2));
             $expectedTotal += $expected;
             $collector = (string)$partner['cobrador'];
-            $state = (string)$partner['estado'];
+            $state = self::estadoContable($partner['estado'] ?? null);
             if (!isset($expectedGroups[$collector])) $expectedGroups[$collector] = ['expected' => 0, 'partners' => 0, 'states' => []];
             $expectedGroups[$collector]['expected'] += $expected;
             $expectedGroups[$collector]['partners']++;
@@ -336,7 +348,7 @@ trait ContableSocios
             $amount = self::centavos($payment['monto'] ?? 0);
             $collectedTotal += $amount;
             $collector = (string)$payment['cobrador'];
-            $state = (string)$payment['estado'];
+            $state = self::estadoContable($payment['estado'] ?? null);
             $mean = (string)$payment['medio'];
             if (!isset($collectedGroups[$collector])) $collectedGroups[$collector] = ['total' => 0, 'states' => []];
             $collectedGroups[$collector]['total'] += $amount;
@@ -588,7 +600,7 @@ trait ContableSocios
                 'id_inscripcion' => (int)$row['id_inscripcion'],
                 'id_socio' => (int)$row['id_socio'],
                 'socio' => (string)$row['socio'], 'dni' => (string)($row['dni'] ?? ''),
-                'estado' => (string)$row['estado'], 'fecha_alta' => $date,
+                'estado' => self::estadoContable($row['estado'] ?? null), 'fecha_alta' => $date,
                 'periodo' => $period['etiqueta'], 'fecha_pago' => (string)$row['fecha_pago'],
                 'medio' => (string)$row['medio'],
                 'monto' => number_format((float)$row['monto'], 2, '.', ''),
@@ -620,7 +632,7 @@ trait ContableSocios
             $items[] = [
                 'id_inscripcion' => null, 'id_socio' => (int)$row['id_socio'],
                 'socio' => (string)$row['socio'], 'dni' => (string)($row['dni'] ?? ''),
-                'estado' => (string)$row['estado'], 'fecha_alta' => $date,
+                'estado' => self::estadoContable($row['estado'] ?? null), 'fecha_alta' => $date,
                 'periodo' => $period['etiqueta'], 'fecha_pago' => null,
                 'medio' => 'SIN REGISTRO', 'monto' => '0.00', 'tipo' => 'SIN_REGISTRO',
             ];
@@ -635,7 +647,7 @@ trait ContableSocios
             elseif ($item['tipo'] === 'SIN_IMPORTE') $summary['sin_importe']++;
             else $summary['sin_registro']++;
             $summary['importe'] += self::centavos($item['monto']);
-            $state = strtoupper($item['estado']);
+            $state = self::estadoContable($item['estado'] ?? null);
             if ($state === 'ACTIVO') $summary['activos']++;
             elseif ($state === 'PASIVO') $summary['pasivos']++;
             else $summary['sin_estado']++;
@@ -735,7 +747,7 @@ trait ContableSocios
             $condonedCount += $partnerCondoned;
             $paidTotal += $partnerPaid;
             $period = self::periodoDeFecha((string)$event['fecha_baja']);
-            $state = strtoupper(trim((string)$event['estado'])) ?: 'SIN ESTADO';
+            $state = self::estadoContable($event['estado'] ?? null);
             $item = [
                 'id_historial' => (int)$event['id_historial'], 'id_socio' => (int)$event['id_socio'],
                 'socio' => (string)$event['socio'], 'estado' => $state,
@@ -822,7 +834,7 @@ trait ContableSocios
                 $discount = self::porcentajeDescuentoSocio($db, $partnerId, $reference, true);
                 $amount = self::centavos(round($base * (1 - $discount / 100), 2));
                 $total += $amount;
-                $state = strtoupper((string)$partner['estado']);
+                $state = self::estadoContable($partner['estado'] ?? null);
                 $item = [
                     'periodo' => (string)$period['etiqueta'], 'anio' => $year, 'id_periodo' => $periodId,
                     'id_socio' => $partnerId, 'socio' => (string)$partner['socio'],

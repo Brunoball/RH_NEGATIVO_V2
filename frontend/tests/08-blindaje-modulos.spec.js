@@ -569,6 +569,9 @@ test.describe('Blindaje adicional · Cuotas', () => {
     await row.getByRole('button', { name: `Registrar pago de ${a.data.nombre}` }).click();
 
     const dialog = page.getByRole('dialog').filter({ hasText: a.data.nombre }).last();
+
+    // La información familiar está encapsulada en la pestaña Familia.
+    await dialog.getByRole('tab', { name: /Familia/ }).click();
     await expect(dialog.getByLabel('Grupo familiar del socio')).toContainText(family.nombre);
     await dialog.getByRole('button', { name: 'Ver integrantes', exact: true }).click();
     await expect(dialog).toContainText(a.data.nombre);
@@ -579,6 +582,10 @@ test.describe('Blindaje adicional · Cuotas', () => {
     await familyToggle.uncheck();
     await expect(familyToggle).not.toBeChecked();
     await familyToggle.check();
+
+    // Medio de pago se completa en la pestaña principal, manteniendo activa
+    // la elección de aplicar la operación a la familia completa.
+    await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
     await dialog.getByLabel('Medio de pago *').selectOption(String(catalogs.medium.id_medio_pago));
     await dialog.getByRole('button', { name: /Registrar pago familiar/ }).click();
 
