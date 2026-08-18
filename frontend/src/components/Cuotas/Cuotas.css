@@ -23,8 +23,8 @@
  */
 .cuotas-head-filters {
   display: flex;
-  flex: 1 1 900px;
-  flex-wrap: wrap;
+  flex: 1 1 ;
+  flex-wrap: nowrap;
   align-items: flex-end;
   justify-content: flex-end;
   gap: 10px;
@@ -124,39 +124,38 @@
 }
 
 .cuotas-head-filters .cuotas-search-filter {
-  flex: 1 1 170px;
+  flex: 1 1 ;
   width: 100%;
-  min-width: 160px;
   max-width: 250px;
   margin-left: 0;
 }
 
 .cuotas-head-filters .cuotas-year-filter {
-  flex: 0 0 120px;
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  flex: 0 1 70px;
+  width: 70px;
+  min-width: 0;
+  max-width: 70px;
 }
 
 .cuotas-head-filters .cuotas-month-filter {
-  flex: 0 0 150px;
-  width: 150px;
-  min-width: 150px;
-  max-width: 150px;
+  flex: 0 0 130px;
+  width: 130px;
+  min-width: 130px;
+  max-width: 130px;
 }
 
 .cuotas-head-filters .cuotas-partner-state-filter {
-  flex: 0 0 115px;
-  width: 115px;
-  min-width: 115px;
-  max-width: 115px;
+  flex: 0 0 90px;
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
 }
 
 .cuotas-head-filters .cuotas-collector-filter {
-  flex: 0 0 125px;
-  width: 125px;
-  min-width: 125px;
-  max-width: 125px;
+  flex: 0 0 110px;
+  width: 110px;
+  min-width: 110px;
+  max-width: 110px;
 }
 
 .cuotas-head-filters .cuotas-medium-filter {
@@ -706,10 +705,34 @@
     grid-column: 1 / -1;
   }
 
-  .cuotas-head-filters .cuotas-year-filter,
-  .cuotas-head-filters .cuotas-month-filter,
-  .cuotas-head-filters .cuotas-partner-state-filter,
-  .cuotas-head-filters .cuotas-collector-filter,
+  .cuotas-head-filters .cuotas-year-filter {
+    width: 70px;
+    min-width: 0;
+    max-width: 70px;
+    justify-self: end;
+  }
+
+  .cuotas-head-filters .cuotas-month-filter {
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+    justify-self: end;
+  }
+
+  .cuotas-head-filters .cuotas-partner-state-filter {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+    justify-self: end;
+  }
+
+  .cuotas-head-filters .cuotas-collector-filter {
+    width: 110px;
+    min-width: 110px;
+    max-width: 110px;
+    justify-self: end;
+  }
+
   .cuotas-head-filters .cuotas-medium-filter {
     width: 100%;
     min-width: 0;

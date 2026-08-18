@@ -95,9 +95,7 @@
 
 .contable-head-filters > .contable-filter--partner-search {
   order: 0;
-  flex: 0 1 250px;
-  width: 250px;
-  min-width: 190px;
+  flex: 1 1;
   max-width: 250px;
   margin-left: 0;
 }

@@ -449,7 +449,7 @@
 .socios-activeFilters__list {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   gap: 7px;
   min-width: 0;
