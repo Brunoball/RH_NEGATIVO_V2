@@ -21,6 +21,7 @@
 
 .contable-head-filters > .module-filter--tabs .module-filterTab {
   min-width: max-content;
+  flex: 1 1 auto;
   padding-inline: 14px;
   white-space: nowrap;
 }
@@ -29,6 +30,30 @@
 .contable-head-filters > .module-filter--tabs .module-tabLabel {
   overflow: visible;
   text-overflow: clip;
+}
+
+/* La navegación de detalle ocupa sólo lo que necesita cada etiqueta. */
+.contable-head-filters
+  > .module-filter--tabs:has(> .module-filterTabs[aria-label="Vista"]) {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+
+.contable-head-filters .module-filterTabs[aria-label="Vista"] {
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.contable-head-filters
+  .module-filterTabs[aria-label="Vista"]
+  .module-filterTab {
+  min-width: max-content;
+  flex: 0 0 auto;
+  padding-inline: 12px;
 }
 
 .contable-head-filters > .contable-filter--year,

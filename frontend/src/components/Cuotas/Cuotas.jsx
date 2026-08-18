@@ -506,8 +506,6 @@ export default function Cuotas() {
   const [medioPago, setMedioPago] = useState("");
   const [buscar, setBuscar] = useState("");
   const [debouncedBuscar, setDebouncedBuscar] = useState("");
-  const [buscarId, setBuscarId] = useState("");
-  const [debouncedBuscarId, setDebouncedBuscarId] = useState("");
   const [anio, setAnio] = useState(String(currentYear));
   const [mes, setMes] = useState(String(currentMonth));
   const [pagina, setPagina] = useState(1);
@@ -544,13 +542,12 @@ export default function Cuotas() {
     return () => window.clearTimeout(timeout);
   }, [buscar]);
 
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedBuscarId(buscarId.trim());
-      setPagina(1);
-    }, 250);
-    return () => window.clearTimeout(timeout);
-  }, [buscarId]);
+  const busquedaNormalizada = debouncedBuscar.trim();
+  const busquedaEsId = /^\d+$/.test(busquedaNormalizada);
+  const filtroBuscar = busquedaEsId ? "" : busquedaNormalizada;
+  const filtroIdSocio = busquedaEsId
+    ? busquedaNormalizada.replace(/^0+(?=\d)/, "")
+    : "";
 
   const filtros = useMemo(
     () => ({
@@ -559,8 +556,8 @@ export default function Cuotas() {
       estado_persona: estadoPersona,
       cobrador,
       medio_pago: medioPago,
-      buscar: debouncedBuscar,
-      id_socio: debouncedBuscarId,
+      buscar: filtroBuscar,
+      id_socio: filtroIdSocio,
       anio,
       mes,
       pagina,
@@ -572,8 +569,8 @@ export default function Cuotas() {
       estadoPersona,
       cobrador,
       medioPago,
-      debouncedBuscar,
-      debouncedBuscarId,
+      filtroBuscar,
+      filtroIdSocio,
       anio,
       mes,
       pagina,
@@ -595,8 +592,8 @@ export default function Cuotas() {
       estado_persona: estadoPersona,
       cobrador,
       medio_pago: medioPago,
-      buscar: debouncedBuscar,
-      id_socio: debouncedBuscarId,
+      buscar: filtroBuscar,
+      id_socio: filtroIdSocio,
       anio,
       mes,
     }),
@@ -605,8 +602,8 @@ export default function Cuotas() {
       estadoPersona,
       cobrador,
       medioPago,
-      debouncedBuscar,
-      debouncedBuscarId,
+      filtroBuscar,
+      filtroIdSocio,
       anio,
       mes,
     ],
@@ -701,7 +698,6 @@ export default function Cuotas() {
     cobrador,
     medioPago,
     debouncedBuscar,
-    debouncedBuscarId,
     anio,
     mes,
   ]);
@@ -845,8 +841,11 @@ export default function Cuotas() {
           )?.nombre || medioPago
         }`
       : null,
-    buscar ? `Búsqueda: ${buscar}` : null,
-    buscarId ? `ID socio: ${buscarId}` : null,
+    busquedaNormalizada
+      ? busquedaEsId
+        ? `ID socio: ${filtroIdSocio}`
+        : `Búsqueda: ${busquedaNormalizada}`
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -2130,21 +2129,11 @@ export default function Cuotas() {
     {
       key: "buscar",
       type: "search",
-      label: "Búsqueda",
+      label: "Socio / ID",
       placeholder: "",
       value: buscar,
       onChange: setBuscar,
       className: "cuotas-search-filter",
-    },
-    {
-      key: "id_socio",
-      type: "search",
-      label: "ID socio",
-      placeholder: "",
-      value: buscarId,
-      onChange: (value) =>
-        setBuscarId(integerInput(value, 10).replace(/^0+/, "")),
-      className: "cuotas-id-filter",
     },
     {
       key: "anio",
@@ -2512,6 +2501,17 @@ export default function Cuotas() {
               <FontAwesomeIcon icon={faPrint} />
               {printingAll ? "Preparando..." : "Imprimir"}
             </button>
+            {writable ? (
+              <button
+                type="button"
+                className="mov-btn cuotas-lower-action cuotas-barcode-lower-action"
+                onClick={() => setBarcodeOpen(true)}
+                title="Registrar una cuota leyendo el código del comprobante"
+              >
+                <FontAwesomeIcon icon={faBarcode} />
+                Cód. barras
+              </button>
+            ) : null}
 
             <BotonExportarGlobal
               label="Exportar"

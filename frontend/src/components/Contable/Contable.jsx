@@ -486,78 +486,77 @@ function SummaryDetailModal({ open, onClose, summary, year }) {
       closeOnBackdrop={false}
       wide
     >
-      <SummaryCards
-        title=""
-        ariaLabel={`Totales contables del año ${year}`}
-        variant="dashboard"
-        className="contable-summary-detail-cards"
-        items={[
-          {
-            key: "detail-income",
-            icon: faArrowTrendUp,
-            label: "Ingresos",
-            value: money(totals.ingresos),
-            detail: `Acumulado del año ${year}`,
-            tone: "success",
-          },
-          {
-            key: "detail-expenses",
-            icon: faArrowTrendDown,
-            label: "Egresos",
-            value: money(totals.egresos),
-            detail: `Acumulado del año ${year}`,
-            tone: "danger",
-          },
-          {
-            key: "detail-result",
-            icon: faMoneyBillTransfer,
-            label: "Resultado",
-            value: money(totals.resultado),
-            detail:
-              totals.resultado >= 0 ? "Balance positivo" : "Balance negativo",
-            tone: totals.resultado >= 0 ? "balance" : "danger",
-          },
-        ]}
-      />
+        <SummaryCards
+          title=""
+          ariaLabel={`Totales contables del año ${year}`}
+          variant="dashboard"
+          className="contable-summary-detail-cards"
+          items={[
+            {
+              key: "detail-income",
+              icon: faArrowTrendUp,
+              label: "Ingresos",
+              value: money(totals.ingresos),
+              detail: `Acumulado del año ${year}`,
+              tone: "success",
+            },
+            {
+              key: "detail-expenses",
+              icon: faArrowTrendDown,
+              label: "Egresos",
+              value: money(totals.egresos),
+              detail: `Acumulado del año ${year}`,
+              tone: "danger",
+            },
+            {
+              key: "detail-result",
+              icon: faMoneyBillTransfer,
+              label: "Resultado",
+              value: money(totals.resultado),
+              detail:
+                totals.resultado >= 0 ? "Balance positivo" : "Balance negativo",
+              tone: totals.resultado >= 0 ? "balance" : "danger",
+            },
+          ]}
+        />
 
-      <GlobalDivTable
-        className="contable-summary-detail-table"
-        bodyClassName="contable-summary-detail-table__body"
-        gridClassName="contable-summary-detail-grid"
-        columns={[
-          "Mes",
-          { label: "Ingresos", align: "right" },
-          { label: "Egresos", align: "right" },
-          { label: "Resultado", align: "right" },
-        ]}
-        skeletonActionColumn={false}
-        ariaLabel={`Detalle mensual contable del año ${year}`}
-      >
-        {monthlyRows.map((item) => (
-          <div
-            className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row contable-summary-detail-grid ${Number(summary?.mes_seleccionado) === item.mes ? "is-selected-month" : ""}`.trim()}
-            role="row"
-            key={item.mes}
-          >
-            <div className="mov-gridCell entity-main-cell">
-              <strong>{item.nombre}</strong>
-              <small>{year}</small>
-            </div>
-            <div className="mov-gridCell is-right contable-money-cell contable-money-cell--income">
-              {money(item.ingresos)}
-            </div>
-            <div className="mov-gridCell is-right contable-money-cell contable-money-cell--expense">
-              {money(item.egresos)}
-            </div>
+        <GlobalDivTable
+          className="contable-summary-detail-table"
+          bodyClassName="contable-summary-detail-table__body"
+          gridClassName="contable-summary-detail-grid"
+          columns={[
+            "Mes",
+            { label: "Ingresos", align: "right" },
+            { label: "Egresos", align: "right" },
+            { label: "Resultado", align: "right" },
+          ]}
+          skeletonActionColumn={false}
+          ariaLabel={`Detalle mensual contable del año ${year}`}
+        >
+          {monthlyRows.map((item) => (
             <div
-              className={`mov-gridCell is-right is-strong contable-money-cell ${item.resultado >= 0 ? "ct-positive" : "ct-negative"}`}
+              className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row contable-summary-detail-grid ${Number(summary?.mes_seleccionado) === item.mes ? "is-selected-month" : ""}`.trim()}
+              role="row"
+              key={item.mes}
             >
-              {money(item.resultado)}
+              <div className="mov-gridCell entity-main-cell">
+                <strong>{item.nombre}</strong>
+                <small>{year}</small>
+              </div>
+              <div className="mov-gridCell is-right contable-money-cell contable-money-cell--income">
+                {money(item.ingresos)}
+              </div>
+              <div className="mov-gridCell is-right contable-money-cell contable-money-cell--expense">
+                {money(item.egresos)}
+              </div>
+              <div
+                className={`mov-gridCell is-right is-strong contable-money-cell ${item.resultado >= 0 ? "ct-positive" : "ct-negative"}`}
+              >
+                {money(item.resultado)}
+              </div>
             </div>
-          </div>
-        ))}
-
-      </GlobalDivTable>
+          ))}
+        </GlobalDivTable>
     </CrudModal>
   );
 }
@@ -1224,7 +1223,7 @@ export default function ContableModule({ view = "summary" }) {
                           label: "Buscar",
                           type: "search",
                           className: "contable-filter--partner-search",
-                          placeholder: "Socio, categoría, cobrador, período...",
+                          placeholder: "",
                           value: feeDetailSearch,
                           onChange: setFeeDetailSearch,
                         },

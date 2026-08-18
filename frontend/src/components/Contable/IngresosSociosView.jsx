@@ -1,18 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalculator,
   faFileExcel,
-  faMagnifyingGlass,
   faPeopleGroup,
-  faTimes,
   faTriangleExclamation,
   faUserMinus,
   faUserPlus,
 } from "@fortawesome/free-solid-svg-icons";
 import GlobalDivTable from "../Global/GlobalDivTable";
 import BotonExportarGlobal from "../Global/Botones/BotonExportarGlobal";
+import {
+  EntityFormPanel,
+  EntityTabs,
+  FloatingField,
+} from "../Global/Formularios/TabbedForm";
+import CrudModal from "../Global/Modales/CrudModal";
 import ModalExportarGlobal from "../Global/Modales/ModalExportarGlobal";
 import SummaryCards from "../Global/SummaryCards";
 import { contableApi } from "./api/contableApi";
@@ -37,6 +40,28 @@ const normalize = (value) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
+function balanceStatusTone(value) {
+  const status = normalize(value).trim();
+  if (!status) return "is-neutral";
+  if (status.includes("pasiv") || status.includes("inactiv") || status === "baja") {
+    return "is-passive";
+  }
+  if (status.includes("activ")) return "is-active";
+  return "is-neutral";
+}
+
+function BalanceStatusLegend() {
+  return (
+    <div className="ct-balance-statusLegend" aria-label="Referencia de estados de socios">
+      <span className="ct-balance-statusLegend__title">Estado</span>
+      <div className="ct-balance-statusLegend__items">
+        <span className="ct-balance-statusLegend__item is-active"><i aria-hidden="true" />Activo</span>
+        <span className="ct-balance-statusLegend__item is-passive"><i aria-hidden="true" />Pasivo</span>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 10;
 
 function paginationItems(currentPage, totalPages) {
@@ -54,43 +79,33 @@ function paginationItems(currentPage, totalPages) {
   return items;
 }
 
-function SummaryBox({ label, value, tone = "default", sub }) {
+function BalanceSummary({ items }) {
   return (
-    <article className={`ct-old-card is-${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {sub ? <small>{sub}</small> : null}
-    </article>
+    <SummaryCards
+      title=""
+      ariaLabel="Indicadores del balance"
+      variant="dashboard"
+      className="ct-balance-summary"
+      items={items}
+    />
   );
 }
 
 function SearchBox({ value, onChange, placeholder }) {
   return (
-    <label className="ct-old-search">
-      <FontAwesomeIcon icon={faMagnifyingGlass} />
+    <FloatingField
+      label="Buscar"
+      active={Boolean(value)}
+      placeholderOnFloat
+      className="ct-balance-search"
+    >
       <input
+        type="search"
         value={value}
         onChange={(event) => onChange?.(event.target.value)}
         placeholder={placeholder}
       />
-    </label>
-  );
-}
-
-function Tabs({ value, onChange, options }) {
-  return (
-    <div className="ct-old-tabs" role="tablist">
-      {options.map((option) => (
-        <button
-          type="button"
-          key={option.value}
-          className={value === option.value ? "is-active" : ""}
-          onClick={() => onChange(option.value)}
-        >
-          <FontAwesomeIcon icon={option.icon} /> {option.label}
-        </button>
-      ))}
-    </div>
+    </FloatingField>
   );
 }
 
@@ -102,8 +117,8 @@ function IncomePagination({
   loading = false,
   noun = "registros",
   onPageChange,
-  pageSize,
   summaryAriaLabel,
+  summaryInTitle = false,
   summaryItems = [],
   summaryTitle = "Resumen",
   totalPages,
@@ -112,6 +127,13 @@ function IncomePagination({
   if (!totalRecords && !summaryItems.length) return null;
 
   const pageOptions = paginationItems(currentPage, totalPages);
+  const paginationSummary = totalRecords ? (
+    <>
+      Mostrando <b className="ct-income-pagination__number">{firstRecord}</b>–
+      <b className="ct-income-pagination__number">{lastRecord}</b> de{" "}
+      <b className="ct-income-pagination__number">{totalRecords}</b> {noun}
+    </>
+  ) : null;
 
   return (
     <footer
@@ -119,9 +141,9 @@ function IncomePagination({
       aria-label={`Resumen, paginación y acciones de ${noun}`}
     >
       <SummaryCards
-        title={summaryTitle}
+        title={summaryInTitle ? paginationSummary : summaryTitle}
         ariaLabel={summaryAriaLabel}
-        className="ct-income-pagination__cards"
+        className={`ct-income-pagination__cards ${summaryInTitle ? "has-pagination-summary" : ""}`.trim()}
         items={summaryItems}
       />
       {totalRecords ? (
@@ -130,11 +152,11 @@ function IncomePagination({
           role="navigation"
           aria-label={`Paginación de ${noun}`}
         >
-          <p className="global-pagination__summary">
-            Mostrando <strong>{firstRecord}</strong>–<strong>{lastRecord}</strong> de{" "}
-            <strong>{totalRecords}</strong> {noun}
-            {pageSize ? <span>{pageSize} por página</span> : null}
-          </p>
+          {!summaryInTitle ? (
+            <p className="global-pagination__summary">
+              {paginationSummary}
+            </p>
+          ) : null}
           <div className="global-pagination__right">
             <div className="global-pagination__controls">
               <button
@@ -185,7 +207,7 @@ function IncomePagination({
   );
 }
 
-function IncomeDetail({ actions, section, onPageChange, loading, period }) {
+function IncomeDetail({ actions, section, onPageChange, loading }) {
   const items = section?.items || [];
   const pagination = section?.paginacion || {};
   const currentPage = Number(pagination.pagina || 1);
@@ -258,8 +280,8 @@ function IncomeDetail({ actions, section, onPageChange, loading, period }) {
         loading={loading}
         noun="pagos"
         onPageChange={(nextPage) => onPageChange?.(nextPage)}
-        pageSize={pageSize}
         summaryAriaLabel="Resumen de cobros recibidos"
+        summaryInTitle
         summaryItems={[
           {
             key: "payments",
@@ -267,16 +289,7 @@ function IncomeDetail({ actions, section, onPageChange, loading, period }) {
             detail: `${Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR")} pagos`,
             value: money(section?.resumen?.importe),
           },
-          {
-            key: "range",
-            label: "Rango del período",
-            detail: period?.anio ? `Año ${period.anio}` : "Año seleccionado",
-            value: period?.desde && period?.hasta
-              ? `${dateText(period.desde)}–${dateText(period.hasta)}`
-              : "—",
-          },
         ]}
-        summaryTitle="Resumen del período"
         totalPages={totalPages}
         totalRecords={totalRecords}
       />
@@ -346,7 +359,6 @@ function PartnerDetail({ actions, section, loading }) {
         loading={loading}
         noun="categorías"
         onPageChange={setPage}
-        pageSize={PAGE_SIZE}
         summaryAriaLabel="Totales de socios por estado"
         summaryItems={[
           {
@@ -476,7 +488,6 @@ function CollectionDetail({ actions, section, period, loading }) {
         loading={loading}
         noun="grupos"
         onPageChange={setPage}
-        pageSize={PAGE_SIZE}
         summaryAriaLabel="Totales de cobranza del período"
         summaryItems={[
           {
@@ -701,80 +712,370 @@ function BalanceModal({ open, onClose, onFeedback }) {
   const visibleDebtItems = showAllDebts ? debtItems : debtItems.slice(0, 100);
   const exportConfig = balanceExportConfig(balance, tab, exportMode === "all");
 
-  const content = (
-    <div className="ct-balance-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="ct-balance-modal" role="dialog" aria-modal="true" aria-label="Balance anual">
-        <header className="ct-balance-header">
-          <div><FontAwesomeIcon icon={faCalculator} /><span><strong>{balance?.titulo || "Balance anual"}</strong><small>{balance ? `Del ${dateText(balance.desde)} al ${dateText(balance.hasta)}` : "Seleccioná el rango de fechas para generar el balance"}</small></span></div>
-          <button type="button" onClick={onClose} aria-label="Cerrar"><FontAwesomeIcon icon={faTimes} /></button>
-        </header>
-        <div className="ct-balance-range">
-          <label>Desde<input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></label>
-          <label>Hasta<input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></label>
-          <button type="button" className="ct-old-primary" onClick={generate} disabled={loading}>{loading ? "Generando..." : balance ? "Actualizar balance" : "Generar balance"}</button>
-        </div>
-        {!balance ? <div className="ct-balance-empty">Seleccioná el rango de fechas y presioná <strong>Generar balance</strong> para ver la información.</div> : (
-          <div className="ct-balance-body">
-            <div className="ct-balance-toolbar">
-              <Tabs value={tab} onChange={setTab} options={[
-                { value: "inscripciones", label: "Inscripciones", icon: faUserPlus },
-                { value: "bajas", label: "Bajas", icon: faUserMinus },
-                { value: "deudores", label: "Deudores por período", icon: faTriangleExclamation },
-              ]} />
-              <div className="ct-balance-export-actions">
-                <button type="button" onClick={() => setExportMode("current")}><FontAwesomeIcon icon={faFileExcel} /> Exportar pestaña actual</button>
-                <button type="button" onClick={() => setExportMode("all")}><FontAwesomeIcon icon={faFileExcel} /> Exportar todas las pestañas</button>
-              </div>
+  return (
+    <>
+      <CrudModal
+        open={open}
+        title={balance?.titulo || "Balance anual"}
+        subtitle={balance ? `Del ${dateText(balance.desde)} al ${dateText(balance.hasta)}` : "Seleccioná el rango de fechas para generar el balance."}
+        onClose={onClose}
+        hideSubmit
+        hideCancel
+        closeOnBackdrop={false}
+        modalClassName="ct-balance-modal"
+        wide
+      >
+        <div className="entity-form ct-balance-form">
+          <EntityFormPanel
+            standalone
+            title="Período del balance"
+            icon={faCalculator}
+            tag={balance ? `${dateText(balance.desde)} · ${dateText(balance.hasta)}` : "Rango anual"}
+            bodyClassName="entity-form__grid ct-balance-period-grid"
+          >
+            <FloatingField label="Desde">
+              <input type="date" value={desde} onChange={(event) => setDesde(event.target.value)} />
+            </FloatingField>
+            <FloatingField label="Hasta">
+              <input type="date" value={hasta} onChange={(event) => setHasta(event.target.value)} />
+            </FloatingField>
+            <div className="ct-balance-generate">
+              <button
+                type="button"
+                className="mov-btn mov-btn--primary"
+                onClick={generate}
+                disabled={loading}
+              >
+                {loading ? "Generando..." : balance ? "Actualizar balance" : "Generar balance"}
+              </button>
             </div>
-            {tab === "inscripciones" ? <>
-              <div className="ct-old-cards ct-old-cards--seven">
-                <SummaryBox label="Inscripciones" value={ins.resumen?.inscripciones || 0} />
-                <SummaryBox label="Inscripciones pagadas" value={ins.resumen?.pagadas || 0} tone="success" />
-                <SummaryBox label="Registros sin importe" value={ins.resumen?.sin_importe || 0} tone="warn" />
-                <SummaryBox label="Sin registro de pago" value={ins.resumen?.sin_registro || 0} tone="warn" />
-                <SummaryBox label="Total inscripción" value={money(ins.resumen?.total_inscripcion)} tone="success" />
-                <SummaryBox label="Activos inscriptos" value={ins.resumen?.activos || 0} tone="success" />
-                <SummaryBox label="Pasivos inscriptos" value={ins.resumen?.pasivos || 0} tone="warn" />
-                {Number(ins.resumen?.sin_estado || 0) > 0 ? <SummaryBox label="Inscriptos sin estado" value={ins.resumen?.sin_estado || 0} tone="warn" /> : null}
+          </EntityFormPanel>
+
+          {!balance ? (
+            <div className="module-empty ct-balance-empty">
+              <FontAwesomeIcon icon={faCalculator} />
+              <strong>Balance pendiente</strong>
+              <span>Seleccioná el rango de fechas y presioná Generar balance.</span>
+            </div>
+          ) : (
+            <div className="ct-balance-content">
+              <div className="ct-balance-global-toolbar">
+                <EntityTabs
+                  value={tab}
+                  onChange={setTab}
+                  tabs={[
+                    { value: "inscripciones", label: "Inscripciones", icon: faUserPlus },
+                    { value: "bajas", label: "Bajas", icon: faUserMinus },
+                    { value: "deudores", label: "Deudores por período", icon: faTriangleExclamation },
+                  ]}
+                  ariaLabel="Secciones del balance anual"
+                  idPrefix="balance-anual"
+                />
+                <div className="ct-balance-export-actions">
+                  <button type="button" className="mov-btn mov-btn--ghost" onClick={() => setExportMode("current")}><FontAwesomeIcon icon={faFileExcel} /> Exportar pestaña actual</button>
+                  <button type="button" className="mov-btn mov-btn--ghost" onClick={() => setExportMode("all")}><FontAwesomeIcon icon={faFileExcel} /> Exportar todas las pestañas</button>
+                </div>
               </div>
+            {tab === "inscripciones" ? <>
+              <BalanceSummary items={[
+                { key: "inscripciones", label: "Inscripciones", value: ins.resumen?.inscripciones || 0 },
+                { key: "pagadas", label: "Inscripciones pagadas", value: ins.resumen?.pagadas || 0, tone: "success" },
+                { key: "sin-importe", label: "Registros sin importe", value: ins.resumen?.sin_importe || 0, tone: "warning" },
+                { key: "sin-registro", label: "Sin registro de pago", value: ins.resumen?.sin_registro || 0, tone: "warning" },
+                { key: "total-inscripcion", label: "Total inscripción", value: money(ins.resumen?.total_inscripcion), tone: "success" },
+                { key: "activos", label: "Activos inscriptos", value: ins.resumen?.activos || 0, tone: "success" },
+                { key: "pasivos", label: "Pasivos inscriptos", value: ins.resumen?.pasivos || 0, tone: "warning" },
+                ...(Number(ins.resumen?.sin_estado || 0) > 0
+                  ? [{ key: "sin-estado", label: "Inscriptos sin estado", value: ins.resumen?.sin_estado || 0, tone: "warning" }]
+                  : []),
+              ]} />
               <h4>Resumen de inscripciones por período de ingreso</h4>
-              <div className="ct-old-table-wrap is-compact"><table className="ct-old-table"><thead><tr><th>Período</th><th>Meses incluidos</th><th className="is-right">Total</th><th className="is-right">Activos</th><th className="is-right">Pasivos</th><th className="is-right">Pagadas</th><th className="is-right">Sin importe</th><th className="is-right">Sin registro</th><th className="is-right">Total cobrado</th></tr></thead><tbody>{(ins.por_periodo || []).map((r) => <tr key={r.periodo}><td>{r.periodo}</td><td>{r.meses}</td><td className="is-right">{r.total}</td><td className="is-right">{r.activos}</td><td className="is-right">{r.pasivos}</td><td className="is-right">{r.pagadas}</td><td className="is-right">{r.sin_importe}</td><td className="is-right">{r.sin_registro}</td><td className="is-right"><strong>{money(r.total_cobrado)}</strong></td></tr>)}</tbody></table></div>
+              <GlobalDivTable
+                className="ct-balance-table ct-balance-table--compact"
+                bodyClassName="entity-table-wrap ct-balance-table__body"
+                gridClassName="ct-balance-grid ct-balance-grid--ins-summary"
+                columns={[
+                  { label: "Período", align: "center" },
+                  "Meses incluidos",
+                  { label: "Total", align: "center" },
+                  { label: "Activos", align: "center" },
+                  { label: "Pasivos", align: "center" },
+                  { label: "Pagadas", align: "center" },
+                  { label: "Sin importe", align: "center" },
+                  { label: "Sin registro", align: "center" },
+                  { label: "Total cobrado", align: "right" },
+                ]}
+                ariaLabel="Resumen de inscripciones por período de ingreso"
+                empty={!(ins.por_periodo || []).length}
+                skeletonActionColumn={false}
+              >
+                {!(ins.por_periodo || []).length ? (
+                  <div className="module-empty ct-balance-table-empty">
+                    <strong>Sin períodos para mostrar</strong>
+                    <span>No hay inscripciones para el rango seleccionado.</span>
+                  </div>
+                ) : null}
+                {(ins.por_periodo || []).map((r) => (
+                  <div
+                    className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-balance-grid ct-balance-grid--ins-summary"
+                    role="row"
+                    key={r.periodo}
+                  >
+                    <div className="mov-gridCell is-center is-strong">{r.periodo}</div>
+                    <div className="mov-gridCell">{r.meses}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.total}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.activos}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.pasivos}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.pagadas}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.sin_importe}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.sin_registro}</div>
+                    <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.total_cobrado)}</div>
+                  </div>
+                ))}
+              </GlobalDivTable>
               <div className="ct-old-pane-head"><div><strong>Detalle completo de socios inscriptos</strong><span>Mostrando {(ins.items || []).length} socios.</span></div><SearchBox value={search} onChange={setSearch} placeholder="Buscar por ID, socio, DNI, estado, ingreso..." /></div>
-              <div className="ct-old-table-wrap"><table className="ct-old-table"><thead><tr><th>ID</th><th>Socio</th><th>DNI</th><th>Estado</th><th>Fecha alta</th><th>Período</th><th>Fecha pago</th><th>Medio pago</th><th className="is-right">Monto</th></tr></thead><tbody>{filterItems(ins.items || []).map((r, i) => <tr key={`${r.id_socio}-${r.id_inscripcion ?? i}`}><td>{r.id_socio}</td><td><strong>{r.socio}</strong></td><td>{r.dni || "—"}</td><td>{r.estado}</td><td>{dateText(r.fecha_alta)}</td><td>{r.periodo}</td><td>{dateText(r.fecha_pago)}</td><td>{r.medio}</td><td className="is-right">{money(r.monto)}</td></tr>)}</tbody></table></div>
+              <BalanceStatusLegend />
+              <GlobalDivTable
+                className="ct-balance-table ct-balance-table--detail"
+                bodyClassName="entity-table-wrap ct-balance-table__body"
+                gridClassName="ct-balance-grid ct-balance-grid--ins-detail"
+                columns={[
+                  "ID",
+                  "Socio",
+                  "DNI",
+                  "Fecha alta",
+                  "Período",
+                  "Fecha pago",
+                  "Medio pago",
+                  { label: "Monto", align: "right" },
+                ]}
+                ariaLabel="Detalle completo de socios inscriptos"
+                empty={!filterItems(ins.items || []).length}
+                skeletonActionColumn={false}
+              >
+                {!filterItems(ins.items || []).length ? (
+                  <div className="module-empty ct-balance-table-empty">
+                    <strong>Sin socios para mostrar</strong>
+                    <span>No hay inscripciones que coincidan con la búsqueda.</span>
+                  </div>
+                ) : null}
+                {filterItems(ins.items || []).map((r, i) => (
+                  <div
+                    className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-balance-grid ct-balance-grid--ins-detail ct-balance-statusRow ${balanceStatusTone(r.estado)}`}
+                    role="row"
+                    key={`${r.id_socio}-${r.id_inscripcion ?? i}`}
+                  >
+                    <div className="mov-gridCell ct-balance-number">{r.id_socio}</div>
+                    <div className="mov-gridCell entity-main-cell"><strong>{r.socio}</strong></div>
+                    <div className="mov-gridCell ct-balance-number">{r.dni || "—"}</div>
+                    <div className="mov-gridCell">{dateText(r.fecha_alta)}</div>
+                    <div className="mov-gridCell">{r.periodo || "—"}</div>
+                    <div className="mov-gridCell">{dateText(r.fecha_pago)}</div>
+                    <div className="mov-gridCell">{r.medio || "—"}</div>
+                    <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.monto)}</div>
+                  </div>
+                ))}
+              </GlobalDivTable>
             </> : null}
             {tab === "bajas" ? <>
-              <div className="ct-old-cards ct-old-cards--six">
-                <SummaryBox label="Total bajas" value={bajas.resumen?.total_bajas || 0} />
-                <SummaryBox label="Bajas pasivos" value={bajas.resumen?.pasivos || 0} tone="warn" />
-                <SummaryBox label="Bajas activos" value={bajas.resumen?.activos || 0} tone="success" />
-                <SummaryBox label="Pagos bajas" value={bajas.resumen?.pagos || 0} />
-                <SummaryBox label="Condonaciones" value={bajas.resumen?.condonaciones || 0} tone="warn" />
-                <SummaryBox label="Total bajas pagado" value={money(bajas.resumen?.total_pagado)} tone="success" />
-                {Number(bajas.resumen?.sin_estado || 0) > 0 ? <SummaryBox label="Bajas sin estado" value={bajas.resumen?.sin_estado || 0} tone="warn" /> : null}
-              </div>
+              <BalanceSummary items={[
+                { key: "total-bajas", label: "Total bajas", value: bajas.resumen?.total_bajas || 0 },
+                { key: "bajas-pasivos", label: "Bajas pasivos", value: bajas.resumen?.pasivos || 0, tone: "warning" },
+                { key: "bajas-activos", label: "Bajas activos", value: bajas.resumen?.activos || 0, tone: "success" },
+                { key: "pagos-bajas", label: "Pagos bajas", value: bajas.resumen?.pagos || 0 },
+                { key: "condonaciones", label: "Condonaciones", value: bajas.resumen?.condonaciones || 0, tone: "warning" },
+                { key: "total-bajas-pagado", label: "Total bajas pagado", value: money(bajas.resumen?.total_pagado), tone: "success" },
+                ...(Number(bajas.resumen?.sin_estado || 0) > 0
+                  ? [{ key: "bajas-sin-estado", label: "Bajas sin estado", value: bajas.resumen?.sin_estado || 0, tone: "warning" }]
+                  : []),
+              ]} />
               <h4>Resumen por período de baja</h4>
-              <div className="ct-old-table-wrap is-compact"><table className="ct-old-table"><thead><tr><th>Grupo</th><th>Período baja / año</th><th className="is-right">Bajas</th><th className="is-right">Pagos</th><th className="is-right">Condonaciones</th><th className="is-right">Monto pagado</th></tr></thead><tbody>{(bajas.por_periodo || []).map((r, i) => <tr key={`${r.estado}-${r.periodo}-${i}`}><td><span className="ct-old-badge is-estado">{r.grupo}</span></td><td>{r.periodo}</td><td className="is-right">{r.bajas}</td><td className="is-right">{r.pagos}</td><td className="is-right">{r.condonaciones}</td><td className="is-right">{money(r.monto_pagado)}</td></tr>)}</tbody></table></div>
+              <GlobalDivTable
+                className="ct-balance-table ct-balance-table--compact"
+                bodyClassName="entity-table-wrap ct-balance-table__body"
+                gridClassName="ct-balance-grid ct-balance-grid--bajas-summary"
+                columns={[
+                  "Grupo",
+                  { label: "Período baja / año", align: "center" },
+                  { label: "Bajas", align: "center" },
+                  { label: "Pagos", align: "center" },
+                  { label: "Condonaciones", align: "center" },
+                  { label: "Monto pagado", align: "right" },
+                ]}
+                ariaLabel="Resumen por período de baja"
+                empty={!(bajas.por_periodo || []).length}
+                skeletonActionColumn={false}
+              >
+                {!(bajas.por_periodo || []).length ? (
+                  <div className="module-empty ct-balance-table-empty">
+                    <strong>Sin bajas para mostrar</strong>
+                    <span>No hay bajas para el rango seleccionado.</span>
+                  </div>
+                ) : null}
+                {(bajas.por_periodo || []).map((r, i) => (
+                  <div
+                    className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-balance-grid ct-balance-grid--bajas-summary"
+                    role="row"
+                    key={`${r.estado}-${r.periodo}-${i}`}
+                  >
+                    <div className="mov-gridCell"><span className="ct-old-badge is-estado">{r.grupo}</span></div>
+                    <div className="mov-gridCell is-center is-strong">{r.periodo}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.bajas}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.pagos}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.condonaciones}</div>
+                    <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.monto_pagado)}</div>
+                  </div>
+                ))}
+              </GlobalDivTable>
               <div className="ct-old-pane-head"><div><strong>Detalle de socios dados de baja</strong><span>Mostrando {(bajas.items || []).length} socios.</span></div><SearchBox value={search} onChange={setSearch} placeholder="Buscar por ID, socio, estado, período, baja..." /></div>
-              <div className="ct-old-table-wrap"><table className="ct-old-table"><thead><tr><th>ID</th><th>Socio</th><th>Estado</th><th>Fecha baja</th><th>Período baja</th><th>Períodos cubiertos</th><th className="is-right">Total pagado</th><th>Motivo</th></tr></thead><tbody>{filterItems(bajas.items || []).map((r) => <tr key={r.id_historial}><td>{r.id_socio}</td><td><strong>{r.socio}</strong></td><td>{r.estado}</td><td>{dateText(r.fecha_baja)}</td><td>{r.periodo_baja}</td><td>{(r.periodos_cubiertos || []).join(", ") || "—"}</td><td className="is-right">{money(r.total_pagado)}</td><td>{r.motivo || "—"}</td></tr>)}</tbody></table></div>
+              <BalanceStatusLegend />
+              <GlobalDivTable
+                className="ct-balance-table ct-balance-table--detail"
+                bodyClassName="entity-table-wrap ct-balance-table__body"
+                gridClassName="ct-balance-grid ct-balance-grid--bajas-detail"
+                columns={[
+                  "ID",
+                  "Socio",
+                  "Fecha baja",
+                  "Período baja",
+                  "Períodos cubiertos",
+                  { label: "Total pagado", align: "right" },
+                  "Motivo",
+                ]}
+                ariaLabel="Detalle de socios dados de baja"
+                empty={!filterItems(bajas.items || []).length}
+                skeletonActionColumn={false}
+              >
+                {!filterItems(bajas.items || []).length ? (
+                  <div className="module-empty ct-balance-table-empty">
+                    <strong>Sin socios dados de baja</strong>
+                    <span>No hay registros que coincidan con la búsqueda.</span>
+                  </div>
+                ) : null}
+                {filterItems(bajas.items || []).map((r) => (
+                  <div
+                    className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-balance-grid ct-balance-grid--bajas-detail ct-balance-statusRow ${balanceStatusTone(r.estado)}`}
+                    role="row"
+                    key={r.id_historial}
+                  >
+                    <div className="mov-gridCell ct-balance-number">{r.id_socio}</div>
+                    <div className="mov-gridCell entity-main-cell"><strong>{r.socio}</strong></div>
+                    <div className="mov-gridCell">{dateText(r.fecha_baja)}</div>
+                    <div className="mov-gridCell">{r.periodo_baja || "—"}</div>
+                    <div className="mov-gridCell ct-balance-cell-wrap">{(r.periodos_cubiertos || []).join(", ") || "—"}</div>
+                    <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.total_pagado)}</div>
+                    <div className="mov-gridCell ct-balance-cell-wrap">{r.motivo || "—"}</div>
+                  </div>
+                ))}
+              </GlobalDivTable>
             </> : null}
             {tab === "deudores" ? <>
-              <div className="ct-old-cards ct-old-cards--five">
-                <SummaryBox label="Total deudas por período" value={deuda.resumen?.total_deudas || 0} />
-                <SummaryBox label="Socios pasivos deudores" value={deuda.resumen?.pasivos || 0} tone="warn" />
-                <SummaryBox label="Socios activos deudores" value={deuda.resumen?.activos || 0} tone="success" />
-                <SummaryBox label="Períodos analizados" value={deuda.resumen?.periodos_analizados || 0} />
-                <SummaryBox label="Total adeudado" value={money(deuda.resumen?.total_adeudado)} tone="warn" />
-                {Number(deuda.resumen?.sin_estado || 0) > 0 ? <SummaryBox label="Deudas sin estado" value={deuda.resumen?.sin_estado || 0} tone="warn" /> : null}
-              </div>
+              <BalanceSummary items={[
+                { key: "total-deudas", label: "Total deudas por período", value: deuda.resumen?.total_deudas || 0 },
+                { key: "deudores-pasivos", label: "Socios pasivos deudores", value: deuda.resumen?.pasivos || 0, tone: "warning" },
+                { key: "deudores-activos", label: "Socios activos deudores", value: deuda.resumen?.activos || 0, tone: "success" },
+                { key: "periodos-analizados", label: "Períodos analizados", value: deuda.resumen?.periodos_analizados || 0 },
+                { key: "total-adeudado", label: "Total adeudado", value: money(deuda.resumen?.total_adeudado), tone: "warning" },
+                ...(Number(deuda.resumen?.sin_estado || 0) > 0
+                  ? [{ key: "deudas-sin-estado", label: "Deudas sin estado", value: deuda.resumen?.sin_estado || 0, tone: "warning" }]
+                  : []),
+              ]} />
               <h4>Resumen de deudores por período</h4>
-              <div className="ct-old-table-wrap is-compact"><table className="ct-old-table"><thead><tr><th>Período</th><th className="is-right">Deudores</th><th className="is-right">Activos</th><th className="is-right">Pasivos</th><th className="is-right">Sin estado</th><th className="is-right">Monto adeudado</th></tr></thead><tbody>{(deuda.por_periodo || []).map((r) => <tr key={r.periodo}><td>{r.periodo}</td><td className="is-right">{r.deudores}</td><td className="is-right">{r.activos}</td><td className="is-right">{r.pasivos}</td><td className="is-right">{r.sin_estado}</td><td className="is-right">{money(r.monto_adeudado)}</td></tr>)}</tbody></table></div>
+              <GlobalDivTable
+                className="ct-balance-table ct-balance-table--compact"
+                bodyClassName="entity-table-wrap ct-balance-table__body"
+                gridClassName="ct-balance-grid ct-balance-grid--debt-summary"
+                columns={[
+                  "Período",
+                  { label: "Deudores", align: "right" },
+                  { label: "Activos", align: "right" },
+                  { label: "Pasivos", align: "right" },
+                  { label: "Sin estado", align: "right" },
+                  { label: "Monto adeudado", align: "right" },
+                ]}
+                ariaLabel="Resumen de deudores por período"
+                empty={!(deuda.por_periodo || []).length}
+                skeletonActionColumn={false}
+              >
+                {!(deuda.por_periodo || []).length ? (
+                  <div className="module-empty ct-balance-table-empty">
+                    <strong>Sin deudas para mostrar</strong>
+                    <span>No hay períodos con deuda para el rango seleccionado.</span>
+                  </div>
+                ) : null}
+                {(deuda.por_periodo || []).map((r) => (
+                  <div
+                    className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-balance-grid ct-balance-grid--debt-summary"
+                    role="row"
+                    key={r.periodo}
+                  >
+                    <div className="mov-gridCell is-strong">{r.periodo}</div>
+                    <div className="mov-gridCell is-right ct-balance-number">{r.deudores}</div>
+                    <div className="mov-gridCell is-right ct-balance-number">{r.activos}</div>
+                    <div className="mov-gridCell is-right ct-balance-number">{r.pasivos}</div>
+                    <div className="mov-gridCell is-right ct-balance-number">{r.sin_estado}</div>
+                    <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.monto_adeudado)}</div>
+                  </div>
+                ))}
+              </GlobalDivTable>
               <div className="ct-old-pane-head"><div><strong>Detalle completo de deudores por período</strong><span>Mostrando {visibleDebtItems.length} de {debtItems.length} deudas por período.</span></div><SearchBox value={search} onChange={setSearch} placeholder="Buscar por ID, socio, DNI, estado, período..." /></div>
-              <div className="ct-old-table-wrap"><table className="ct-old-table"><thead><tr><th>Período</th><th>ID</th><th>Socio</th><th>DNI</th><th>Estado</th><th>Categoría</th><th>Ingreso</th><th>Domicilio</th><th>Teléfono</th><th>Cobrador</th><th className="is-right">Monto</th></tr></thead><tbody>{visibleDebtItems.map((r, i) => <tr key={`${r.id_socio}-${r.anio}-${r.id_periodo}-${i}`}><td>{r.periodo}</td><td>{r.id_socio}</td><td><strong>{r.socio}</strong></td><td>{r.dni || "—"}</td><td>{r.estado}</td><td>{r.categoria}</td><td>{dateText(r.ingreso)}</td><td>{r.domicilio || "—"}</td><td>{r.telefono || "—"}</td><td>{r.cobrador}</td><td className="is-right"><strong>{money(r.monto)}</strong>{Number(r.descuento_familiar) > 0 ? <small className="ct-old-discount">-{r.descuento_familiar}% familiar</small> : null}</td></tr>)}</tbody></table></div>
-              {!showAllDebts && debtItems.length > 100 ? <div className="ct-old-load-all"><span>Se muestran los primeros 100. Quedan {debtItems.length - 100} registros más.</span><button type="button" onClick={() => setShowAllDebts(true)}>Cargar todos</button></div> : null}
+              <BalanceStatusLegend />
+              <GlobalDivTable
+                className="ct-balance-table ct-balance-table--detail ct-balance-table--debt-detail"
+                bodyClassName="entity-table-wrap ct-balance-table__body"
+                gridClassName="ct-balance-grid ct-balance-grid--debt-detail"
+                columns={[
+                  "Período",
+                  "ID",
+                  "Socio",
+                  "DNI",
+                  "Categoría",
+                  "Ingreso",
+                  "Domicilio",
+                  "Teléfono",
+                  "Cobrador",
+                  { label: "Monto", align: "right" },
+                ]}
+                ariaLabel="Detalle completo de deudores por período"
+                empty={!visibleDebtItems.length}
+                skeletonActionColumn={false}
+              >
+                {!visibleDebtItems.length ? (
+                  <div className="module-empty ct-balance-table-empty">
+                    <strong>Sin deudores para mostrar</strong>
+                    <span>No hay registros que coincidan con la búsqueda.</span>
+                  </div>
+                ) : null}
+                {visibleDebtItems.map((r, i) => (
+                  <div
+                    className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-balance-grid ct-balance-grid--debt-detail ct-balance-statusRow ${balanceStatusTone(r.estado)}`}
+                    role="row"
+                    key={`${r.id_socio}-${r.anio}-${r.id_periodo}-${i}`}
+                  >
+                    <div className="mov-gridCell is-strong">{r.periodo}</div>
+                    <div className="mov-gridCell ct-balance-number">{r.id_socio}</div>
+                    <div className="mov-gridCell entity-main-cell"><strong>{r.socio}</strong></div>
+                    <div className="mov-gridCell ct-balance-number">{r.dni || "—"}</div>
+                    <div className="mov-gridCell"><span className="mov-categoryChip">{r.categoria || "Sin categoría"}</span></div>
+                    <div className="mov-gridCell">{dateText(r.ingreso)}</div>
+                    <div className="mov-gridCell ct-balance-cell-wrap">{r.domicilio || "—"}</div>
+                    <div className="mov-gridCell ct-balance-number">{r.telefono || "—"}</div>
+                    <div className="mov-gridCell">{r.cobrador || "—"}</div>
+                    <div className="mov-gridCell is-right is-strong ct-balance-number">
+                      <strong>{money(r.monto)}</strong>
+                      {Number(r.descuento_familiar) > 0 ? (
+                        <small className="ct-old-discount">-{r.descuento_familiar}% familiar</small>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </GlobalDivTable>
+              {!showAllDebts && debtItems.length > 100 ? <div className="ct-old-load-all"><span>Se muestran los primeros 100. Quedan {debtItems.length - 100} registros más.</span><button type="button" className="mov-btn mov-btn--ghost" onClick={() => setShowAllDebts(true)}>Cargar todos</button></div> : null}
             </> : null}
-          </div>
-        )}
-      </section>
+            </div>
+          )}
+        </div>
+      </CrudModal>
       <ModalExportarGlobal
         open={Boolean(exportMode)}
         title={exportConfig.title || "Exportar balance"}
@@ -791,9 +1092,8 @@ function BalanceModal({ open, onClose, onFeedback }) {
         onSuccess={(message) => onFeedback?.({ type: "success", message })}
         onError={(message) => onFeedback?.({ type: "error", message })}
       />
-    </div>
+    </>
   );
-  return createPortal(content, document.body);
 }
 
 export default function IngresosSociosView({
@@ -849,13 +1149,14 @@ export default function IngresosSociosView({
     <>
       <BotonExportarGlobal
         label="Exportar"
+        className="ct-income-lower-action mov-btn--compact"
         onClick={() => setExportOpen(true)}
         disabled={loading || !Number(detailPagination.total || data?.detalle?.items?.length || 0)}
         title="Exportar detalle de ingresos de socios"
       />
       <button
         type="button"
-        className="mov-btn mov-btn--primary ct-income-balance-button"
+        className="mov-btn ct-income-lower-action ct-income-balance-button"
         onClick={() => setBalanceOpen(true)}
         disabled={loading || !period}
       >
@@ -874,7 +1175,6 @@ export default function IngresosSociosView({
             section={data?.detalle}
             onPageChange={onDetailPageChange}
             loading={loading}
-            period={period}
           />
         ) : null}
         {activeTab === "partners" ? (

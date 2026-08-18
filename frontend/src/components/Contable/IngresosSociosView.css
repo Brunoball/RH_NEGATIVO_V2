@@ -2,6 +2,387 @@
 @media(max-width:1100px){.ct-old-cards--seven,.ct-old-cards--six,.ct-old-cards--five,.ct-old-cards--four{grid-template-columns:repeat(2,minmax(0,1fr))}.ct-old-main-toolbar,.ct-balance-toolbar,.ct-old-pane-head{align-items:stretch;flex-direction:column}.ct-old-search{min-width:0;width:100%}.ct-balance-range{grid-template-columns:1fr 1fr}.ct-balance-range button{grid-column:1/-1;justify-self:stretch}.ct-old-table{min-width:980px}}
 .ct-old-table-wrap.has-pagination{flex:1 1 auto;border-radius:14px 14px 0 0}.ct-old-pagination{border-color:#dde5ef;border-radius:0 0 14px 14px}.ct-old-pagination .global-pagination__summary span{margin-left:8px}
 
+/* Balance anual: estructura global de modal, formularios, pestañas y métricas. */
+.ct-balance-modal.entity-modal--wide {
+  width: min(1320px, calc(100vw - 36px));
+  height: min(890px, calc(100dvh - 36px));
+  max-height: calc(100dvh - 36px);
+  border-radius: var(--entity-modal-radius);
+  background: var(--entity-modal-bg);
+  box-shadow: var(--entity-modal-shadow);
+}
+
+.ct-balance-form {
+  min-height: 0;
+  gap: 16px;
+}
+
+.ct-balance-form > .entity-form-panel {
+  margin-top: 0;
+}
+
+.ct-balance-period-grid {
+  grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) auto;
+  align-items: end;
+}
+
+.ct-balance-generate {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ct-balance-generate .mov-btn {
+  min-height: 47px;
+  min-width: 170px;
+}
+
+.ct-balance-modal .ct-balance-empty {
+  min-height: 190px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--balto-text);
+  background: linear-gradient(
+    180deg,
+    #fff,
+    color-mix(in srgb, var(--balto-bg) 58%, #fff)
+  );
+}
+
+.ct-balance-content {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ct-balance-content > h4 {
+  margin: 2px 2px 0;
+  color: var(--entity-modal-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ct-balance-global-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ct-balance-global-toolbar .entity-form-tabs {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.ct-balance-modal .ct-balance-export-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+.ct-balance-modal .ct-balance-export-actions .mov-btn {
+  border-color: color-mix(in srgb, var(--primary-color) 20%, var(--entity-modal-border));
+  color: var(--entity-modal-action);
+  background: #fff;
+  box-shadow: none;
+}
+
+.ct-balance-summary.global-summaryCards--dashboard {
+  margin: 0;
+}
+
+.ct-balance-summary .global-summaryCards__list {
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+}
+
+.ct-balance-modal .ct-old-pane-head {
+  align-items: flex-end;
+  padding: 2px 2px 0;
+}
+
+.ct-balance-modal .ct-balance-search {
+  width: min(390px, 100%);
+  flex: 0 1 390px;
+}
+
+.ct-balance-table.global-divTable {
+  min-height: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--mov-border);
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: var(--mov-shadow-sm);
+}
+
+.ct-balance-table--compact.global-divTable {
+  max-height: 260px;
+}
+
+.ct-balance-table--compact .ct-balance-table__body {
+  min-height: 0;
+  max-height: 214px;
+}
+
+.ct-balance-table--detail.global-divTable {
+  min-height: 260px;
+  max-height: 430px;
+  flex: 1 0 300px;
+}
+
+.ct-balance-table--detail .ct-balance-table__body {
+  min-height: 210px;
+  max-height: none;
+}
+
+.ct-balance-table .global-divTable__head {
+  background: var(--primary-color);
+}
+
+.ct-balance-table .mov-gridCell--head {
+  min-height: 42px;
+  padding-inline: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+}
+
+.ct-balance-table .entity-table-row .mov-gridCell {
+  min-height: 50px;
+  padding-inline: 9px;
+  font-size: 12px;
+}
+
+.ct-balance-table-empty.module-empty {
+  min-height: 150px;
+}
+
+.ct-balance-grid {
+  width: 100%;
+  min-width: 0;
+}
+
+.ct-balance-grid > * {
+  min-width: 0;
+}
+
+.ct-balance-grid--ins-summary {
+  grid-template-columns:
+    minmax(0, 1.05fr)
+    minmax(0, 1.15fr)
+    repeat(6, minmax(0, .72fr))
+    minmax(0, 1.2fr);
+}
+
+.ct-balance-grid--ins-detail {
+  grid-template-columns:
+    minmax(0, .48fr)
+    minmax(0, 1.5fr)
+    minmax(0, .78fr)
+    minmax(0, .95fr)
+    minmax(0, .9fr)
+    minmax(0, .95fr)
+    minmax(0, 1.05fr)
+    minmax(0, 1fr);
+}
+
+.ct-balance-grid--bajas-summary {
+  grid-template-columns:
+    minmax(0, 1.1fr)
+    minmax(0, 1.25fr)
+    repeat(3, minmax(0, .75fr))
+    minmax(0, 1.2fr);
+}
+
+.ct-balance-grid--bajas-detail {
+  grid-template-columns:
+    minmax(0, .45fr)
+    minmax(0, 1.4fr)
+    minmax(0, .92fr)
+    minmax(0, 1.05fr)
+    minmax(0, 1.5fr)
+    minmax(0, 1.05fr)
+    minmax(0, 1.55fr);
+}
+
+.ct-balance-grid--debt-summary {
+  grid-template-columns:
+    minmax(0, 1.1fr)
+    repeat(4, minmax(0, .78fr))
+    minmax(0, 1.25fr);
+}
+
+.ct-balance-grid--debt-detail {
+  grid-template-columns:
+    minmax(0, .78fr)
+    minmax(0, .42fr)
+    minmax(0, 1.3fr)
+    minmax(0, .7fr)
+    minmax(0, 1fr)
+    minmax(0, .8fr)
+    minmax(0, 1.4fr)
+    minmax(0, .9fr)
+    minmax(0, .92fr)
+    minmax(0, 1fr);
+}
+
+
+.ct-balance-statusLegend {
+  align-self: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 36px;
+  margin: -4px auto 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 4px 5px 4px 9px;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
+}
+
+.ct-balance-statusLegend__title {
+  color: #475569;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ct-balance-statusLegend__items {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ct-balance-statusLegend__item {
+  --ct-balance-status-color: #9aa5b1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--ct-balance-status-color) 24%, #e2e8f0);
+  border-radius: 999px;
+  padding: 3px 8px 3px 6px;
+  background: color-mix(in srgb, var(--ct-balance-status-color) 8%, #fff);
+  color: color-mix(in srgb, var(--ct-balance-status-color) 62%, #334155);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ct-balance-statusLegend__item.is-active {
+  --ct-balance-status-color: #22a85a;
+}
+
+.ct-balance-statusLegend__item.is-passive {
+  --ct-balance-status-color: #ef5350;
+}
+
+.ct-balance-statusLegend__item i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: var(--ct-balance-status-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ct-balance-status-color) 14%, transparent);
+}
+
+.ct-balance-statusRow {
+  --ct-balance-status-color: #94a3b8;
+  box-shadow: inset 4px 0 0 var(--ct-balance-status-color);
+}
+
+.ct-balance-statusRow.is-active {
+  --ct-balance-status-color: #22a85a;
+}
+
+.ct-balance-statusRow.is-passive {
+  --ct-balance-status-color: #ef5350;
+}
+
+.ct-balance-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.ct-balance-cell-wrap {
+  align-items: center;
+  white-space: normal;
+  line-height: 1.28;
+  text-overflow: clip;
+}
+
+.ct-balance-modal .ct-old-load-all {
+  border-color: var(--mov-border);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--balto-bg) 58%, #fff);
+}
+
+.ct-balance-modal .ct-old-load-all .mov-btn {
+  border-color: color-mix(in srgb, var(--primary-color) 20%, var(--entity-modal-border));
+  color: var(--entity-modal-action);
+  background: #fff;
+}
+
+@media (max-width: 1000px) {
+  .ct-balance-period-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ct-balance-generate {
+    grid-column: 1 / -1;
+  }
+
+  .ct-balance-generate .mov-btn {
+    width: 100%;
+  }
+
+  .ct-balance-global-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ct-balance-modal .ct-balance-export-actions {
+    padding-bottom: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .ct-balance-modal.entity-modal--wide {
+    width: 100%;
+    height: auto;
+  }
+
+  .ct-balance-period-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ct-balance-generate {
+    grid-column: auto;
+  }
+
+  .ct-balance-modal .ct-balance-export-actions,
+  .ct-balance-modal .ct-old-pane-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ct-balance-modal .ct-balance-export-actions .mov-btn,
+  .ct-balance-modal .ct-balance-search {
+    width: 100%;
+  }
+}
+
 /* Vista principal de Ingresos: comparte el patrón visual global de Socios. */
 .ct-income {
   height: 100%;
@@ -124,13 +505,13 @@
   align-items: center;
   justify-content: flex-start;
   gap: 10px;
-  min-height: 76px;
-  padding: 9px 12px;
+  min-height: 60px;
+  padding: 7px 12px;
   overflow-x: auto;
 }
 
 .ct-income-pagination__cards.global-summaryCards {
-  min-width: 440px;
+  min-width: 320px;
   flex: 1 1 auto;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 9px;
@@ -143,6 +524,22 @@
 
 .ct-income-pagination__cards .global-summaryCards__title {
   font-size: 11px;
+}
+
+.ct-income-pagination__cards.has-pagination-summary .global-summaryCards__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.ct-income-pagination .ct-income-pagination__number {
+  color: var(--text-primary);
+  font-weight: 800;
 }
 
 .ct-income-pagination__cards .global-summaryCards__list {
@@ -186,19 +583,58 @@
   display: flex;
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  gap: 10px;
+  gap: 4px;
+  padding-left: 4px;
 }
 
-.ct-income-pagination__actions .mov-btn {
-  height: 38px;
-  min-height: 38px;
+.ct-income-pagination__actions .mov-btn.ct-income-lower-action {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: transparent;
+  border-radius: 8px;
+  color: var(--balto-action, var(--primary-color));
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 620;
   white-space: nowrap;
 }
 
-.ct-income-balance-button {
-  padding-inline: 13px;
-  border-radius: 10px;
+.ct-income-pagination__actions .mov-btn.ct-income-lower-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--balto-action, var(--primary-color)) 20%, transparent);
+  color: color-mix(in srgb, var(--balto-action, var(--primary-color)) 88%, #000);
+  background: color-mix(in srgb, var(--balto-action, var(--primary-color)) 8%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+.ct-income-pagination__actions .mov-btn.mov-btn--excel.ct-income-lower-action {
+  border-color: transparent;
+  color: var(--success-700, #15803d);
+  background: transparent;
+  box-shadow: none;
+}
+
+.ct-income-pagination__actions .mov-btn.mov-btn--excel.ct-income-lower-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--success-600, #16a34a) 22%, transparent);
+  color: var(--success-700, #15803d);
+  background: color-mix(in srgb, var(--success-500, #22c55e) 9%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+.ct-income-pagination__actions .ct-income-lower-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--balto-action, var(--primary-color)) 15%, transparent);
+}
+
+.ct-income-pagination__actions .ct-income-lower-action svg {
   font-size: 12px;
+}
+
+.ct-income-balance-button {
+  padding-inline: 9px;
 }
 
 @media (max-width: 1100px) {
@@ -214,7 +650,7 @@
   }
 
   .ct-income-pagination__cards.global-summaryCards {
-    min-width: 400px;
+    min-width: 300px;
   }
 }
 
@@ -231,7 +667,7 @@
   }
 
   .ct-income-pagination__cards.global-summaryCards {
-    min-width: 620px;
+    min-width: 320px;
     grid-template-columns: auto minmax(0, 1fr);
     margin: 0;
   }
