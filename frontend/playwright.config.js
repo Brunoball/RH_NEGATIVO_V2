@@ -12,11 +12,9 @@ const apiURL = String(process.env.PW_API_URL || 'http://localhost:3001/routes')
   .trim()
   .replace(/\/+$/, '');
 
-// Se mantiene local al config para que Playwright no dependa de que una
-// versión vieja de env.helper.js exporte isLocalUrl.
 function isLocalUrl(value) {
   try {
-    const host = new URL(String(value || '').trim()).hostname.toLowerCase();
+    const host = new URL(value).hostname.toLowerCase();
     return host === 'localhost' || host === '127.0.0.1' || host === '::1';
   } catch (_error) {
     return false;
@@ -30,17 +28,12 @@ function localServerAddress(value, fallbackPort) {
   return `${host}:${port}`;
 }
 
-const backendDir = path.resolve(__dirname, process.env.PW_BACKEND_DIR || '../backend');
-const frontendCommand = String(process.env.PW_FRONTEND_COMMAND || 'npm start').trim();
-const phpCommand = String(
-  process.env.PW_PHP_COMMAND || `php -S ${localServerAddress(apiURL, '3001')}`,
-).trim();
 const webServer = [];
 
 if (process.env.PW_START_BACKEND !== 'false' && isLocalUrl(apiURL)) {
   webServer.push({
-    command: phpCommand,
-    cwd: backendDir,
+    command: `php -S ${localServerAddress(apiURL, '3001')}`,
+    cwd: path.resolve(__dirname, '..', 'backend'),
     url: actionUrl('health'),
     reuseExistingServer: true,
     timeout: 120_000,
@@ -51,7 +44,7 @@ if (process.env.PW_START_BACKEND !== 'false' && isLocalUrl(apiURL)) {
 
 if (process.env.PW_START_FRONTEND !== 'false' && isLocalUrl(baseURL)) {
   webServer.push({
-    command: frontendCommand,
+    command: 'npm start',
     cwd: __dirname,
     url: baseURL,
     reuseExistingServer: true,
@@ -69,13 +62,13 @@ if (process.env.PW_START_FRONTEND !== 'false' && isLocalUrl(baseURL)) {
 module.exports = defineConfig({
   testDir: './tests',
   testMatch: /.*\.spec\.js$/,
+
+  // Cada test conserva su límite individual, pero la suite completa NO se
+  // corta por tiempo. La corrida RH actual tarda varios minutos por diseño.
   timeout: 60_000,
   globalTimeout: 0,
   expect: { timeout: 10_000 },
 
-  // La suite modifica datos E2E temporales y los limpia por prefijo. Mantener
-  // un único worker evita carreras entre altas/bajas y hace reproducible el
-  // mismo flujo tanto en local como en Hostinger.
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -84,12 +77,11 @@ module.exports = defineConfig({
   globalSetup: require.resolve('./tests/auth.setup.js'),
   globalTeardown: require.resolve('./tests/auth.teardown.js'),
 
-  // Se usa el nombre estándar para no mantener test-results y test-results-rh.
-  outputDir: 'test-results',
+  outputDir: 'test-results-rh',
   reporter: [
     ['list'],
     ['./tests/reporters/check-reporter.js', {
-      outputFolder: 'test-results',
+      outputFolder: 'test-results-rh',
       outputFile: 'resultado.txt',
       quiet: true,
     }],
@@ -110,7 +102,5 @@ module.exports = defineConfig({
     },
   ],
 
-  webServer: webServer.length === 0
-    ? undefined
-    : (webServer.length === 1 ? webServer[0] : webServer),
+  webServer: webServer.length === 1 ? webServer[0] : webServer,
 });

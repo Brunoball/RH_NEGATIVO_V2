@@ -56,9 +56,9 @@ test.describe('Configuración · catálogos', () => {
     }
   });
 
-  test('CRUD, duplicados y estados funcionan en los seis catálogos; un período extra no rompe Cuotas', async ({ request }) => {
+  test('CRUD, duplicados y estados funcionan en los cinco catálogos editables; Períodos queda estructural', async ({ request }) => {
     const definitions = configValues();
-    for (const [list, definition] of Object.entries(definitions)) {
+    for (const [list, definition] of Object.entries(definitions).filter(([key]) => key !== 'periodo')) {
       const created = await createConfigItem(request, list, definition);
       const id = itemId(created, definition);
       expect(id).toBeGreaterThan(0);
@@ -84,17 +84,37 @@ test.describe('Configuración · catálogos', () => {
         method: 'POST', data: { lista: list, id },
       }, { status: 409, code: 'ESTADO_SIN_CAMBIOS' });
 
-      if (list === 'periodo') {
-        const catalogs = await apiCall(request, 'cuotas_catalogos', { params: { anio: currentYear(), mes: 1 } });
-        const quotaPeriodIds = (catalogs.catalogos?.periodos || catalogs.periodos || []).map((p) => Number(p.id_periodo));
-        expect(quotaPeriodIds.every((value) => value >= 1 && value <= 7)).toBe(true);
-        expect(quotaPeriodIds).not.toContain(id);
-      }
-
       const action = list === 'cobrador' ? 'configuracion_lista_eliminar' : 'configuracion_lista_eliminar_definitivo';
       const deleted = await apiCall(request, action, { method: 'POST', data: { lista: list, id } });
       expect(deleted.eliminado_definitivo).toBe(true);
     }
+
+    const config = await apiCall(request, 'configuracion_obtener');
+    const structuralPeriod = (config.listas?.periodo || []).find((item) => Number(item.id_periodo) === 1);
+    expect(structuralPeriod).toBeTruthy();
+
+    await expectApiError(request, 'configuracion_lista_guardar', {
+      method: 'POST',
+      data: { lista: 'periodo', nombre: definitions.periodo.nombre, ...definitions.periodo.payload },
+    }, { status: 409, code: 'PERIODO_ESTRUCTURAL' });
+    await expectApiError(request, 'configuracion_lista_guardar', {
+      method: 'POST',
+      data: {
+        lista: 'periodo',
+        id: structuralPeriod.id_periodo,
+        nombre: `${structuralPeriod.nombre} X`,
+        meses: structuralPeriod.meses,
+      },
+    }, { status: 409, code: 'PERIODO_ESTRUCTURAL' });
+    for (const action of ['configuracion_lista_baja', 'configuracion_lista_eliminar_definitivo']) {
+      await expectApiError(request, action, {
+        method: 'POST', data: { lista: 'periodo', id: structuralPeriod.id_periodo },
+      }, { status: 409, code: 'PERIODO_ESTRUCTURAL' });
+    }
+
+    const catalogs = await apiCall(request, 'cuotas_catalogos', { params: { anio: currentYear(), mes: 1 } });
+    const quotaPeriodIds = (catalogs.catalogos?.periodos || catalogs.periodos || []).map((item) => Number(item.id_periodo));
+    expect(quotaPeriodIds.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
 
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST', data: { lista: 'inventada', nombre: 'X' },
@@ -102,6 +122,25 @@ test.describe('Configuración · catálogos', () => {
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST', data: { lista: 'cobrador', nombre: '' },
     }, { status: 422, code: 'VALIDATION_ERROR' });
+  });
+
+  test('IDs manuales no se reutilizan después de una eliminación definitiva', async ({ request }) => {
+    const firstDefinition = configValues().cobrador;
+    const first = await createConfigItem(request, 'cobrador', firstDefinition);
+    const firstId = itemId(first, firstDefinition);
+    await apiCall(request, 'configuracion_lista_eliminar_definitivo', {
+      method: 'POST', data: { lista: 'cobrador', id: firstId },
+    });
+
+    const secondDefinition = configValues().cobrador;
+    const second = await createConfigItem(request, 'cobrador', secondDefinition);
+    const secondId = itemId(second, secondDefinition);
+    expect(secondId).toBeGreaterThan(firstId);
+    expect(Number(second.cantidad_usos || 0)).toBe(0);
+
+    await apiCall(request, 'configuracion_lista_eliminar_definitivo', {
+      method: 'POST', data: { lista: 'cobrador', id: secondId },
+    });
   });
 
   test('eliminación definitiva queda bloqueada mientras una opción está en uso', async ({ request }) => {
@@ -276,6 +315,7 @@ test.describe('Configuración · usuarios y permisos', () => {
       ['categorias_listar', { estado: 'activo' }],
       ['descuentos_familiares_listar', { estado: 'todos' }],
       ['cuotas_catalogos', { anio: currentYear(), mes: 1 }],
+      ['cuotas_totales_estado', { anio: currentYear(), mes: 1 }],
       ['contable_resumen', { anio: currentYear(), mes: 1 }],
       ['contable_catalogos', {}],
       ['contable_ingresos_socios', { anio: currentYear(), periodo: 1, pagina: 1 }],
@@ -302,6 +342,7 @@ test.describe('Configuración · usuarios y permisos', () => {
       'socios_guardar', 'socios_eliminar', 'socios_eliminar_definitivo', 'socios_reactivar', 'socios_contacto_guardar', 'socios_cumpleanios_cerrar',
       'familias_guardar', 'familias_eliminar', 'familias_eliminar_definitivo', 'familias_reactivar',
       'categorias_guardar', 'categorias_eliminar', 'categorias_reactivar', 'descuentos_familiares_guardar', 'descuentos_familiares_eliminar',
+      'cuotas_registrar_inscripcion', 'cuotas_eliminar_inscripcion',
       'cuotas_registrar_pago', 'cuotas_registrar_pagos', 'cuotas_condonar_pago', 'cuotas_eliminar_pago', 'cuotas_registrar_cobro', 'cuotas_anular',
       'configuracion_lista_guardar', 'configuracion_lista_eliminar', 'configuracion_lista_baja', 'configuracion_lista_reactivar', 'configuracion_lista_eliminar_definitivo',
       'usuarios_guardar', 'usuarios_cambiar_estado', 'usuarios_eliminar',
@@ -324,7 +365,8 @@ test.describe('Configuración · usuarios y permisos', () => {
     await page.goto('/categorias');
     await expect(page.getByRole('button', { name: 'Nueva categoría' })).toHaveCount(0);
     await page.goto('/cuotas');
-    await expect(page.getByRole('button', { name: 'Código de barras' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Cód. barras', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Seleccionar', exact: true })).toHaveCount(0);
     await expect(page.getByText(/permiso de consulta/i).first()).toBeVisible();
 
     await page.goto('/contable/ingresos');

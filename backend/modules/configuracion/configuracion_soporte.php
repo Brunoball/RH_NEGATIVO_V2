@@ -54,6 +54,72 @@ function configuracion_lista_definicion(mixed $value): array
     return $definitions[$key];
 }
 
+
+function configuracion_siguiente_id_manual(PDO $db, array $definition): int
+{
+    $table = (string)$definition['tabla'];
+    $idField = (string)$definition['id_campo'];
+
+    // El SELECT con FOR UPDATE conserva la serialización que ya tenía el alta
+    // manual. El siguiente ID debe ser mayor que cualquier ID actual o histórico:
+    // reutilizar un ID eliminado haría que una opción nueva heredara auditorías
+    // y referencias pertenecientes a otra opción anterior.
+    $currentStatement = $db->query(
+        "SELECT `{$idField}` FROM `{$table}` ORDER BY `{$idField}` DESC LIMIT 1 FOR UPDATE"
+    );
+    $current = $currentStatement->fetchColumn();
+    $maxUsedId = $current === false ? 0 : (int)$current;
+
+    if (configuracion_tabla_columna_existe($db, 'auditoria', 'id_registro')
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'tabla')) {
+        $auditStatement = $db->prepare(
+            'SELECT COALESCE(MAX(id_registro), 0) FROM auditoria WHERE tabla = ?'
+        );
+        $auditStatement->execute([$table]);
+        $maxUsedId = max($maxUsedId, (int)$auditStatement->fetchColumn());
+    }
+
+    // También contemplamos referencias relacionales que pudieron sobrevivir a
+    // datos legacy anteriores a la auditoría de catálogos.
+    foreach (configuracion_relaciones($definition) as $relation) {
+        $relationTable = (string)$relation['tabla'];
+        $relationColumn = (string)$relation['columna'];
+        if (!configuracion_tabla_columna_existe($db, $relationTable, $relationColumn)) continue;
+        $relationStatement = $db->query(
+            "SELECT COALESCE(MAX(`{$relationColumn}`), 0) FROM `{$relationTable}`"
+        );
+        $maxUsedId = max($maxUsedId, (int)$relationStatement->fetchColumn());
+    }
+
+    // Cobrador y grupo sanguíneo también aparecen dentro de snapshots JSON de
+    // auditoría de Socios. Tomarlos en cuenta evita colisiones con datos legacy
+    // aunque la fila original del catálogo ya haya sido eliminada.
+    $historicalField = match ((string)$definition['lista']) {
+        'cobrador' => 'id_cobrador',
+        'grupo_sanguineo' => 'id_grupo_sanguineo',
+        default => null,
+    };
+    if ($historicalField !== null
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'datos_anteriores')
+        && configuracion_tabla_columna_existe($db, 'auditoria', 'datos_nuevos')) {
+        $jsonPath = '$.' . $historicalField;
+        $snapshotStatement = $db->prepare(
+            "SELECT GREATEST(
+                COALESCE(MAX(CASE WHEN JSON_VALID(datos_anteriores)
+                    THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(datos_anteriores, ?)) AS UNSIGNED) ELSE 0 END), 0),
+                COALESCE(MAX(CASE WHEN JSON_VALID(datos_nuevos)
+                    THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(datos_nuevos, ?)) AS UNSIGNED) ELSE 0 END), 0)
+             )
+             FROM auditoria
+             WHERE tabla = 'socios'"
+        );
+        $snapshotStatement->execute([$jsonPath, $jsonPath]);
+        $maxUsedId = max($maxUsedId, (int)$snapshotStatement->fetchColumn());
+    }
+
+    return $maxUsedId + 1;
+}
+
 function configuracion_columnas(array $definition): array
 {
     return array_keys($definition['campos']);

@@ -3,7 +3,7 @@ const { lettersFromSuffix, uniqueSuffix } = require('../helpers/data.helper');
 function configValues() {
   const suffix = uniqueSuffix();
   const letters = lettersFromSuffix(suffix, 8);
-  const short = letters.slice(0, 2);
+  const short = letters.slice(0, 4);
   return {
     categoria: {
       nombre: `PW EE CAT ${letters}`,

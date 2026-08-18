@@ -24,9 +24,7 @@ trait ConfiguracionGestion
                     $columns = array_keys($data);
                     $params = array_values($data);
                     if (!(bool)$definition['auto_id']) {
-                        $lastIdStatement = $db->query("SELECT {$idField} FROM {$table} ORDER BY {$idField} DESC LIMIT 1 FOR UPDATE");
-                        $lastId = $lastIdStatement->fetchColumn();
-                        $savedId = ($lastId === false ? 0 : (int)$lastId) + 1;
+                        $savedId = configuracion_siguiente_id_manual($db, $definition);
                         array_unshift($columns, $idField);
                         array_unshift($params, $savedId);
                     }

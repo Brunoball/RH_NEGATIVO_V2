@@ -566,14 +566,15 @@ test.describe('Contabilidad · UI completa', () => {
     await page.goto('/contable/ingresos');
     await expect(page.getByRole('heading', { name: 'Ingresos' })).toBeVisible();
     await page.getByLabel('Año').selectOption(String(year));
-    await page.getByLabel('Período').selectOption(String(period));
+    await page.getByLabel('Período', { exact: true }).selectOption(String(period));
 
-    const segmented = page.locator('.ct-old-tabs').first();
-    await segmented.getByRole('button', { name: 'Detalle', exact: true }).click();
+    const segmented = page.getByRole('tablist', { name: 'Vista' });
+    await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
     await expect(page.getByText('Detalle de cobros recibidos')).toBeVisible();
 
     if (apiReport.detalle.items[0]?.socio) {
-      const search = page.getByPlaceholder(/Buscar por socio/i);
+      const search = page.getByRole('textbox', { name: 'Buscar' });
+      await expect(search).toHaveAttribute('placeholder', /Socio, categoría, cobrador, período/i);
       await Promise.all([
         page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('buscar=')),
         search.fill(apiReport.detalle.items[0].socio),
@@ -593,28 +594,39 @@ test.describe('Contabilidad · UI completa', () => {
       await page.getByRole('button', { name: 'Anterior', exact: true }).click();
     }
 
-    await segmented.getByRole('button', { name: 'Detalle de Socios', exact: true }).click();
+    await segmented.getByRole('tab', { name: /Detalle de socios/i }).click();
     await expect(page.getByRole('columnheader', { name: 'Estado' })).toBeVisible();
-    await expect(page.getByText('TOTAL ACTIVO', { exact: true }).last()).toBeVisible();
+    const partnerTotals = page.getByRole('region', { name: 'Totales de socios por estado' });
+    await expect(partnerTotals).toBeVisible();
+    await expect(partnerTotals.getByText('Total activos', { exact: true })).toBeVisible();
+    await expect(partnerTotals.getByText('Total pasivos', { exact: true })).toBeVisible();
+    await expect(partnerTotals.getByText('Total general', { exact: true })).toBeVisible();
 
-    await segmented.getByRole('button', { name: 'Detalle de Cobranza', exact: true }).click();
-    await expect(page.getByText('Faltante / Superávit', { exact: true })).toBeVisible();
-    await expect(page.getByText('TOTAL INGRESADO', { exact: true })).toBeVisible();
+    await segmented.getByRole('tab', { name: /Detalle de cobranza/i }).click();
+    const collectionTotals = page.getByRole('region', { name: 'Totales de cobranza del período' });
+    await expect(collectionTotals).toBeVisible();
+    await expect(collectionTotals.getByText('Cuotas recaudadas', { exact: true })).toBeVisible();
+    await expect(collectionTotals.getByText('Inscripciones recaudadas', { exact: true })).toBeVisible();
+    await expect(collectionTotals.getByText('Cuotas esperadas', { exact: true })).toBeVisible();
+    const expectedDifferenceLabel = Number(apiReport.cobranza?.resumen?.diferencia_cuotas || 0) >= 0
+      ? 'Faltante'
+      : 'Superávit';
+    await expect(collectionTotals.getByText(expectedDifferenceLabel, { exact: true })).toBeVisible();
 
     await Promise.all([
       page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('periodo=7')),
-      page.getByLabel('Período').selectOption('7'),
+      page.getByLabel('Período', { exact: true }).selectOption('7'),
     ]);
-    await expect(page.getByLabel('Período')).toHaveValue('7');
-    await expect(page.getByLabel('Período').locator('option:checked')).toHaveText('CONTADO ANUAL');
-    await segmented.getByRole('button', { name: 'Detalle', exact: true }).click();
+    await expect(page.getByLabel('Período', { exact: true })).toHaveValue('7');
+    await expect(page.getByLabel('Período', { exact: true }).locator('option:checked')).toHaveText('CONTADO ANUAL');
+    await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
 
     const annualApi = await apiCall(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: 7, pagina: 1 },
     });
     if (Number(annualApi.detalle.paginacion.total) > 0) {
       await exportFromGlobalModal(page, {
-        openButton: page.getByRole('button', { name: 'Exportar detalle' }),
+        openButton: page.getByRole('button', { name: 'Exportar', exact: true }),
         format: 'Excel',
         scope: 'registros visibles|esta página',
         expectedExtension: '.xlsx',

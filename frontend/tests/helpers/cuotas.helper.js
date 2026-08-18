@@ -15,7 +15,9 @@ async function createQuotaCategory(request) {
       nombre: data.nombre,
       monto_mensual: data.mensual,
       monto_anual: data.anual,
-      vigente_desde: todayIso(),
+      // Los tests ejercitan cualquier período del año actual. La categoría E2E
+      // debe tener precio histórico desde el inicio del año, no sólo desde hoy.
+      vigente_desde: `${currentYear()}-01-01`,
     },
   });
   return { ...data, item: response.item };

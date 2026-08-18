@@ -388,8 +388,14 @@ function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState
                         type="button"
                         className="mov-iconBtn"
                         onClick={() => onEdit(item)}
-                        disabled={coreState}
-                        title={coreState ? "ACTIVO y PASIVO son estados estructurales" : `Editar ${meta.label}`}
+                        disabled={structural}
+                        title={
+                          coreState
+                            ? "ACTIVO y PASIVO son estados estructurales"
+                            : structuralPeriod
+                              ? "Los períodos 1 a 7 son estructurales y no se pueden editar"
+                              : `Editar ${meta.label}`
+                        }
                         aria-label={`Editar ${item.nombre}`}
                       >
                         <FontAwesomeIcon icon={faPen} />
@@ -634,7 +640,7 @@ function CatalogsPanel() {
           !writable
             ? "Tu usuario tiene permiso de consulta. Las modificaciones están deshabilitadas."
             : activeList === "periodo"
-              ? "Los 7 períodos son estructurales del sistema: podés corregir su texto, pero no agregar, dar de baja ni eliminar períodos."
+              ? "Los 7 períodos son estructurales del sistema: no se pueden agregar, editar, dar de baja ni eliminar."
               : activeList === "estado"
                 ? "ACTIVO y PASIVO son estados estructurales y permanecen protegidos; podés administrar estados auxiliares."
                 : null

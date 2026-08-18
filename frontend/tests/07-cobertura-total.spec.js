@@ -174,7 +174,15 @@ test.describe('Release gate · cobertura funcional total', () => {
         'SOCIO_DELETE_ERROR',
       ],
       categorias: ['ESQUEMA_DESCUENTOS_DESACTUALIZADO'],
-      cuotas: ['CODIGO_BARRA_INVALIDO', 'CUOTAS_SCHEMA_INVALIDO', 'PAGO_NO_ELIMINADO'],
+      cuotas: [
+        'CODIGO_BARRA_INVALIDO',
+        'CUOTAS_SCHEMA_INVALIDO',
+        'PAGO_NO_ELIMINADO',
+        'MEDIO_PAGO_INSCRIPCION_INVALIDO',
+        'MONTO_INSCRIPCION_INVALIDO',
+        'INSCRIPCION_YA_REGISTRADA',
+        'INSCRIPCION_NO_ELIMINADA',
+      ],
       usuarios: ['ULTIMO_ADMIN_ACTIVO'],
       contable: [
         'CONTABLE_DESCUADRE_INGRESOS',

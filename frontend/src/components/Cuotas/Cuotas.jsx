@@ -2502,6 +2502,17 @@ export default function Cuotas() {
             className="cuotas-lower-actions"
             aria-label="Acciones de cuotas"
           >
+            <button
+              type="button"
+              className="mov-btn mov-btn--ghost cuotas-lower-action"
+              onClick={printAllFiltered}
+              disabled={loading || printingAll || totalRegistros === 0}
+              title="Abrir todos los comprobantes que coinciden con los filtros actuales, incluyendo todas las páginas"
+            >
+              <FontAwesomeIcon icon={faPrint} />
+              {printingAll ? "Preparando..." : "Imprimir"}
+            </button>
+
             <BotonExportarGlobal
               label="Exportar"
               className="cuotas-lower-action mov-btn--compact"

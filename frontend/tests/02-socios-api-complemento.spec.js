@@ -88,16 +88,23 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     detail = await apiCall(request, 'familias_obtener', { params: { id } });
     expect(detail.item.activo).toBe(true);
 
-    await apiCall(request, 'familias_eliminar_definitivo', {
+    await expectApiError(request, 'familias_eliminar_definitivo', {
       method: 'POST', data: { id, confirmacion: 'ELIMINAR' },
-    });
-    await expectApiError(request, 'familias_obtener', { params: { id } }, { status: 404 });
+    }, { status: 409, code: 'FAMILIA_CON_HISTORIAL_NO_ELIMINABLE' });
+    detail = await apiCall(request, 'familias_obtener', { params: { id } });
+    expect(detail.item.id_familia).toBe(id);
+    // Dar de baja cierra las pertenencias. Reactivar la familia no debe
+    // reabrir automáticamente vínculos históricos: los dos integrantes
+    // permanecen en el historial y pueden reincorporarse explícitamente.
+    expect(detail.item.integrantes).toHaveLength(0);
+    expect(detail.item.historial_integrantes).toHaveLength(2);
+    expect(detail.item.historial_integrantes.every((member) => member.vinculo_activo === false)).toBe(true);
     });
   });
 
-  test('eliminación definitiva borra también pagos relacionados sin dejar residuos de cuotas', async ({ request }) => {
+  test('eliminación definitiva protege socios con pagos y sólo permite borrar cuando no queda historia económica', async ({ request }) => {
     const category = await createQuotaCategory(request);
-    const socio = await createQuotaSocio(request, 'DELETE CASCADE', category.item.id_categoria);
+    const socio = await createQuotaSocio(request, 'DELETE PROTEGIDO', category.item.id_categoria);
     const catalogs = await quotaCatalogs(request);
     const periodId = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
 
@@ -111,19 +118,25 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     });
     expect(paid.items).toHaveLength(1);
 
+    await expectApiError(request, 'socios_eliminar_definitivo', {
+      method: 'POST', data: { id: socio.item.id_socio },
+    }, { status: 409, code: 'SOCIO_CON_HISTORIAL_NO_ELIMINABLE' });
+
+    const paidList = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
+    });
+    expect((paidList.items || []).some((item) => Number(item.id_socio) === Number(socio.item.id_socio))).toBe(true);
+
+    await apiCall(request, 'cuotas_eliminar_pago', {
+      method: 'POST', data: { id_pago: paid.items[0].id_pago },
+    });
     const deleted = await apiCall(request, 'socios_eliminar_definitivo', {
       method: 'POST', data: { id: socio.item.id_socio },
     });
     expect(deleted.id_socio).toBe(socio.item.id_socio);
-    expect(Number(deleted.eliminados?.pagos || deleted.impacto?.pagos || 0)).toBeGreaterThanOrEqual(1);
-
     await expectApiError(request, 'socios_obtener', { params: { id: socio.item.id_socio } }, {
       status: 404, code: 'SOCIO_NO_ENCONTRADO',
     });
-    const paidList = await apiCall(request, 'cuotas_listar', {
-      params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
-    });
-    expect((paidList.items || []).some((item) => item.id_socio === socio.item.id_socio)).toBe(false);
   });
 
 });

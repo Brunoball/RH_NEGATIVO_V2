@@ -90,7 +90,9 @@ test.describe('Categorías y descuentos familiares', () => {
     await dialog.getByRole('button', { name: 'Crear categoría' }).click();
     expect(await effectiveFrom.evaluate((element) => element.checkValidity())).toBe(false);
 
-    await effectiveFrom.fill(todayIso());
+    // Usamos una vigencia anterior para que la edición de hoy genere un
+    // segundo hito histórico real en vez de corregir el mismo día.
+    await effectiveFrom.fill(`${todayIso().slice(0, 4)}-01-01`);
     await dialog.getByRole('button', { name: 'Crear categoría' }).click();
     await expectFeedback(page, 'Categoría creada correctamente.');
 

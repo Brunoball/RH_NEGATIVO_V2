@@ -65,7 +65,7 @@ async function openBarcodeReader(page) {
   expect(role).toBe('admin');
   // En <=1499px la acción superior se reemplaza por su versión inferior.
   // getByRole ignora el botón oculto y usa la acción realmente disponible al usuario.
-  const barcodeButton = page.getByRole('button', { name: 'Código de barras', exact: true });
+  const barcodeButton = page.getByRole('button', { name: 'Cód. barras', exact: true });
   await expect(barcodeButton).toBeVisible();
   await barcodeButton.click();
   const dialog = page.getByRole('dialog', { name: 'Registro por código de barras' });
@@ -293,8 +293,8 @@ test.describe('Cuotas · API y reglas de negocio', () => {
         nombre: family.nombre,
         observaciones: family.descripcion,
         integrantes: [
-          { id_socio: a.item.id_socio, desde: todayIso() },
-          { id_socio: b.item.id_socio, desde: todayIso() },
+          { id_socio: a.item.id_socio, desde: `${currentYear()}-01-01` },
+          { id_socio: b.item.id_socio, desde: `${currentYear()}-01-01` },
         ],
       },
     });
@@ -316,20 +316,28 @@ test.describe('Cuotas · API y reglas de negocio', () => {
 
   test('descuento familiar vigente se aplica al contexto y al pago de todos los integrantes', async ({ request }) => {
     const today = todayIso();
+    const referenceDate = `${currentYear()}-01-01`;
     const rulesResponse = await apiCall(request, 'descuentos_familiares_listar', { params: { estado: 'todos' } });
     const rules = Array.isArray(rulesResponse.items) ? rulesResponse.items : [];
 
-    const applicableAt = (count) => rules.find((rule) => {
+    const covers = (rule, count) => {
       const from = Number(rule.cantidad_integrantes_desde);
       const to = rule.cantidad_integrantes_hasta == null ? Infinity : Number(rule.cantidad_integrantes_hasta);
-      const activeToday = Boolean(rule.activo) && String(rule.vigencia_desde) <= today && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= today);
-      return activeToday && count >= from && count <= to && Number(rule.porcentaje_descuento) > 0;
-    });
+      return count >= from && count <= to;
+    };
+    const activeAtReference = (rule) => Boolean(rule.activo)
+      && String(rule.vigencia_desde) <= referenceDate
+      && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= referenceDate);
+    // El backend conserva el historial completo de reglas y no permite
+    // superponer una regla nueva con ninguna vigencia histórica, aunque la
+    // fila ya figure en el historial. El fixture debe respetar esa misma regla.
+    const overlapsReferenceToToday = (rule) => String(rule.vigencia_desde) <= today
+      && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= referenceDate);
 
     let memberCount = null;
     let expectedDiscount = null;
-    for (let count = 2; count <= 6; count += 1) {
-      const rule = applicableAt(count);
+    for (let count = 2; count <= 50; count += 1) {
+      const rule = rules.find((item) => activeAtReference(item) && covers(item, count) && Number(item.porcentaje_descuento) > 0);
       if (rule) {
         memberCount = count;
         expectedDiscount = Number(rule.porcentaje_descuento);
@@ -337,18 +345,14 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       }
     }
 
-    // Si la base no trae una regla usable entre 2 y 6 integrantes, creamos una
-    // regla E2E en un tamaño libre. La limpieza global la elimina al finalizar.
+    // Si no existe una regla histórica utilizable, creamos una sólo en un rango
+    // que no solape reglas reales durante el año. Así el test es determinista.
     if (memberCount == null) {
-      const isCovered = (count) => rules.some((rule) => {
-        const from = Number(rule.cantidad_integrantes_desde);
-        const to = rule.cantidad_integrantes_hasta == null ? Infinity : Number(rule.cantidad_integrantes_hasta);
-        const activeToday = Boolean(rule.activo) && String(rule.vigencia_desde) <= today && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= today);
-        return activeToday && count >= from && count <= to;
-      });
-      memberCount = [2, 3, 4, 5, 6].find((count) => !isCovered(count));
+      memberCount = Array.from({ length: 49 }, (_, index) => index + 2).find(
+        (count) => !rules.some((rule) => overlapsReferenceToToday(rule) && covers(rule, count)),
+      );
       if (memberCount == null) {
-        throw new Error('No se encontró un tamaño familiar E2E libre ni una regla vigente utilizable entre 2 y 6 integrantes.');
+        throw new Error('No se encontró un tamaño familiar E2E libre ni una regla histórica utilizable entre 2 y 50 integrantes.');
       }
       expectedDiscount = 12.5;
       await apiCall(request, 'descuentos_familiares_guardar', {
@@ -357,7 +361,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
           cantidad_integrantes_desde: memberCount,
           cantidad_integrantes_hasta: memberCount,
           porcentaje_descuento: expectedDiscount,
-          vigencia_desde: today,
+          vigencia_desde: referenceDate,
           vigencia_hasta: today,
           descripcion: `PW E2E DESC CUOTAS ${Date.now()}`,
         },
@@ -375,7 +379,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       data: {
         nombre: family.nombre,
         observaciones: family.descripcion,
-        integrantes: members.map((member) => ({ id_socio: member.item.id_socio, desde: today })),
+        integrantes: members.map((member) => ({ id_socio: member.item.id_socio, desde: referenceDate })),
       },
     });
 
@@ -402,6 +406,207 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     for (const item of paid.items) {
       expect(Number(item.porcentaje_descuento_familiar)).toBeCloseTo(expectedDiscount, 2);
       expect(Number(item.monto)).toBeCloseTo(expectedAmount, 2);
+      await deletePayment(request, item.id_pago);
+    }
+  });
+
+  test('totales por estado concilian exactamente con Deudores, Pagados y Condonados bajo los mismos filtros', async ({ request }) => {
+    const category = await createQuotaCategory(request);
+    const debt = await createQuotaSocio(request, 'TOTALES DEBE', category.item.id_categoria);
+    const paidSocio = await createQuotaSocio(request, 'TOTALES PAGA', category.item.id_categoria);
+    const waivedSocio = await createQuotaSocio(request, 'TOTALES CONDONA', category.item.id_categoria);
+    const catalogs = await quotaCatalogs(request);
+    const periodId = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
+    const commonSearch = 'PW EEE SOCIO CUOTA TOTALES';
+
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: paidSocio.item.id_socio,
+        periodId,
+        mediumId: catalogs.medium.id_medio_pago,
+      }),
+    });
+    const waived = await apiCall(request, 'cuotas_condonar_pago', {
+      method: 'POST',
+      data: {
+        id_socio: waivedSocio.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_condonacion: todayIso(),
+        motivo: 'PW E2E TOTAL CONDONADO',
+      },
+    });
+
+    const filter = {
+      anio: currentYear(),
+      mes: periodId,
+      buscar: commonSearch,
+      tipo: 'PERSONA',
+    };
+    const totals = await apiCall(request, 'cuotas_totales_estado', { params: filter });
+    expect(totals.totales).toEqual(expect.objectContaining({
+      DEUDORES: expect.any(Number),
+      PAGADOS: expect.any(Number),
+      CONDONADOS: expect.any(Number),
+    }));
+
+    for (const state of ['DEUDORES', 'PAGADOS', 'CONDONADOS']) {
+      const list = await apiCall(request, 'cuotas_listar', {
+        params: { ...filter, estado: state, pagina: 1, por_pagina: 1, incluir_catalogos: 'false' },
+      });
+      expect(
+        Number(totals.totales[state]),
+        `el total ${state} debe ser idéntico al total paginado de cuotas_listar`,
+      ).toBe(Number(list.paginacion.total));
+    }
+
+    const debtList = await apiCall(request, 'cuotas_listar', {
+      params: { ...filter, estado: 'DEUDORES', buscar: debt.data.dni },
+    });
+    expect(debtList.items.some((item) => item.id_socio === debt.item.id_socio)).toBe(true);
+
+    await deletePayment(request, paid.items[0].id_pago);
+    await deletePayment(request, waived.item.id_pago);
+  });
+
+  test('inscripción es única y concurrente, valida monto/fecha/medio, persiste en contexto y puede eliminarse', async ({ request }) => {
+    const { socio, catalogs } = await setupQuotaPartner(request, 'INSCRIPCION API');
+    const allowedMedium = (catalogs.catalogos.medios_pago || []).find((item) => {
+      const name = String(item.nombre || '').toUpperCase();
+      return item.activo !== false && (name.includes('EFECTIVO') || name.includes('TRANSFERENCIA'));
+    });
+    if (!allowedMedium) throw new Error('Cuotas E2E requiere un medio EFECTIVO o TRANSFERENCIA activo para inscripción.');
+
+    const before = await apiCall(request, 'cuotas_contextos_pago', {
+      params: { id_socio: socio.item.id_socio, anio: currentYear(), fecha_pago: todayIso() },
+    });
+    expect(before.inscripcion?.pagada).toBe(false);
+
+    await expectApiError(request, 'cuotas_registrar_inscripcion', {
+      method: 'POST',
+      data: {
+        id_socio: socio.item.id_socio,
+        fecha_pago: todayIso(),
+        monto: '1234.50',
+        id_medio_pago: allowedMedium.id_medio_pago,
+      },
+    }, { status: 422, code: 'MONTO_INSCRIPCION_INVALIDO' });
+
+    await expectApiError(request, 'cuotas_registrar_inscripcion', {
+      method: 'POST',
+      data: {
+        id_socio: socio.item.id_socio,
+        fecha_pago: addDaysIso(1),
+        monto: '12345',
+        id_medio_pago: allowedMedium.id_medio_pago,
+      },
+    }, { code: 'FECHA_PAGO_FUTURA' });
+
+    const disallowedMedium = (catalogs.catalogos.medios_pago || []).find((item) => {
+      const name = String(item.nombre || '').toUpperCase();
+      return item.activo !== false && !name.includes('EFECTIVO') && !name.includes('TRANSFERENCIA');
+    });
+    if (disallowedMedium) {
+      await expectApiError(request, 'cuotas_registrar_inscripcion', {
+        method: 'POST',
+        data: {
+          id_socio: socio.item.id_socio,
+          fecha_pago: todayIso(),
+          monto: '12345',
+          id_medio_pago: disallowedMedium.id_medio_pago,
+        },
+      }, { status: 422, code: 'MEDIO_PAGO_INSCRIPCION_INVALIDO' });
+    }
+
+    const payload = {
+      id_socio: socio.item.id_socio,
+      fecha_pago: todayIso(),
+      monto: '12345',
+      id_medio_pago: allowedMedium.id_medio_pago,
+    };
+    const [first, second] = await Promise.all([
+      apiResult(request, 'cuotas_registrar_inscripcion', { method: 'POST', data: payload }),
+      apiResult(request, 'cuotas_registrar_inscripcion', { method: 'POST', data: payload }),
+    ]);
+    const concurrent = [first, second];
+    expect(concurrent.filter((result) => result.ok)).toHaveLength(1);
+    expect(
+      concurrent.filter((result) => result.status === 409 && result.body?.codigo === 'INSCRIPCION_YA_REGISTRADA'),
+    ).toHaveLength(1);
+
+    const success = concurrent.find((result) => result.ok);
+    expect(Number(success.body.item.monto)).toBe(12345);
+    expect(Number(success.body.item.id_socio)).toBe(socio.item.id_socio);
+
+    const after = await apiCall(request, 'cuotas_contextos_pago', {
+      params: { id_socio: socio.item.id_socio, anio: currentYear(), fecha_pago: todayIso() },
+    });
+    expect(after.inscripcion?.pagada).toBe(true);
+    expect(Number(after.inscripcion?.pago?.id_inscripcion)).toBe(Number(success.body.item.id_inscripcion));
+
+    const deleted = await apiCall(request, 'cuotas_eliminar_inscripcion', {
+      method: 'POST', data: { id_inscripcion: success.body.item.id_inscripcion },
+    });
+    expect(Number(deleted.item.id_inscripcion)).toBe(Number(success.body.item.id_inscripcion));
+
+    const pendingAgain = await apiCall(request, 'cuotas_contextos_pago', {
+      params: { id_socio: socio.item.id_socio, anio: currentYear(), fecha_pago: todayIso() },
+    });
+    expect(pendingAgain.inscripcion?.pagada).toBe(false);
+
+    await expectApiError(request, 'cuotas_eliminar_inscripcion', {
+      method: 'POST', data: { id_inscripcion: success.body.item.id_inscripcion },
+    }, { status: 404, code: 'INSCRIPCION_NO_ENCONTRADA' });
+  });
+
+  test('pago familiar legacy resuelve integrantes según la fecha histórica de cada período', async ({ request }) => {
+    const category = await createQuotaCategory(request);
+    const a = await createQuotaSocio(request, 'FAMILIA HIST A', category.item.id_categoria);
+    const b = await createQuotaSocio(request, 'FAMILIA HIST B', category.item.id_categoria);
+    const catalogs = await quotaCatalogs(request);
+    const firstPeriod = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
+    const julyPeriod = Number(catalogs.bimonthly[3].id_periodo ?? catalogs.bimonthly[3].id_mes);
+    const family = cuotaFamilyData();
+    const year = currentYear();
+
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: a.item.id_socio, desde: `${year}-01-01` },
+          { id_socio: b.item.id_socio, desde: `${year}-07-01` },
+        ],
+      },
+    });
+
+    const historical = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: a.item.id_socio,
+        periodId: firstPeriod,
+        mediumId: catalogs.medium.id_medio_pago,
+        extra: { aplicar_familia: true },
+      }),
+    });
+    expect(historical.items.map((item) => item.id_socio)).toEqual([a.item.id_socio]);
+
+    const currentComposition = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: a.item.id_socio,
+        periodId: julyPeriod,
+        mediumId: catalogs.medium.id_medio_pago,
+        extra: { aplicar_familia: true },
+      }),
+    });
+    expect(currentComposition.items.map((item) => item.id_socio).sort((x, y) => x - y)).toEqual(
+      [a.item.id_socio, b.item.id_socio].sort((x, y) => x - y),
+    );
+
+    for (const item of [...historical.items, ...currentComposition.items]) {
       await deletePayment(request, item.id_pago);
     }
   });
@@ -454,7 +659,10 @@ test.describe('Cuotas · UI', () => {
     await page.getByRole('tab', { name: /Pagados/ }).click();
     await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
     row = rowByText(page, socio.data.nombre);
-    await expect(row).toContainText('PAGADO');
+    // El estado visible de la tabla es ACTIVO/PASIVO del socio. Que la cuota
+    // esté pagada se expresa por la pestaña Pagados y por sus acciones.
+    await expect(row).toBeVisible();
+    await expect(row.getByRole('button', { name: `Eliminar pago de ${socio.data.nombre}` })).toBeVisible();
     await row.getByRole('button', { name: `Eliminar pago de ${socio.data.nombre}` }).click();
     let actionDialog = page.getByRole('dialog', { name: 'Eliminar pago' });
     await actionDialog.getByRole('button', { name: 'Eliminar pago', exact: true }).click();
@@ -469,7 +677,10 @@ test.describe('Cuotas · UI', () => {
     await page.getByRole('tab', { name: /Condonados/ }).click();
     await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
     row = rowByText(page, socio.data.nombre);
-    await expect(row).toContainText('CONDONADO');
+    // En Condonados la columna Estado sigue mostrando ACTIVO/PASIVO. El $0 y
+    // la acción de eliminar condonación identifican correctamente el registro.
+    await expect(row).toContainText(/\$\s*0[,.]00/);
+    await expect(row.getByRole('button', { name: `Eliminar condonación de ${socio.data.nombre}` })).toBeVisible();
     await row.getByRole('button', { name: `Eliminar condonación de ${socio.data.nombre}` }).click();
     actionDialog = page.getByRole('dialog', { name: 'Eliminar condonación' });
     await actionDialog.getByRole('button', { name: 'Eliminar condonación', exact: true }).click();
@@ -486,7 +697,7 @@ test.describe('Cuotas · UI', () => {
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
     await page.getByRole('textbox', { name: 'Búsqueda' }).fill('PW EEE SOCIO CUOTA MULTI');
-    await page.getByRole('button', { name: 'Selección múltiple' }).first().click();
+    await page.getByRole('button', { name: 'Seleccionar', exact: true }).first().click();
     await page.getByRole('checkbox', { name: `Seleccionar cuota de ${a.data.nombre}` }).check();
     await page.getByRole('checkbox', { name: `Seleccionar cuota de ${b.data.nombre}` }).check();
     await page.getByRole('button', { name: 'Continuar (2)' }).click();
@@ -631,6 +842,199 @@ test.describe('Cuotas · UI', () => {
       params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
     });
     expect(stillPaid.items.some((item) => item.id_pago === paid.items[0].id_pago)).toBe(true);
+    await deletePayment(request, paid.items[0].id_pago);
+  });
+
+  test('inscripción completa desde UI: registra una sola vez, reaparece como pagada y puede eliminarse', async ({ page, request }) => {
+    const { socio, catalogs } = await setupQuotaPartner(request, 'INSCRIPCION UI');
+    const periodId = String(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
+    const allowedMedium = (catalogs.catalogos.medios_pago || []).find((item) => {
+      const name = String(item.nombre || '').toUpperCase();
+      return item.activo !== false && (name.includes('EFECTIVO') || name.includes('TRANSFERENCIA'));
+    });
+    if (!allowedMedium) throw new Error('Cuotas UI requiere EFECTIVO o TRANSFERENCIA activo para inscripción.');
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
+    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    let row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
+
+    let dialog = page.getByRole('dialog').filter({ hasText: socio.data.nombre }).last();
+    await dialog.getByRole('tab', { name: /^Inscripción/ }).click();
+    await expect(dialog.getByRole('region', { name: 'Pago de inscripción' })).toBeVisible();
+
+    const amount = dialog.getByLabel('Monto de inscripción *');
+    // Primero probamos el saneo sin superar maxlength; después el límite
+    // nativo de 10 dígitos. El navegador trunca antes de disparar onChange.
+    await amount.fill('12AB34.56');
+    await expect(amount).toHaveValue('123456');
+    await amount.fill('123456789012');
+    await expect(amount).toHaveValue('1234567890');
+    await amount.fill('12345');
+    await dialog.getByLabel('Medio de pago de inscripción *').selectOption(String(allowedMedium.id_medio_pago));
+    await dialog.getByRole('button', { name: 'Registrar inscripción', exact: true }).click();
+    await expect(page.getByText('Inscripción pagada correctamente.').last()).toBeVisible();
+
+    const persisted = await apiCall(request, 'cuotas_contextos_pago', {
+      params: { id_socio: socio.item.id_socio, anio: currentYear(), fecha_pago: todayIso() },
+    });
+    expect(persisted.inscripcion?.pagada).toBe(true);
+    expect(Number(persisted.inscripcion?.pago?.monto)).toBe(12345);
+
+    row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
+    dialog = page.getByRole('dialog').filter({ hasText: socio.data.nombre }).last();
+    await dialog.getByRole('tab', { name: /^Inscripción/ }).click();
+    const registrationRegion = dialog.getByRole('region', { name: 'Pago de inscripción' });
+    await expect(registrationRegion.getByText('Inscripción ya registrada', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Inscripción ya registrada', exact: true })).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Eliminar pago de inscripción', exact: true }).click();
+
+    const deleteDialog = page.getByRole('dialog', { name: 'Eliminar pago de inscripción' });
+    await expect(deleteDialog).toContainText(socio.data.nombre);
+    await deleteDialog.getByRole('button', { name: 'Eliminar pago', exact: true }).click();
+    await expect(page.getByText(/Pago de inscripción eliminado correctamente/i).last()).toBeVisible();
+
+    const pending = await apiCall(request, 'cuotas_contextos_pago', {
+      params: { id_socio: socio.item.id_socio, anio: currentYear(), fecha_pago: todayIso() },
+    });
+    expect(pending.inscripcion?.pagada).toBe(false);
+  });
+
+  test('tabla nueva y comprobantes cubren Deudores, Pagados y Condonados con Estado/Cobrador e impresión masiva', async ({ page, request }) => {
+    const { socio, catalogs } = await setupQuotaPartner(request, 'TABLA PRINT TODAS');
+    const periodId = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
+    const expectedColumns = ['ID', 'Socio', 'Dirección', 'Estado', 'Cobrador', 'Importe', 'Acciones'];
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
+    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+
+    await page.evaluate(() => {
+      window.__pwQuotaPopups = [];
+      window.open = () => {
+        const entry = { html: '', printed: false, closed: false };
+        window.__pwQuotaPopups.push(entry);
+        return {
+          document: {
+            open() {},
+            write(html) { entry.html = String(html || ''); },
+            close() {},
+          },
+          focus() {},
+          print() { entry.printed = true; },
+          close() { entry.closed = true; },
+        };
+      };
+    });
+
+    const assertTableContract = async () => {
+      const headers = await page.locator('.cuotas-table').getByRole('columnheader').allTextContents();
+      expect(headers.map((value) => value.trim())).toEqual(expectedColumns);
+      await expect(page.getByRole('columnheader', { name: 'Medio de pago', exact: true })).toHaveCount(0);
+      await expect(page.getByLabel('Estado', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Cobrador', { exact: true })).toBeVisible();
+    };
+
+    const lastPopup = () => page.evaluate(() => window.__pwQuotaPopups.at(-1) || null);
+
+    // DEUDORES: columnas nuevas, filtros funcionales e impresión individual/masiva.
+    let row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText('DOMICILIO DE COBRO PLAYWRIGHT');
+    await assertTableContract();
+    if (socio.item.id_estado) {
+      await page.getByLabel('Estado', { exact: true }).selectOption(String(socio.item.id_estado));
+      await expect(rowByText(page, socio.data.nombre)).toBeVisible();
+    }
+    await page.getByLabel('Cobrador', { exact: true }).selectOption(String(socio.item.id_cobrador));
+    row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain(socio.data.nombre);
+    await expect.poll(async () => Boolean((await lastPopup())?.printed)).toBe(true);
+    await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PENDIENTE');
+
+    // PAGADOS: misma tabla, mantiene filtro de medio sólo como filtro y no como columna.
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: socio.item.id_socio,
+        periodId,
+        mediumId: catalogs.medium.id_medio_pago,
+      }),
+    });
+    await page.getByRole('tab', { name: /Pagados/ }).click();
+    row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await assertTableContract();
+    await expect(page.getByLabel('Medio de pago', { exact: true })).toBeVisible();
+    await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PAGADO');
+    await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PAGADO');
+    await deletePayment(request, paid.items[0].id_pago);
+
+    // CONDONADOS: impresión volvió a estar disponible y siempre conserva monto cero.
+    const waived = await apiCall(request, 'cuotas_condonar_pago', {
+      method: 'POST',
+      data: {
+        id_socio: socio.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_condonacion: todayIso(),
+        motivo: 'PW E2E PRINT CONDONADO',
+      },
+    });
+    await page.getByRole('tab', { name: /Condonados/ }).click();
+    row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await assertTableContract();
+    await expect(page.getByLabel('Medio de pago', { exact: true })).toHaveCount(0);
+    await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('CONDONADO');
+    await expect.poll(async () => Boolean((await lastPopup())?.printed)).toBe(true);
+    await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('CONDONADO');
+
+    const stillWaived = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'CONDONADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
+    });
+    const item = stillWaived.items.find((candidate) => candidate.id_pago === waived.item.id_pago);
+    expect(item).toBeTruthy();
+    expect(Number(item.monto)).toBe(0);
+    expect(item.id_medio_pago).toBeNull();
+    await deletePayment(request, waived.item.id_pago);
+  });
+
+  test('Contado Anual se muestra compacto como CONTADO ANUAL + año en Pagados', async ({ page, request }) => {
+    const { socio, catalogs } = await setupQuotaPartner(request, 'ANUAL UI LABEL');
+    const annualId = Number(catalogs.annual.id_periodo ?? catalogs.annual.id_mes);
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: socio.item.id_socio,
+        periodId: annualId,
+        mediumId: catalogs.medium.id_medio_pago,
+      }),
+    });
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(annualId));
+    await page.getByRole('tab', { name: /Pagados/ }).click();
+    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    const row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(`CONTADO ANUAL ${currentYear()}`);
+    await expect(page.getByRole('columnheader', { name: 'Medio de pago', exact: true })).toHaveCount(0);
+
     await deletePayment(request, paid.items[0].id_pago);
   });
 

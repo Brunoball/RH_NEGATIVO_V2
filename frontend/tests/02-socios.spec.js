@@ -69,7 +69,10 @@ async function closeBirthdayDrawer(page) {
   if (!drawer) return;
   const closeButton = drawer.getByRole('button', { name: 'Cerrar avisos de cumpleaños' });
   if (await closeButton.isVisible().catch(() => false)) {
-    await closeButton.click();
+    // El drawer anima su tamaño y el botón puede cambiar de geometría durante
+    // unos milisegundos. dispatchEvent prueba el handler real sin introducir
+    // flakiness por la estabilidad visual exigida por click().
+    await closeButton.dispatchEvent('click');
     await expect(drawer).not.toHaveClass(/\bis-open\b/);
   }
 }
@@ -454,11 +457,17 @@ test.describe('Socios', () => {
       let deleteDialog = page.getByRole('dialog', { name: 'Eliminar definitivamente la familia' });
       await expect(deleteDialog).toContainText('SE CONSERVAN');
       await deleteDialog.getByRole('button', { name: 'Cancelar' }).click();
+
+      // Una familia que tuvo integrantes forma parte de la historia del socio.
+      // La UI debe permitir pedir la acción, pero el backend debe impedir el borrado.
       await row.getByTitle('Eliminar definitivamente la familia').click();
       deleteDialog = page.getByRole('dialog', { name: 'Eliminar definitivamente la familia' });
       await deleteDialog.getByRole('button', { name: 'Eliminar definitivamente' }).click();
-      await expectFeedback(page, 'La familia fue eliminada definitivamente.');
-      familyId = null;
+      await expectFeedback(page, 'No se puede eliminar definitivamente una familia que tuvo integrantes.');
+      await expect(rowByText(page, family.nombreEditado)).toBeVisible();
+
+      const stillFamily = await apiCall(request, 'familias_obtener', { params: { id: familyId } });
+      expect(stillFamily.item.id_familia).toBe(familyId);
 
       // Garantía de seguridad funcional: los socios test siguen existiendo.
       const stillFirst = await apiCall(request, 'socios_obtener', { params: { id: first.id_socio } });

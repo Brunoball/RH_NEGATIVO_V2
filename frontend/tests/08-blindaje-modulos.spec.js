@@ -102,6 +102,58 @@ async function deleteConfigItem(request, list, id, action = 'configuracion_lista
 }
 
 test.describe('Blindaje adicional · Socios y familias', () => {
+  test('formulario de socio filtra caracteres inválidos y conserva datos al cambiar de pestaña', async ({ page }) => {
+    await page.goto('/socios/personas');
+    await page.getByRole('button', { name: 'Nuevo socio' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Nuevo socio' });
+    await expect(dialog).toBeVisible();
+
+    const name = dialog.getByLabel('Nombre *', { exact: true });
+    const lastName = dialog.getByLabel('Apellido *', { exact: true });
+    const dni = dialog.getByLabel('DNI');
+    const number = dialog.getByLabel('Número');
+    const mobile = dialog.getByLabel('Teléfono móvil');
+    const address = dialog.getByLabel('Domicilio', { exact: true });
+
+    await name.fill('Bruno123_!?');
+    await lastName.fill('Playwright456');
+    // Con maxlength=8 el navegador trunca antes del onChange; primero probamos
+    // saneo dentro de ocho caracteres y luego el límite con sólo números.
+    await dni.fill('12AB3456');
+    await expect(dni).toHaveValue('123456');
+    await dni.fill('1234567890');
+    await number.fill('12A-34/56');
+    // Igual que con DNI, maxlength se aplica antes del onChange. Separamos
+    // saneo de caracteres y límite máximo para probar ambos comportamientos.
+    await mobile.fill('351-ABC123456');
+    await expect(mobile).toHaveValue('351123456');
+    await mobile.fill('351123456789012345');
+    await address.fill('calle test @@@ 123 # 4');
+
+    await expect(name).toHaveValue('BRUNO');
+    await expect(lastName).toHaveValue('PLAYWRIGHT');
+    await expect(dni).toHaveValue('12345678');
+    await expect(number).toHaveValue('123456');
+    await expect(mobile).toHaveValue('351123456789012');
+    await expect(address).toHaveValue('CALLE TEST  123 # 4');
+
+    await dialog.getByRole('tab', { name: 'Gestión' }).click();
+    const observations = dialog.getByLabel('Observaciones');
+    await observations.fill('dato de gestión que no debe perderse');
+    await expect(observations).toHaveValue('DATO DE GESTIÓN QUE NO DEBE PERDERSE');
+
+    await dialog.getByRole('tab', { name: 'Datos personales' }).click();
+    await expect(name).toHaveValue('BRUNO');
+    await expect(lastName).toHaveValue('PLAYWRIGHT');
+    await expect(dni).toHaveValue('12345678');
+    await expect(number).toHaveValue('123456');
+    await expect(mobile).toHaveValue('351123456789012');
+
+    await dialog.getByRole('tab', { name: 'Gestión' }).click();
+    await expect(observations).toHaveValue('DATO DE GESTIÓN QUE NO DEBE PERDERSE');
+    await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  });
   test('filtros avanzados realmente incluyen/excluyen por letra, sangre, estado, deuda, contacto y fecha', async ({ page, request }) => {
     const definitions = configValues();
     const bloodA = await createConfigItem(request, 'grupo_sanguineo', definitions.grupo_sanguineo);
@@ -487,15 +539,17 @@ test.describe('Blindaje adicional · Cuotas', () => {
       data: paymentPayload({ socioId: inactiveSocio.item.id_socio, periodId, mediumId }),
     }, { status: 409, code: 'SOCIO_INACTIVO' });
 
-    // Categoría inactiva conservando socio vigente.
+    // Categoría inactiva: una categoría que se desactiva hoy sigue siendo
+    // válida para períodos históricos, pero NO para el período actual.
     const categoryInactive = await createQuotaCategory(request);
     const socioCategoryInactive = await createQuotaSocio(request, 'ERROR CATEGORIA INACTIVA', categoryInactive.item.id_categoria);
     await apiCall(request, 'categorias_eliminar', {
       method: 'POST', data: { id: categoryInactive.item.id_categoria },
     });
+    const currentPeriodId = Math.min(6, Math.max(1, Math.ceil(Number(todayIso().slice(5, 7)) / 2)));
     await expectApiError(request, 'cuotas_registrar_pago', {
       method: 'POST',
-      data: paymentPayload({ socioId: socioCategoryInactive.item.id_socio, periodId, mediumId }),
+      data: paymentPayload({ socioId: socioCategoryInactive.item.id_socio, periodId: currentPeriodId, mediumId }),
     }, { status: 409, code: 'CATEGORIA_INACTIVA' });
 
     // Período anterior al ingreso: socio entra hoy pero intentamos enero del mismo año.
@@ -553,8 +607,8 @@ test.describe('Blindaje adicional · Cuotas', () => {
         nombre: family.nombre,
         observaciones: family.descripcion,
         integrantes: [
-          { id_socio: a.item.id_socio, desde: todayIso() },
-          { id_socio: b.item.id_socio, desde: todayIso() },
+          { id_socio: a.item.id_socio, desde: `${currentYear()}-01-01` },
+          { id_socio: b.item.id_socio, desde: `${currentYear()}-01-01` },
         ],
       },
     });
@@ -638,7 +692,7 @@ test.describe('Blindaje adicional · Cuotas', () => {
 });
 
 test.describe('Blindaje adicional · Configuración', () => {
-  test('UI ejecuta ciclo completo en los seis catálogos, incluidos Categoría y Período', async ({ page }) => {
+  test('UI ejecuta ciclo completo en los cinco catálogos editables y protege Períodos estructurales', async ({ page }) => {
     const definitions = configValues();
     const catalogs = [
       { key: 'categoria', tab: 'Categorías', singular: 'categoría', fields: [['Nombre *', 'nombre'], ['Monto mensual *', 'monto_mensual'], ['Monto anual *', 'monto_anual']] },
@@ -646,7 +700,6 @@ test.describe('Blindaje adicional · Configuración', () => {
       { key: 'estado', tab: 'Estados', singular: 'estado', fields: [['Nombre *', 'nombre']] },
       { key: 'grupo_sanguineo', tab: 'Grupos sanguíneos', singular: 'grupo sanguíneo', fields: [['Nombre *', 'nombre']] },
       { key: 'medios_pago', tab: 'Medios de pago', singular: 'medio de pago', fields: [['Nombre *', 'nombre']] },
-      { key: 'periodo', tab: 'Períodos', singular: 'período', fields: [['Nombre *', 'nombre'], ['Meses / descripción *', 'meses']] },
     ];
 
     await page.goto('/configuracion/catalogos?lista=categoria');
@@ -695,10 +748,6 @@ test.describe('Blindaje adicional · Configuración', () => {
           await expect(row).toContainText(/2[.,]200/);
           await expect(row).toContainText(/19[.,]000/);
         }
-        if (meta.key === 'periodo') {
-          await expect(row).toContainText(definition.editPayload.meses);
-        }
-
         await row.getByRole('button', { name: `Dar de baja ${editedName}` }).click();
         let stateDialog = page.getByRole('dialog', { name: `Dar de baja ${meta.singular}` });
         await stateDialog.getByRole('button', { name: 'Dar de baja', exact: true }).click();
@@ -717,11 +766,22 @@ test.describe('Blindaje adicional · Configuración', () => {
         await expect(rowByText(page, editedName)).toHaveCount(0);
       });
     }
+
+    await page.getByRole('tab', { name: 'Períodos', exact: true }).click();
+    await expect(page).toHaveURL(/lista=periodo/);
+    await expect(page.getByRole('button', { name: 'Nuevo período', exact: true })).toHaveCount(0);
+    await expect(page.getByText(/7 períodos.*estructurales/i)).toBeVisible();
+    const firstPeriodRow = page.getByRole('table', { name: 'Períodos' }).getByRole('row').filter({ hasText: /PERÍODO 1/i }).first();
+    await expect(firstPeriodRow).toBeVisible();
+    await expect(firstPeriodRow.getByRole('button', { name: /Editar/i })).toBeDisabled();
+    await expect(firstPeriodRow.getByRole('button', { name: /Dar de baja/i })).toBeDisabled();
+    await expect(firstPeriodRow.getByRole('button', { name: /Eliminar definitivamente/i })).toBeDisabled();
   });
 
   test('categoría, cobrador, estado, sangre y medio de pago no pueden borrarse mientras están referenciados', async ({ request }) => {
     const defs = configValues();
-    const category = await createConfigItem(request, 'categoria', defs.categoria);
+    const quotaCategory = await createQuotaCategory(request);
+    const category = quotaCategory.item;
     const collector = await createConfigItem(request, 'cobrador', defs.cobrador);
     const state = await createConfigItem(request, 'estado', defs.estado);
     const blood = await createConfigItem(request, 'grupo_sanguineo', defs.grupo_sanguineo);
@@ -770,11 +830,21 @@ test.describe('Blindaje adicional · Configuración', () => {
       method: 'POST', data: { id: socio.id_socio },
     });
 
+    // Medio y estado pueden quedar sin referencias actuales. En cambio categoría,
+    // cobrador y grupo deben seguir protegidos porque la auditoría conserva la
+    // clasificación histórica del socio/pago aunque el registro E2E ya no exista.
     await deleteConfigItem(request, 'medios_pago', configItemId(medium, defs.medios_pago));
-    await deleteConfigItem(request, 'grupo_sanguineo', configItemId(blood, defs.grupo_sanguineo));
     await deleteConfigItem(request, 'estado', configItemId(state, defs.estado));
-    await deleteConfigItem(request, 'categoria', configItemId(category, defs.categoria));
-    await deleteConfigItem(request, 'cobrador', configItemId(collector, defs.cobrador), 'configuracion_lista_eliminar');
+
+    for (const [list, item, def] of [
+      ['categoria', category, defs.categoria],
+      ['cobrador', collector, defs.cobrador],
+      ['grupo_sanguineo', blood, defs.grupo_sanguineo],
+    ]) {
+      await expectApiError(request, 'configuracion_lista_eliminar_definitivo', {
+        method: 'POST', data: { lista: list, id: configItemId(item, def) },
+      }, { status: 409, code: 'OPCION_EN_USO' });
+    }
   });
 
   test('operaciones de configuración sobre IDs inexistentes devuelven OPCION_NO_ENCONTRADA sin efectos laterales', async ({ request }) => {

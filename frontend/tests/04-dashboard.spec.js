@@ -22,7 +22,7 @@ test.describe('Dashboard', () => {
   test('UI renderiza tarjetas, gráfico y controles de calidad con datos reales', async ({ page }) => {
     await page.goto('/panel');
     await expect(page.getByRole('heading', { name: 'Panel de gestión' })).toBeVisible();
-    for (const label of ['Socios activos', 'Cuotas pagadas', 'Cuotas pendientes', 'Saldo del mes']) {
+    for (const label of ['Socios activos', 'Cuotas cubiertas', 'Cuotas pendientes', 'Saldo del mes']) {
       await expect(page.getByText(label, { exact: true })).toBeVisible();
     }
     await expect(page.getByRole('heading', { name: 'Cuotas registradas' })).toBeVisible();
