@@ -119,24 +119,20 @@
   box-shadow: var(--mov-shadow-sm);
 }
 
-.ct-balance-table--compact.global-divTable {
-  max-height: 260px;
-}
-
-.ct-balance-table--compact .ct-balance-table__body {
-  min-height: 0;
-  max-height: 214px;
-}
-
+.ct-balance-table--compact.global-divTable,
 .ct-balance-table--detail.global-divTable {
-  min-height: 260px;
-  max-height: 430px;
-  flex: 1 0 300px;
+  min-height: 0;
+  max-height: none;
+  flex: 0 0 auto;
 }
 
-.ct-balance-table--detail .ct-balance-table__body {
-  min-height: 210px;
+/* En el balance anual las tablas crecen completas: el único scroll vertical
+   pertenece al cuerpo general del modal/pestaña, no a cada tabla. */
+.ct-balance-table .ct-balance-table__body {
+  min-height: 0;
   max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
 }
 
 .ct-balance-table .global-divTable__head {
@@ -228,6 +224,64 @@
     minmax(0, .9fr)
     minmax(0, .92fr)
     minmax(0, 1fr);
+}
+
+.ct-collectorChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 25px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ct-collectorChip.is-tone-0 {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ct-collectorChip.is-tone-1 {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.ct-collectorChip.is-tone-2 {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.ct-collectorChip.is-tone-3 {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.ct-collectorChip.is-tone-4 {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
+.ct-collectorChip.is-tone-5 {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.ct-collectorChip.is-neutral {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 

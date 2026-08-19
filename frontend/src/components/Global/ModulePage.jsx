@@ -182,6 +182,7 @@ function ModuleFilter({ filter }) {
 
 export function ModulePage({
   title,
+  titleActions = null,
   description,
   stats = [],
   filters = [],
@@ -251,7 +252,12 @@ export function ModulePage({
             }
           >
             <div className="title-mov module-titleBox">
-              <h1 className="mov-card__title module-title">{title}</h1>
+              <div className="module-titleRow">
+                <h1 className="mov-card__title module-title">{title}</h1>
+                {titleActions ? (
+                  <div className="module-titleActions">{titleActions}</div>
+                ) : null}
+              </div>
               {titleTabs ? (
                 <ModuleTitleTabs filter={titleTabs} />
               ) : description ? (

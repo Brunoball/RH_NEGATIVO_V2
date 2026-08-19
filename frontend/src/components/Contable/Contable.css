@@ -35,17 +35,22 @@
 /* La navegación de detalle ocupa sólo lo que necesita cada etiqueta. */
 .contable-head-filters
   > .module-filter--tabs:has(> .module-filterTabs[aria-label="Vista"]) {
-  width: fit-content;
-  min-width: 0;
-  max-width: 100%;
-  flex: 0 1 auto;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  flex: 0 0 auto;
 }
+
+/* Las pestañas de detalle nunca ceden ancho cuando la barra lateral reduce
+   el espacio disponible. Los demás filtros pueden reacomodarse, pero estas
+   tres opciones conservan siempre su texto completo. */
+
 
 .contable-head-filters .module-filterTabs[aria-label="Vista"] {
   width: max-content;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
+  min-width: max-content;
+  max-width: none;
+  overflow: visible;
 }
 
 .contable-head-filters
@@ -421,7 +426,7 @@
 
 .ct-donut strong {
   color: var(--balto-ink);
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .ct-donut span {

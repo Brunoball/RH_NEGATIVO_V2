@@ -49,7 +49,6 @@ import {
   addressInput,
   addressNumberInput,
   dniInput,
-  onlyDigits,
   personNameInput,
   phoneInput,
   upperLimitedText,
@@ -322,6 +321,64 @@ const CONTACT_LEGEND = [
   { value: "NO_CONTACTADO", label: "No contactado" },
   { value: "SIN_GESTION", label: "Sin gestión" },
 ];
+
+function ContactLegendButton() {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="socios-contactInfo" ref={rootRef}>
+      <button
+        type="button"
+        className={`socios-contactInfo__button ${open ? "is-open" : ""}`}
+        aria-label="Ver referencia de último contacto"
+        aria-expanded={open}
+        title="Referencia de último contacto"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <FontAwesomeIcon icon={faCircleInfo} />
+      </button>
+
+      <div
+        className={`socios-contactInfo__popover ${open ? "is-visible" : ""}`}
+        role="dialog"
+        aria-label="Referencia de último contacto"
+        aria-hidden={!open}
+      >
+        <span className="socios-contactLegend__title">Último contacto</span>
+        <div className="socios-contactLegend__items">
+          {CONTACT_LEGEND.map((item) => (
+            <span
+              className={`socios-contactLegend__item ${contactToneClass(item.value)}`}
+              key={item.value}
+            >
+              <i aria-hidden="true" />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function debtLabel(months) {
   const count = Number(months || 0);
@@ -1038,8 +1095,6 @@ export default function Socios() {
   const tableBodyRef = useRef(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [searchId, setSearchId] = useState("");
-  const [debouncedSearchId, setDebouncedSearchId] = useState("");
   const [status, setStatus] = useState(readStatus);
   const [category, setCategory] = useState("");
   const [advanced, setAdvanced] = useState(emptyAdvancedFilters);
@@ -1054,19 +1109,11 @@ export default function Socios() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedSearchId(searchId.trim());
-      setPage(1);
-    }, 280);
-    return () => window.clearTimeout(timeout);
-  }, [searchId]);
 
   const filters = useMemo(
     () => ({
       vigente: status,
       buscar: debouncedSearch,
-      id_socio: debouncedSearchId,
       categoria: category,
       letra: advanced.letra,
       grupo_sanguineo: advanced.grupo_sanguineo,
@@ -1077,7 +1124,7 @@ export default function Socios() {
       ingreso_hasta: advanced.ingreso_hasta,
       pagina: page,
     }),
-    [status, debouncedSearch, debouncedSearchId, category, advanced, page],
+    [status, debouncedSearch, category, advanced, page],
   );
 
   const {
@@ -1348,21 +1395,11 @@ export default function Socios() {
     {
       type: "search",
       key: "buscar",
-      label: "Buscar socio",
+      label: "Socio / ID",
       placeholder: "",
       value: search,
       onChange: setSearch,
       className: "socios-mainSearch",
-    },
-    {
-      type: "search",
-      key: "id_socio",
-      label: "ID socio",
-      placeholder: "",
-      value: searchId,
-      onChange: (value) =>
-        setSearchId(onlyDigits(value, 10).replace(/^0+/, "")),
-      className: "socios-idSearch",
     },
     {
       type: "select",
@@ -1397,6 +1434,7 @@ export default function Socios() {
       <section className="socios-sectionShell">
         <ModulePage
         title="Socios"
+        titleActions={<ContactLegendButton />}
         className="socios-page"
         filters={pageFilters}
         tabsInTitle
@@ -1468,20 +1506,6 @@ export default function Socios() {
             </div>
           ) : null}
 
-          <div className="socios-contactLegend" aria-label="Referencia de último contacto">
-            <span className="socios-contactLegend__title">Último contacto</span>
-            <div className="socios-contactLegend__items">
-              {CONTACT_LEGEND.map((item) => (
-                <span
-                  className={`socios-contactLegend__item ${contactToneClass(item.value)}`}
-                  key={item.value}
-                >
-                  <i aria-hidden="true" />
-                  {item.label}
-                </span>
-              ))}
-            </div>
-          </div>
 
           <div className="socios-pagination__right">
             {Number(paginacion?.total || 0) > 0 ? (

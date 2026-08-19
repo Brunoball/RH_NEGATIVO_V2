@@ -1206,6 +1206,19 @@
   line-height: 1.25;
 }
 
+.module-titleRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.module-titleActions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .module-description {
   max-width: 280px;
   margin: 4px 0 0;

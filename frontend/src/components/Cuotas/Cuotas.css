@@ -165,6 +165,162 @@
   max-width: 155px;
 }
 
+
+/* Filtros compactos: replica el patrón visual y de interacción de Socios. */
+.cuotas-filterRoot {
+  position: relative;
+  z-index: 90;
+  flex: 0 0 auto;
+}
+
+.cuotas-filterTrigger {
+  position: relative;
+  min-width: 163px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 13px;
+  background: var(--primary-500, #2563eb);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.16);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.cuotas-filterTrigger:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+}
+
+.cuotas-filterTrigger strong {
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 5px;
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 10px;
+}
+
+.cuotas-filterTrigger__arrow {
+  transition: transform 0.18s ease;
+}
+
+.cuotas-filterTrigger.is-open .cuotas-filterTrigger__arrow {
+  transform: rotate(180deg);
+}
+
+.cuotas-filterMenu {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 310px;
+  max-height: min(640px, calc(100vh - 145px));
+  overflow-y: auto;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 15px 38px rgba(15, 23, 42, 0.2);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.cuotas-filterSection {
+  border-bottom: 1px solid #e7edf5;
+}
+
+.cuotas-filterSection__head {
+  width: 100%;
+  min-height: 57px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  padding: 0 16px;
+  background: #fff;
+  color: #162033;
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cuotas-filterSection__head svg {
+  font-size: 14px;
+  transition: transform 0.18s ease;
+}
+
+.cuotas-filterSection.is-open .cuotas-filterSection__head svg {
+  transform: rotate(180deg);
+}
+
+.cuotas-filterSection.is-open .cuotas-filterSection__head {
+  background: #f8fafc;
+}
+
+.cuotas-filterSection__body {
+  padding: 10px 12px 13px;
+  border-top: 1px solid #eef2f7;
+  background: #f5f8fc;
+}
+
+.cuotas-filterChoices {
+  display: grid;
+  gap: 8px;
+}
+
+.cuotas-filterChoices button {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #cbd7e7;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cuotas-filterChoices button:hover,
+.cuotas-filterChoices button.is-selected {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cuotas-filterReset {
+  width: 100%;
+  min-height: 54px;
+  border: 0;
+  padding: 0 16px;
+  background: #fff;
+  color: #2563eb;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cuotas-filterReset:hover {
+  background: #eff6ff;
+}
+
 .cuotas-annual-note {
   display: block;
   margin-top: 3px;
@@ -276,7 +432,48 @@
 }
 
 .cuotas-lower-actions {
-  display: none;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 9px 12px;
+}
+
+.cuotas-lower-actions .cuotas-lower-action {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.cuotas-lower-actions .cuotas-lower-action:hover:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+}
+
+.cuotas-lower-actions .cuotas-barcode-lower-action {
+  border: 1px solid color-mix(in srgb, var(--balto-action, var(--primary-color)) 24%, transparent);
+  color: var(--balto-action, var(--primary-color));
+  background: color-mix(in srgb, var(--balto-action, var(--primary-color)) 7%, #fff);
+  font-weight: 700;
+}
+
+.cuotas-lower-actions .cuotas-multiple-action.mov-btn--primary {
+  border-color: transparent;
+  color: var(--balto-action, var(--primary-color));
+  background: transparent;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.cuotas-lower-actions .cuotas-multiple-action svg {
+  font-size: 12px;
 }
 
 .cuotas-grid--debt,
@@ -355,41 +552,99 @@
 
 .cuotas-collector-cell {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  justify-content: center !important;
+  text-align: center !important;
+  overflow: visible;
   font-size: 0.82rem;
   font-weight: 750;
+}
+
+.cuotas-collector-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 27px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cuotas-collector-chip.is-tone-1 {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cuotas-collector-chip.is-tone-2 {
+  border-color: #c4b5fd;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.cuotas-collector-chip.is-tone-3 {
+  border-color: #67e8f9;
+  background: #ecfeff;
+  color: #0e7490;
+}
+
+.cuotas-collector-chip.is-tone-4 {
+  border-color: #a5b4fc;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.cuotas-collector-chip.is-tone-5 {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #a16207;
+}
+
+.cuotas-collector-chip.is-empty {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 .cuotas-person-state {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 74px;
-  padding: 5px 9px;
-  border: 1px solid var(--border-color);
+  min-height: 27px;
+  max-width: 100%;
   border-radius: 999px;
-  background: #fff;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.03em;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  line-height: 1.15;
+  text-align: center;
 }
 
 .cuotas-person-state.is-active {
-  color: var(--success-700, #15803d);
-  border-color: color-mix(in srgb, var(--success-500, #22c55e) 28%, transparent);
-  background: color-mix(in srgb, var(--success-500, #22c55e) 9%, #fff);
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #15803d;
 }
 
 .cuotas-person-state.is-passive {
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--text-secondary) 7%, #fff);
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .cuotas-person-state.is-empty {
-  color: var(--text-muted);
+  border: 1px solid #cfd8e8;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 .cuotas-payment-state {
@@ -547,8 +802,21 @@
     > .module-card
     > .module-card__head
     > .module-card__actions
-    > * {
+    > .cuotas-barcode-action,
+  .cuotas-page
+    > .module-card
+    > .module-card__head
+    > .module-card__actions
+    > .cuotas-multiple-action {
     display: none !important;
+  }
+
+  .cuotas-page
+    > .module-card
+    > .module-card__head
+    > .module-card__actions
+    > .cuotas-filterRoot {
+    display: block !important;
   }
 
   .cuotas-table-footer {
@@ -776,6 +1044,18 @@
 }
 
 @media (max-width: 720px) {
+  .cuotas-filterRoot {
+    min-width: 0;
+  }
+
+  .cuotas-filterTrigger {
+    min-width: 150px;
+  }
+
+  .cuotas-filterMenu {
+    width: min(310px, calc(100vw - 24px));
+  }
+
   .cuotas-header-row {
     align-items: stretch;
     flex-direction: column;
@@ -832,10 +1112,11 @@
     44px
     72px
     minmax(280px, 1.65fr)
-    minmax(140px, 0.8fr)
+    minmax(190px, 1fr)
     minmax(105px, 0.6fr)
-    minmax(140px, 0.82fr);
-  min-width: 781px;
+    minmax(125px, 0.72fr)
+    minmax(145px, 0.82fr);
+  min-width: 961px;
 }
 
 .cuotas-grid.is-selected {
@@ -1531,3 +1812,12 @@ html[data-theme="oscuro"] .cuotas-family-expand-btn:hover {
   }
 }
 
+
+/* En escritorio sólo Imprimir y Exportar permanecen en el pie. Código de
+   barras y Seleccionar conservan su ubicación superior hasta 1499px. */
+@media (min-width: 1500px) {
+  .cuotas-lower-actions .cuotas-barcode-lower-action,
+  .cuotas-lower-actions .cuotas-multiple-action {
+    display: none;
+  }
+}

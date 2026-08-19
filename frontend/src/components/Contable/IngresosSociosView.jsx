@@ -50,6 +50,18 @@ function balanceStatusTone(value) {
   return "is-neutral";
 }
 
+function collectorTone(value) {
+  const collector = normalize(value).trim();
+  if (!collector) return "is-neutral";
+
+  let hash = 0;
+  for (let index = 0; index < collector.length; index += 1) {
+    hash = ((hash << 5) - hash + collector.charCodeAt(index)) | 0;
+  }
+
+  return `is-tone-${Math.abs(hash) % 6}`;
+}
+
 function BalanceStatusLegend() {
   return (
     <div className="ct-balance-statusLegend" aria-label="Referencia de estados de socios">
@@ -233,7 +245,7 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
         columns={[
           "Apellido y nombre",
           "Categoría",
-          "Cobrador",
+          { label: "Cobrador", align: "center" },
           "Fecha de pago",
           "Período pago",
           "Medio",
@@ -264,7 +276,11 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
               <small>DNI: {item.dni || "—"}</small>
             </div>
             <div className="mov-gridCell"><span className="mov-categoryChip">{item.categoria_etiqueta || "Sin categoría"}</span></div>
-            <div className="mov-gridCell">{item.cobrador || "—"}</div>
+            <div className="mov-gridCell is-center">
+              <span className={`ct-collectorChip ${collectorTone(item.cobrador)}`}>
+                {item.cobrador || "—"}
+              </span>
+            </div>
             <div className="mov-gridCell is-center">{dateText(item.fecha)}</div>
             <div className="mov-gridCell is-center">{item.periodo || "—"}</div>
             <div className="mov-gridCell is-center">{item.medio || "—"}</div>
@@ -842,11 +858,11 @@ function BalanceModal({ open, onClose, onFeedback }) {
                 columns={[
                   "ID",
                   "Socio",
-                  "DNI",
-                  "Fecha alta",
-                  "Período",
-                  "Fecha pago",
-                  "Medio pago",
+                  { label: "DNI", align: "center" },
+                  { label: "Fecha alta", align: "center" },
+                  { label: "Período", align: "center" },
+                  { label: "Fecha pago", align: "center" },
+                  { label: "Medio pago", align: "center" },
                   { label: "Monto", align: "right" },
                 ]}
                 ariaLabel="Detalle completo de socios inscriptos"
@@ -867,11 +883,11 @@ function BalanceModal({ open, onClose, onFeedback }) {
                   >
                     <div className="mov-gridCell ct-balance-number">{r.id_socio}</div>
                     <div className="mov-gridCell entity-main-cell"><strong>{r.socio}</strong></div>
-                    <div className="mov-gridCell ct-balance-number">{r.dni || "—"}</div>
-                    <div className="mov-gridCell">{dateText(r.fecha_alta)}</div>
-                    <div className="mov-gridCell">{r.periodo || "—"}</div>
-                    <div className="mov-gridCell">{dateText(r.fecha_pago)}</div>
-                    <div className="mov-gridCell">{r.medio || "—"}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.dni || "—"}</div>
+                    <div className="mov-gridCell is-center">{dateText(r.fecha_alta)}</div>
+                    <div className="mov-gridCell is-center">{r.periodo || "—"}</div>
+                    <div className="mov-gridCell is-center">{dateText(r.fecha_pago)}</div>
+                    <div className="mov-gridCell is-center">{r.medio || "—"}</div>
                     <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.monto)}</div>
                   </div>
                 ))}
@@ -936,8 +952,8 @@ function BalanceModal({ open, onClose, onFeedback }) {
                 columns={[
                   "ID",
                   "Socio",
-                  "Fecha baja",
-                  "Período baja",
+                  { label: "Fecha baja", align: "center" },
+                  { label: "Período baja", align: "center" },
                   "Períodos cubiertos",
                   { label: "Total pagado", align: "right" },
                   "Motivo",
@@ -960,8 +976,8 @@ function BalanceModal({ open, onClose, onFeedback }) {
                   >
                     <div className="mov-gridCell ct-balance-number">{r.id_socio}</div>
                     <div className="mov-gridCell entity-main-cell"><strong>{r.socio}</strong></div>
-                    <div className="mov-gridCell">{dateText(r.fecha_baja)}</div>
-                    <div className="mov-gridCell">{r.periodo_baja || "—"}</div>
+                    <div className="mov-gridCell is-center">{dateText(r.fecha_baja)}</div>
+                    <div className="mov-gridCell is-center">{r.periodo_baja || "—"}</div>
                     <div className="mov-gridCell ct-balance-cell-wrap">{(r.periodos_cubiertos || []).join(", ") || "—"}</div>
                     <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.total_pagado)}</div>
                     <div className="mov-gridCell ct-balance-cell-wrap">{r.motivo || "—"}</div>
@@ -987,10 +1003,10 @@ function BalanceModal({ open, onClose, onFeedback }) {
                 gridClassName="ct-balance-grid ct-balance-grid--debt-summary"
                 columns={[
                   "Período",
-                  { label: "Deudores", align: "right" },
-                  { label: "Activos", align: "right" },
-                  { label: "Pasivos", align: "right" },
-                  { label: "Sin estado", align: "right" },
+                  { label: "Deudores", align: "center" },
+                  { label: "Activos", align: "center" },
+                  { label: "Pasivos", align: "center" },
+                  { label: "Sin estado", align: "center" },
                   { label: "Monto adeudado", align: "right" },
                 ]}
                 ariaLabel="Resumen de deudores por período"
@@ -1010,10 +1026,10 @@ function BalanceModal({ open, onClose, onFeedback }) {
                     key={r.periodo}
                   >
                     <div className="mov-gridCell is-strong">{r.periodo}</div>
-                    <div className="mov-gridCell is-right ct-balance-number">{r.deudores}</div>
-                    <div className="mov-gridCell is-right ct-balance-number">{r.activos}</div>
-                    <div className="mov-gridCell is-right ct-balance-number">{r.pasivos}</div>
-                    <div className="mov-gridCell is-right ct-balance-number">{r.sin_estado}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.deudores}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.activos}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.pasivos}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.sin_estado}</div>
                     <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.monto_adeudado)}</div>
                   </div>
                 ))}
@@ -1025,15 +1041,15 @@ function BalanceModal({ open, onClose, onFeedback }) {
                 bodyClassName="entity-table-wrap ct-balance-table__body"
                 gridClassName="ct-balance-grid ct-balance-grid--debt-detail"
                 columns={[
-                  "Período",
-                  "ID",
+                  { label: "Período", align: "center" },
+                  { label: "ID", align: "center" },
                   "Socio",
-                  "DNI",
-                  "Categoría",
-                  "Ingreso",
-                  "Domicilio",
-                  "Teléfono",
-                  "Cobrador",
+                  { label: "DNI", align: "center" },
+                  { label: "Categoría", align: "center" },
+                  { label: "Ingreso", align: "center" },
+                  { label: "Domicilio", align: "center" },
+                  { label: "Teléfono", align: "center" },
+                  { label: "Cobrador", align: "center" },
                   { label: "Monto", align: "right" },
                 ]}
                 ariaLabel="Detalle completo de deudores por período"
@@ -1052,15 +1068,19 @@ function BalanceModal({ open, onClose, onFeedback }) {
                     role="row"
                     key={`${r.id_socio}-${r.anio}-${r.id_periodo}-${i}`}
                   >
-                    <div className="mov-gridCell is-strong">{r.periodo}</div>
-                    <div className="mov-gridCell ct-balance-number">{r.id_socio}</div>
+                    <div className="mov-gridCell is-center is-strong">{r.periodo}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.id_socio}</div>
                     <div className="mov-gridCell entity-main-cell"><strong>{r.socio}</strong></div>
-                    <div className="mov-gridCell ct-balance-number">{r.dni || "—"}</div>
-                    <div className="mov-gridCell"><span className="mov-categoryChip">{r.categoria || "Sin categoría"}</span></div>
-                    <div className="mov-gridCell">{dateText(r.ingreso)}</div>
-                    <div className="mov-gridCell ct-balance-cell-wrap">{r.domicilio || "—"}</div>
-                    <div className="mov-gridCell ct-balance-number">{r.telefono || "—"}</div>
-                    <div className="mov-gridCell">{r.cobrador || "—"}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.dni || "—"}</div>
+                    <div className="mov-gridCell is-center"><span className="mov-categoryChip">{r.categoria || "Sin categoría"}</span></div>
+                    <div className="mov-gridCell is-center">{dateText(r.ingreso)}</div>
+                    <div className="mov-gridCell is-center ct-balance-cell-wrap">{r.domicilio || "—"}</div>
+                    <div className="mov-gridCell is-center ct-balance-number">{r.telefono || "—"}</div>
+                    <div className="mov-gridCell is-center">
+                      <span className={`ct-collectorChip ${collectorTone(r.cobrador)}`}>
+                        {r.cobrador || "—"}
+                      </span>
+                    </div>
                     <div className="mov-gridCell is-right is-strong ct-balance-number">
                       <strong>{money(r.monto)}</strong>
                       {Number(r.descuento_familiar) > 0 ? (

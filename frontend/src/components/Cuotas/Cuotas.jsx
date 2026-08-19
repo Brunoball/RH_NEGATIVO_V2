@@ -3,7 +3,10 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBan,
   faBarcode,
+  faCheck,
+  faChevronDown,
   faDollarSign,
+  faFilter,
   faPrint,
   faReceipt,
   faTimes,
@@ -114,6 +117,18 @@ const money = (value) => MONEY_FORMATTER.format(Number(value || 0));
 
 const formatDate = (value) =>
   value ? DATE_FORMATTER.format(new Date(`${value}T00:00:00Z`)) : "—";
+
+const collectorTone = (value) => {
+  const name = String(value || "").trim();
+  if (!name) return "is-empty";
+
+  const hash = Array.from(name).reduce(
+    (accumulator, character) => accumulator + character.charCodeAt(0),
+    0,
+  );
+
+  return `is-tone-${(hash % 5) + 1}`;
+};
 
 const preferredAddress = (item = {}) => {
   const collectionAddress = String(item.domicilio_cobro || "").trim();
@@ -337,11 +352,169 @@ const enrichPaymentReceipt = (source, context = {}) => {
       cobrador: operation.cobrador || context.cobrador || "",
       medio_pago: operation.medio_pago || context.medio || "—",
       tipo_entidad: operation.tipo_entidad || context.tipoEntidad || "",
+      cantidad_socios:
+        Number(operation.cantidad_socios || context.cantidadSocios || 0) || undefined,
+      cantidad_registros:
+        Number(operation.cantidad_registros || context.cantidadRegistros || 0) ||
+        lineas.length ||
+        undefined,
       lineas,
     },
     lineas,
   };
 };
+
+
+function CuotasFilterSection({ title, active, children, onToggle }) {
+  return (
+    <section className={`cuotas-filterSection ${active ? "is-open" : ""}`.trim()}>
+      <button type="button" className="cuotas-filterSection__head" onClick={onToggle}>
+        <span>{title}</span>
+        <FontAwesomeIcon icon={faChevronDown} />
+      </button>
+      {active ? <div className="cuotas-filterSection__body">{children}</div> : null}
+    </section>
+  );
+}
+
+function CuotasFilterChoices({ options, value, onChange }) {
+  return (
+    <div className="cuotas-filterChoices">
+      {options.map((option) => {
+        const selected = String(value || "") === String(option.value);
+        return (
+          <button
+            type="button"
+            key={option.value}
+            className={selected ? "is-selected" : ""}
+            onClick={() => onChange(selected ? "" : String(option.value))}
+          >
+            <span>{option.label}</span>
+            {selected ? <FontAwesomeIcon icon={faCheck} /> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CuotasAdvancedFilters({
+  estadoPersona,
+  cobrador,
+  medioPago,
+  catalogos,
+  showPaymentMedium,
+  onEstadoPersona,
+  onCobrador,
+  onMedioPago,
+}) {
+  const [open, setOpen] = useState(false);
+  const [section, setSection] = useState("");
+  const rootRef = useRef(null);
+  const activeCount = [
+    estadoPersona,
+    cobrador,
+    showPaymentMedium ? medioPago : "",
+  ].filter((value) => String(value || "").trim()).length;
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const onPointer = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const toggle = (key) => setSection((current) => (current === key ? "" : key));
+  const reset = () => {
+    onEstadoPersona("");
+    onCobrador("");
+    onMedioPago("");
+    setSection("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="cuotas-filterRoot" ref={rootRef}>
+      <button
+        type="button"
+        className={`cuotas-filterTrigger ${open ? "is-open" : ""}`.trim()}
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+      >
+        <FontAwesomeIcon icon={faFilter} />
+        <span>Aplicar Filtros</span>
+        {activeCount ? <strong>{activeCount}</strong> : null}
+        <FontAwesomeIcon icon={faChevronDown} className="cuotas-filterTrigger__arrow" />
+      </button>
+
+      {open ? (
+        <div className="cuotas-filterMenu">
+          <CuotasFilterSection
+            title="Estado"
+            active={section === "state"}
+            onToggle={() => toggle("state")}
+          >
+            <CuotasFilterChoices
+              options={(catalogos.estados || []).map((item) => ({
+                value: item.id_estado,
+                label: item.nombre,
+              }))}
+              value={estadoPersona}
+              onChange={onEstadoPersona}
+            />
+          </CuotasFilterSection>
+
+          <CuotasFilterSection
+            title="Cobrador"
+            active={section === "collector"}
+            onToggle={() => toggle("collector")}
+          >
+            <CuotasFilterChoices
+              options={(catalogos.cobradores || []).map((item) => ({
+                value: item.id_cobrador,
+                label: item.nombre,
+              }))}
+              value={cobrador}
+              onChange={onCobrador}
+            />
+          </CuotasFilterSection>
+
+          {showPaymentMedium ? (
+            <CuotasFilterSection
+              title="Medio de pago"
+              active={section === "medium"}
+              onToggle={() => toggle("medium")}
+            >
+              <CuotasFilterChoices
+                options={(catalogos.medios_pago || []).map((item) => ({
+                  value: item.id_medio_pago,
+                  label: item.nombre,
+                }))}
+                value={medioPago}
+                onChange={onMedioPago}
+              />
+            </CuotasFilterSection>
+          ) : null}
+
+          <button type="button" className="cuotas-filterReset" onClick={reset}>
+            Mostrar Todos
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const CuotasTableRows = React.memo(function CuotasTableRows({
   items,
@@ -400,19 +573,28 @@ const CuotasTableRows = React.memo(function CuotasTableRows({
         </div>
         <div className="mov-gridCell is-center">
           <span
-            className={`cuotas-person-state ${
-              String(item.estado_persona || "").toUpperCase() === "ACTIVO"
-                ? "is-active"
-                : String(item.estado_persona || "").toUpperCase() === "PASIVO"
-                  ? "is-passive"
-                  : "is-empty"
-            }`}
+            className={`cuotas-person-state ${(() => {
+              const estadoPersona = String(item.estado_persona || "")
+                .trim()
+                .toUpperCase();
+              if (estadoPersona === "ACTIVO") return "is-active";
+              if (
+                estadoPersona.includes("PASIV") ||
+                estadoPersona.includes("INACTIV") ||
+                estadoPersona === "BAJA"
+              ) {
+                return "is-passive";
+              }
+              return "is-empty";
+            })()}`}
           >
             {item.estado_persona || "—"}
           </span>
         </div>
         <div className="mov-gridCell is-center cuotas-collector-cell">
-          {item.cobrador || "—"}
+          <span className={`cuotas-collector-chip ${collectorTone(item.cobrador)}`}>
+            {item.cobrador || "—"}
+          </span>
         </div>
         <div className="mov-gridCell cuotas-money-cell">
           {isResolved ? (
@@ -1903,6 +2085,15 @@ export default function Cuotas() {
               .filter(Boolean)
               .join(" · ")
           : selectedPartner?.denominacion || "";
+      const receiptPartnerCount =
+        paymentMode === "multiple"
+          ? new Set(
+              paymentForm.pagos.map((payment) =>
+                String(payment.id_socio ?? payment.denominacion ?? "").trim(),
+              ),
+            ).size
+          : 1;
+      const receiptRecordCount = fallbackLines.length || 1;
 
       setPaymentOpen(false);
       setReceipt(
@@ -1916,6 +2107,8 @@ export default function Cuotas() {
           cobrador: principal?.cobrador || selectedPartner?.cobrador || "",
           medio: selectedMedium?.nombre || "—",
           tipoEntidad: tipo,
+          cantidadSocios: receiptPartnerCount,
+          cantidadRegistros: receiptRecordCount,
           lineas: fallbackLines,
         }),
       );
@@ -2158,49 +2351,6 @@ export default function Cuotas() {
       })),
       className: "cuotas-month-filter",
     },
-    {
-      key: "estado_persona",
-      type: "select",
-      label: "Estado",
-      value: estadoPersona,
-      onChange: setEstadoPersona,
-      placeholder: "TODOS",
-      options: (catalogos.estados || []).map((item) => ({
-        value: item.id_estado,
-        label: item.nombre,
-      })),
-      className: "cuotas-partner-state-filter",
-    },
-    {
-      key: "cobrador",
-      type: "select",
-      label: "Cobrador",
-      value: cobrador,
-      onChange: setCobrador,
-      placeholder: "TODOS",
-      options: (catalogos.cobradores || []).map((item) => ({
-        value: item.id_cobrador,
-        label: item.nombre,
-      })),
-      className: "cuotas-collector-filter",
-    },
-    ...(isPaid
-      ? [
-          {
-            key: "medio_pago",
-            type: "select",
-            label: "Medio de pago",
-            value: medioPago,
-            onChange: setMedioPago,
-            placeholder: "TODOS",
-            options: (catalogos.medios_pago || []).map((item) => ({
-              value: item.id_medio_pago,
-              label: item.nombre,
-            })),
-            className: "cuotas-medium-filter",
-          },
-        ]
-      : []),
   ];
 
   const tableLabel = `Cuotas de socios ${isPaid ? "pagadas" : isCondoned ? "condonadas" : "adeudadas"}`;
@@ -2264,16 +2414,16 @@ export default function Cuotas() {
         headFiltersContainerClassName="cuotas-head-filters"
         headerActions={
           <>
-            <button
-              type="button"
-              className="mov-btn mov-btn--ghost cuotas-print-all-action"
-              onClick={printAllFiltered}
-              disabled={loading || printingAll || totalRegistros === 0}
-              title="Abrir todos los comprobantes que coinciden con los filtros actuales, incluyendo todas las páginas"
-            >
-              <FontAwesomeIcon icon={faPrint} />
-              {printingAll ? "Preparando..." : "Imprimir"}
-            </button>
+            <CuotasAdvancedFilters
+              estadoPersona={estadoPersona}
+              cobrador={cobrador}
+              medioPago={medioPago}
+              catalogos={catalogos}
+              showPaymentMedium={isPaid}
+              onEstadoPersona={setEstadoPersona}
+              onCobrador={setCobrador}
+              onMedioPago={setMedioPago}
+            />
             {writable ? (
               <button
                 type="button"
@@ -2285,12 +2435,6 @@ export default function Cuotas() {
                 Cód. barras
               </button>
             ) : null}
-            <BotonExportarGlobal
-              label="Exportar"
-              onClick={() => setExportModalOpen(true)}
-              disabled={loading || itemsPagina.length === 0}
-              title="Exportar cuotas en Excel o PDF"
-            />
           </>
         }
         secondaryActions={
