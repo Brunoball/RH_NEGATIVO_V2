@@ -65,16 +65,26 @@ async function birthdayDrawer(page, { open = false } = {}) {
 }
 
 async function closeBirthdayDrawer(page) {
-  const drawer = await birthdayDrawer(page);
-  if (!drawer) return;
-  const closeButton = drawer.getByRole('button', { name: 'Cerrar avisos de cumpleaños' });
-  if (await closeButton.isVisible().catch(() => false)) {
-    // El drawer anima su tamaño y el botón puede cambiar de geometría durante
-    // unos milisegundos. dispatchEvent prueba el handler real sin introducir
-    // flakiness por la estabilidad visual exigida por click().
-    await closeButton.dispatchEvent('click');
-    await expect(drawer).not.toHaveClass(/\bis-open\b/);
-  }
+  // Este helper sólo evita que el drawer pueda tapar controles posteriores.
+  // La acción funcional importante (marcar el aviso como gestionado) ya se
+  // valida por API/feedback en el test. Tras esa acción React puede desmontar
+  // el portal o reemplazar su contenido, por lo que no debemos conservar un
+  // locator viejo ni exigir una clase CSS concreta.
+  const closeButton = page.getByRole('button', {
+    name: 'Cerrar avisos de cumpleaños',
+    exact: true,
+  });
+
+  if ((await closeButton.count()) === 0) return;
+
+  // Usamos un locator fresco y force porque el panel tiene una transición
+  // lateral; el objetivo es ejecutar el handler real, no validar geometría CSS.
+  await closeButton.first().click({ force: true }).catch(async () => {
+    // Si React desmontó el portal entre count() y click(), ya está cerrado.
+    if ((await closeButton.count()) > 0) {
+      await closeButton.first().evaluate((element) => element.click()).catch(() => {});
+    }
+  });
 }
 
 async function findBirthdayCardFor(page, name) {
@@ -154,7 +164,7 @@ test.describe('Socios', () => {
       expect(created).toBeTruthy();
       createdId = created.id_socio;
 
-      const search = page.getByLabel('Buscar socio');
+      const search = page.getByLabel('Socio / ID', { exact: true });
       await search.fill(data.dni);
       let row = rowByText(page, data.nombre);
       // La grilla de Socios no muestra el DNI como columna: el DNI es un
@@ -197,7 +207,7 @@ test.describe('Socios', () => {
       await debtChoice.click();
       await debtChoice.click();
 
-      await page.getByRole('button', { name: 'Último contacto' }).click();
+      await page.getByRole('button', { name: 'Último contacto', exact: true }).click();
       const noContact = page.locator('.socios-filterChoices').getByRole('button', { name: 'Sin gestión', exact: true });
       await noContact.click();
       await noContact.click();
@@ -331,7 +341,7 @@ test.describe('Socios', () => {
     const data = socioData('EXPORT');
     const created = await createSocio(request, data);
     await page.goto('/socios/personas');
-      await page.getByLabel('Buscar socio').fill(data.dni);
+      await page.getByLabel('Socio / ID', { exact: true }).fill(data.dni);
       await expect(rowByText(page, data.nombre)).toBeVisible();
 
       await exportFromGlobalModal(page, {
@@ -422,11 +432,26 @@ test.describe('Socios', () => {
       await expect(info).toContainText('VÍNCULO FINALIZADO');
       await page.keyboard.press('Escape');
 
-      // Exportación familiar filtrada.
+      // El buscador de Familias debe resolver tanto por nombre de familia como
+      // por un integrante relacionado (nombre/DNI), no sólo por el texto principal.
+      const familyByMember = await apiCall(request, 'familias_listar', {
+        params: { estado: 'activo', buscar: firstData.dni },
+      });
+      expect((familyByMember.items || []).some((item) => item.id_familia === familyId)).toBe(true);
+      await search.fill(firstData.dni);
+      await expect(rowByText(page, family.nombreEditado)).toBeVisible();
+      await search.fill(family.nombreEditado);
+
+      // Exportación familiar filtrada en todos los formatos disponibles.
       await exportFromGlobalModal(page, {
         openButton: page.getByRole('button', { name: 'Exportar' }),
         format: 'Excel',
         expectedExtension: '.xlsx',
+      });
+      await exportFromGlobalModal(page, {
+        openButton: page.getByRole('button', { name: 'Exportar' }),
+        format: 'PDF',
+        expectedExtension: '.pdf',
       });
 
       // Baja y reactivación. La baja cierra los vínculos; no borra socios.

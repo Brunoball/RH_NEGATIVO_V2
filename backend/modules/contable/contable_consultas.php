@@ -14,6 +14,7 @@ trait ContableConsultas
     abstract protected static function nombreMes(int $month): string;
     abstract protected static function importePagoSql(string $paymentAlias = 'p', string $partnerAlias = 's', string $categoryAlias = 'c'): string;
     abstract protected static function opcion(PDO $db, int $id, string $expectedType): array;
+    abstract protected static function precioHistorico(PDO $db, int $categoryId, string $type, string $date): float;
 
     protected static function resumenDatos(PDO $db, int $year, int $selectedMonth): array
     {
@@ -23,11 +24,17 @@ trait ContableConsultas
         $otherByMonth = array_fill(1, 12, 0);
         $expensesByMonth = array_fill(1, 12, 0);
         $estimatedByMonth = array_fill(1, 12, 0);
-        foreach (self::pagosHistoricosContables($db, $yearStart, $yearEnd) as $payment) {
+        // Las cuotas históricas son la parte más costosa del resumen. Se resuelven
+        // una sola vez para todo el año y luego se reutilizan tanto para los
+        // totales mensuales como para los desgloses del mes seleccionado.
+        $historicalPayments = self::pagosHistoricosContables($db, $yearStart, $yearEnd);
+        $selectedPayments = [];
+        foreach ($historicalPayments as $payment) {
             $month = (int)$payment['mes'];
             if ($month < 1 || $month > 12) continue;
             $feesByMonth[$month] += (int)$payment['monto_cents'];
             if (!empty($payment['estimado'])) $estimatedByMonth[$month]++;
+            if ($month === $selectedMonth) $selectedPayments[] = $payment;
         }
 
         self::acumularTotalesMensuales(
@@ -90,9 +97,9 @@ trait ContableConsultas
         $totalPartners = $totFees + $totRegistrations;
         $totalIncome = $totalPartners + $totOther;
 
-        $incomeCategories = self::resumenCategoriasIngresos($db, $year, $selectedMonth);
+        $incomeCategories = self::resumenCategoriasIngresos($db, $year, $selectedMonth, $selectedPayments);
         $expenseCategories = self::resumenCategoriasEgresos($db, $year, $selectedMonth);
-        $means = self::resumenMedios($db, $year, $selectedMonth);
+        $means = self::resumenMedios($db, $year, $selectedMonth, $selectedPayments);
         $sumRows = static function (array $rows): int {
             $total = 0;
             foreach ($rows as $row) $total += self::centavos($row['total'] ?? 0);
@@ -179,12 +186,21 @@ trait ContableConsultas
              ORDER BY p.fecha_pago, p.id_pago"
         );
         $statement->execute([$start, $endExclusive]);
+        $paymentRows = $statement->fetchAll(PDO::FETCH_ASSOC);
+        if ($paymentRows === []) return $cache[$key] = [];
+
+        // Antes se reconstruía el padrón COMPLETO para cada fecha distinta de
+        // pago y de allí se tomaba solamente la categoría de un socio. Con miles
+        // de pagos eso repetía una gran cantidad de trabajo. Esta resolución en
+        // lote rebobina únicamente `id_categoria` y el nombre de `categoria`, que
+        // son exactamente los dos datos históricos que consume este resumen.
+        $historicalCategories = self::categoriasHistoricasPagos($db, $paymentRows);
 
         $rows = [];
-        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        foreach ($paymentRows as $row) {
             $date = substr((string)$row['fecha_pago'], 0, 10);
-            $partnerId = (int)$row['id_socio'];
-            $historical = self::snapshotSociosEnFecha($db, $date)[$partnerId] ?? [];
+            $paymentId = (int)$row['id_pago'];
+            $historical = $historicalCategories[$paymentId] ?? [];
             $categoryId = (int)($historical['id_categoria'] ?? 0);
             $categoryName = trim((string)($historical['categoria'] ?? '')) ?: 'SIN CATEGORÍA';
 
@@ -218,6 +234,132 @@ trait ContableConsultas
         return $cache[$key] = $rows;
     }
 
+    /**
+     * Resuelve la categoría histórica de muchos pagos en una sola pasada.
+     *
+     * Mantiene la misma semántica que snapshotSociosEnFecha(): para un pago de
+     * una fecha D se consideran incorporadas todas las modificaciones ocurridas
+     * hasta el final de D, y se rebobinan únicamente las auditorías posteriores.
+     * También conserva el nombre histórico de la categoría ante renombres,
+     * altas o eliminaciones posteriores.
+     *
+     * @param array<int,array<string,mixed>> $paymentRows
+     * @return array<int,array{id_categoria:int,categoria:string}> indexado por id_pago
+     */
+    private static function categoriasHistoricasPagos(PDO $db, array $paymentRows): array
+    {
+        if ($paymentRows === []) return [];
+
+        $partnerIds = [];
+        $earliestDate = null;
+        foreach ($paymentRows as $row) {
+            $partnerId = (int)($row['id_socio'] ?? 0);
+            if ($partnerId > 0) $partnerIds[$partnerId] = true;
+            $date = substr((string)($row['fecha_pago'] ?? ''), 0, 10);
+            if ($date !== '' && ($earliestDate === null || $date < $earliestDate)) $earliestDate = $date;
+        }
+        if ($partnerIds === []) return [];
+        $earliestEnd = ($earliestDate ?? '2000-01-01') . ' 23:59:59';
+
+        $ids = array_map('intval', array_keys($partnerIds));
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        $statement = $db->prepare(
+            "SELECT id_socio, id_categoria
+             FROM socios
+             WHERE id_socio IN ({$placeholders})"
+        );
+        $statement->execute($ids);
+        $categoryByPartner = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $categoryByPartner[(int)$row['id_socio']] = (int)($row['id_categoria'] ?? 0);
+        }
+
+        $categoryNames = [];
+        foreach ($db->query('SELECT id_categoria, nombre FROM categoria')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $categoryNames[(int)$row['id_categoria']] = trim((string)$row['nombre']);
+        }
+
+        $auditParams = array_merge([$earliestEnd], $ids);
+        $partnerAuditStatement = $db->prepare(
+            "SELECT id_registro, datos_anteriores, fecha, id_auditoria
+             FROM auditoria
+             WHERE tabla = 'socios'
+               AND accion = 'UPDATE'
+               AND fecha > ?
+               AND id_registro IN ({$placeholders})
+             ORDER BY fecha DESC, id_auditoria DESC"
+        );
+        $partnerAuditStatement->execute($auditParams);
+        $partnerAudits = $partnerAuditStatement->fetchAll(PDO::FETCH_ASSOC);
+
+        $catalogAuditStatement = $db->prepare(
+            "SELECT id_registro, accion, datos_anteriores, fecha, id_auditoria
+             FROM auditoria
+             WHERE tabla = 'categoria'
+               AND accion IN ('INSERT','UPDATE','DELETE')
+               AND fecha > ?
+             ORDER BY fecha DESC, id_auditoria DESC"
+        );
+        $catalogAuditStatement->execute([$earliestEnd]);
+        $catalogAudits = $catalogAuditStatement->fetchAll(PDO::FETCH_ASSOC);
+
+        // Los pagos ya llegan ordenados ASC por fecha/id desde SQL. Invertir el
+        // array es suficiente para rebobinar desde el estado actual y evita un
+        // segundo ordenamiento O(n log n) en PHP.
+        $ordered = array_reverse($paymentRows);
+
+        $partnerAuditIndex = 0;
+        $catalogAuditIndex = 0;
+        $partnerAuditCount = count($partnerAudits);
+        $catalogAuditCount = count($catalogAudits);
+        $resolved = [];
+
+        foreach ($ordered as $payment) {
+            $date = substr((string)$payment['fecha_pago'], 0, 10);
+            $targetEnd = $date . ' 23:59:59';
+
+            while (
+                $partnerAuditIndex < $partnerAuditCount
+                && (string)$partnerAudits[$partnerAuditIndex]['fecha'] > $targetEnd
+            ) {
+                $entry = $partnerAudits[$partnerAuditIndex++];
+                $partnerId = (int)$entry['id_registro'];
+                if (!isset($partnerIds[$partnerId])) continue;
+                $before = json_decode((string)($entry['datos_anteriores'] ?? ''), true);
+                if (!is_array($before) || !array_key_exists('id_categoria', $before)) continue;
+                $categoryByPartner[$partnerId] = $before['id_categoria'] === null
+                    ? 0
+                    : (int)$before['id_categoria'];
+            }
+
+            while (
+                $catalogAuditIndex < $catalogAuditCount
+                && (string)$catalogAudits[$catalogAuditIndex]['fecha'] > $targetEnd
+            ) {
+                $entry = $catalogAudits[$catalogAuditIndex++];
+                $categoryId = (int)$entry['id_registro'];
+                if ((string)$entry['accion'] === 'INSERT') {
+                    unset($categoryNames[$categoryId]);
+                    continue;
+                }
+                $before = json_decode((string)($entry['datos_anteriores'] ?? ''), true);
+                if (!is_array($before) || !array_key_exists('nombre', $before)) continue;
+                $name = trim((string)$before['nombre']);
+                $categoryNames[$categoryId] = $name === '' ? 'SIN NOMBRE' : $name;
+            }
+
+            $partnerId = (int)$payment['id_socio'];
+            $categoryId = (int)($categoryByPartner[$partnerId] ?? 0);
+            $resolved[(int)$payment['id_pago']] = [
+                'id_categoria' => $categoryId,
+                'categoria' => $categoryNames[$categoryId] ?? 'SIN CATEGORÍA',
+            ];
+        }
+
+        return $resolved;
+    }
+
     private static function acumularTotalesMensuales(PDO $db, string $sql, array $params, array &$target): void
     {
         $statement = $db->prepare($sql);
@@ -238,11 +380,11 @@ trait ContableConsultas
         }
     }
 
-    private static function resumenCategoriasIngresos(PDO $db, int $year, int $month): array
+    private static function resumenCategoriasIngresos(PDO $db, int $year, int $month, array $feePayments): array
     {
         [$start, $end] = self::rangoMes($year, $month);
         $totals = [];
-        foreach (self::pagosHistoricosContables($db, $start, $end) as $payment) {
+        foreach ($feePayments as $payment) {
             $name = 'CUOTAS · ' . ((string)$payment['categoria'] ?: 'SIN CATEGORÍA');
             $totals[$name] = ($totals[$name] ?? 0) + (int)$payment['monto_cents'];
         }
@@ -274,11 +416,11 @@ trait ContableConsultas
         return self::agruparRespuesta($totals);
     }
 
-    private static function resumenMedios(PDO $db, int $year, int $month): array
+    private static function resumenMedios(PDO $db, int $year, int $month, array $feePayments): array
     {
         [$start, $end] = self::rangoMes($year, $month);
         $totals = [];
-        foreach (self::pagosHistoricosContables($db, $start, $end) as $payment) {
+        foreach ($feePayments as $payment) {
             $name = trim((string)$payment['medio']) ?: 'SIN MEDIO ESPECIFICADO';
             $totals[$name] = ($totals[$name] ?? 0) + (int)$payment['monto_cents'];
         }

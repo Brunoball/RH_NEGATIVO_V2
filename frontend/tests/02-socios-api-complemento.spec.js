@@ -32,9 +32,19 @@ test.describe('Socios y familias · contratos API complementarios', () => {
       method: 'POST', data: { id_socio: created.id_socio, estado_contacto: 'INVALIDO' },
     }, { status: 422, code: 'VALIDATION_ERROR' });
 
-    await apiCall(request, 'socios_eliminar', {
-      method: 'POST', data: { id: created.id_socio, fecha_baja: todayIso(), motivo_baja: 'PW E2E BAJA API' },
+    const bajaReason = 'PW E2E BAJA API';
+    const bajaDate = todayIso();
+    const baja = await apiCall(request, 'socios_eliminar', {
+      method: 'POST', data: { id: created.id_socio, fecha_baja: bajaDate, motivo_baja: bajaReason },
     });
+    expect(baja.item.vigente).toBe(false);
+    expect(baja.item.fecha_baja).toBe(bajaDate);
+    expect(baja.item.motivo_baja).toBe(bajaReason);
+
+    const detailAfterBaja = await apiCall(request, 'socios_obtener', { params: { id: created.id_socio } });
+    expect(detailAfterBaja.item.fecha_baja).toBe(bajaDate);
+    expect(detailAfterBaja.item.motivo_baja).toBe(bajaReason);
+
     await apiCall(request, 'socios_reactivar', {
       method: 'POST', data: { id: created.id_socio, fecha_reactivacion: todayIso(), motivo_reactivacion: 'PW E2E REACTIVACION API' },
     });

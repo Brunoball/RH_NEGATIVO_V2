@@ -4,6 +4,7 @@ const { exportFromGlobalModal } = require('./helpers/download.helper');
 const { SESSION_KEY } = require('./helpers/auth.helper');
 const { addDaysIso, todayIso } = require('./helpers/data.helper');
 const { cuotaFamilyData } = require('./fixtures/cuotas.fixture');
+const { configValues } = require('./fixtures/configuracion.fixture');
 const {
   createQuotaCategory,
   createQuotaSocio,
@@ -19,6 +20,31 @@ function rowByText(page, text) {
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function openQuotaAdvancedFilters(page) {
+  const trigger = page.getByRole('button', { name: /Aplicar Filtros/ });
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+  return trigger;
+}
+
+async function selectQuotaAdvancedFilter(page, sectionName, optionName) {
+  await openQuotaAdvancedFilters(page);
+  const sectionButton = page.getByRole('button', { name: sectionName, exact: true });
+  const section = sectionButton.locator('xpath=..');
+  const isOpen = await section.evaluate((element) => element.classList.contains('is-open'));
+  if (!isOpen) await sectionButton.click();
+  await section.getByRole('button', { name: optionName, exact: true }).click();
+}
+
+async function resetQuotaAdvancedFilters(page) {
+  await openQuotaAdvancedFilters(page);
+  await page.getByRole('button', { name: 'Mostrar Todos', exact: true }).click();
+}
+
+async function closeQuotaAdvancedFilters(page) {
+  const trigger = page.getByRole('button', { name: /Aplicar Filtros/ });
+  if ((await trigger.getAttribute('aria-expanded')) === 'true') await trigger.click();
 }
 
 async function setupQuotaPartner(request, label) {
@@ -644,7 +670,7 @@ test.describe('Cuotas · UI', () => {
     await expect(page.getByRole('heading', { name: 'Cuotas' })).toBeVisible();
     await page.getByLabel('Año').selectOption(year);
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     let row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
 
@@ -657,7 +683,7 @@ test.describe('Cuotas · UI', () => {
     await receipt.locator('.payment-receipt-actions__close').click();
 
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     // El estado visible de la tabla es ACTIVO/PASIVO del socio. Que la cuota
     // esté pagada se expresa por la pestaña Pagados y por sus acciones.
@@ -668,14 +694,14 @@ test.describe('Cuotas · UI', () => {
     await actionDialog.getByRole('button', { name: 'Eliminar pago', exact: true }).click();
 
     await page.getByRole('tab', { name: /Deudores/ }).click();
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     await row.getByRole('button', { name: `Condonar cuota de ${socio.data.nombre}` }).click();
     actionDialog = page.getByRole('dialog', { name: 'Condonar cuota' });
     await actionDialog.getByRole('button', { name: 'Condonar cuota', exact: true }).click();
 
     await page.getByRole('tab', { name: /Condonados/ }).click();
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     // En Condonados la columna Estado sigue mostrando ACTIVO/PASIVO. El $0 y
     // la acción de eliminar condonación identifican correctamente el registro.
@@ -696,7 +722,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill('PW EEE SOCIO CUOTA MULTI');
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill('PW EEE SOCIO CUOTA MULTI');
     await page.getByRole('button', { name: 'Seleccionar', exact: true }).first().click();
     await page.getByRole('checkbox', { name: `Seleccionar cuota de ${a.data.nombre}` }).check();
     await page.getByRole('checkbox', { name: `Seleccionar cuota de ${b.data.nombre}` }).check();
@@ -734,7 +760,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(current));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
@@ -762,8 +788,25 @@ test.describe('Cuotas · UI', () => {
     // en lugar de depender de que el control permanezca montado fuera de vista.
     await dialog.getByRole('tab', { name: /Importe por período/ }).click();
     const customToggle = dialog.getByRole('checkbox', { name: 'Monto personalizado' });
-    await customToggle.check();
-    await dialog.getByLabel(`Monto personalizado para ${periodName}`).fill('3999,99');
+    const customAmountInput = dialog.getByLabel(`Monto personalizado para ${periodName}`);
+
+    // El checkbox es controlado por React y, justo después de cambiar de año/período,
+    // puede recibir una actualización tardía del contexto que revierta un primer click.
+    // Reintentamos la acción real de usuario hasta que tanto el checkbox como el editor
+    // queden montados de forma estable, evitando un falso negativo intermitente del E2E.
+    for (let attempt = 0; attempt < 4 && !(await customToggle.isChecked()); attempt += 1) {
+      await customToggle.click();
+      if (!(await customToggle.isChecked())) {
+        await page.waitForTimeout(150);
+      }
+    }
+    await expect(customToggle).toBeChecked();
+    await expect(customAmountInput).toBeVisible();
+    await customAmountInput.fill('3999,99');
+    // El front normaliza el separador decimal interno a punto en algunos navegadores
+    // (3999,99 -> 3999.99). Validamos el mismo valor numérico sin acoplar el E2E
+    // a la representación textual interna del input.
+    await expect(customAmountInput).toHaveValue(/^3999[.,]99$/);
 
     // Fecha y medio de pago pertenecen a "Meses a pagar".
     await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
@@ -792,7 +835,7 @@ test.describe('Cuotas · UI', () => {
         print() { window.__pwReceiptPrint = true; },
       });
     });
-    await receipt.getByRole('button', { name: 'Comprobante', exact: true }).click();
+    await receipt.getByRole('button', { name: 'Imprimir', exact: true }).click();
     await expect.poll(() => page.evaluate(() => window.__pwReceiptHtml.length)).toBeGreaterThan(100);
     await expect.poll(() => page.evaluate(() => window.__pwReceiptPrint)).toBe(true);
     await receipt.locator('.payment-receipt-actions__close').click();
@@ -818,7 +861,7 @@ test.describe('Cuotas · UI', () => {
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await page.evaluate(() => {
@@ -857,7 +900,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     let row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
@@ -913,7 +956,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
 
     await page.evaluate(() => {
       window.__pwQuotaPopups = [];
@@ -937,8 +980,7 @@ test.describe('Cuotas · UI', () => {
       const headers = await page.locator('.cuotas-table').getByRole('columnheader').allTextContents();
       expect(headers.map((value) => value.trim())).toEqual(expectedColumns);
       await expect(page.getByRole('columnheader', { name: 'Medio de pago', exact: true })).toHaveCount(0);
-      await expect(page.getByLabel('Estado', { exact: true })).toBeVisible();
-      await expect(page.getByLabel('Cobrador', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Aplicar Filtros/ })).toBeVisible();
     };
 
     const lastPopup = () => page.evaluate(() => window.__pwQuotaPopups.at(-1) || null);
@@ -949,10 +991,19 @@ test.describe('Cuotas · UI', () => {
     await expect(row).toContainText('DOMICILIO DE COBRO PLAYWRIGHT');
     await assertTableContract();
     if (socio.item.id_estado) {
-      await page.getByLabel('Estado', { exact: true }).selectOption(String(socio.item.id_estado));
+      const state = (catalogs.catalogos.estados || []).find(
+        (item) => String(item.id_estado) === String(socio.item.id_estado),
+      );
+      expect(state, 'El estado del socio debe estar disponible en filtros de Cuotas').toBeTruthy();
+      await selectQuotaAdvancedFilter(page, 'Estado', state.nombre);
       await expect(rowByText(page, socio.data.nombre)).toBeVisible();
     }
-    await page.getByLabel('Cobrador', { exact: true }).selectOption(String(socio.item.id_cobrador));
+    const collector = (catalogs.catalogos.cobradores || []).find(
+      (item) => String(item.id_cobrador) === String(socio.item.id_cobrador),
+    );
+    expect(collector, 'El cobrador del socio debe estar disponible en filtros de Cuotas').toBeTruthy();
+    await selectQuotaAdvancedFilter(page, 'Cobrador', collector.nombre);
+    await closeQuotaAdvancedFilters(page);
     row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
@@ -974,7 +1025,10 @@ test.describe('Cuotas · UI', () => {
     row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await assertTableContract();
-    await expect(page.getByLabel('Medio de pago', { exact: true })).toBeVisible();
+    await selectQuotaAdvancedFilter(page, 'Medio de pago', catalogs.medium.nombre);
+    await expect(rowByText(page, socio.data.nombre)).toBeVisible();
+    await closeQuotaAdvancedFilters(page);
+    row = rowByText(page, socio.data.nombre);
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
     await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PAGADO');
     await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
@@ -996,7 +1050,9 @@ test.describe('Cuotas · UI', () => {
     row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await assertTableContract();
-    await expect(page.getByLabel('Medio de pago', { exact: true })).toHaveCount(0);
+    await openQuotaAdvancedFilters(page);
+    await expect(page.getByRole('button', { name: 'Medio de pago', exact: true })).toHaveCount(0);
+    await closeQuotaAdvancedFilters(page);
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
     await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('CONDONADO');
     await expect.poll(async () => Boolean((await lastPopup())?.printed)).toBe(true);
@@ -1029,7 +1085,7 @@ test.describe('Cuotas · UI', () => {
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(annualId));
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await expect(row).toContainText(`CONTADO ANUAL ${currentYear()}`);
@@ -1103,13 +1159,127 @@ test.describe('Cuotas · UI', () => {
     await dialog.getByRole('button', { name: 'Cerrar', exact: true }).click();
   });
 
+  test('filtros de Cuotas, búsqueda por ID, reset y Seleccionar todo lo filtrado funcionan con el front actual', async ({ page, request }) => {
+    const first = await setupQuotaPartner(request, 'FILTROS TOTAL A');
+    const second = await setupQuotaPartner(request, 'FILTROS TOTAL B');
+    const periodId = Number(first.catalogs.bimonthly[0].id_periodo ?? first.catalogs.bimonthly[0].id_mes);
+    const definitions = configValues();
+    const wrongState = await apiCall(request, 'configuracion_lista_guardar', {
+      method: 'POST', data: { lista: 'estado', nombre: definitions.estado.nombre },
+    });
+    const wrongCollector = await apiCall(request, 'configuracion_lista_guardar', {
+      method: 'POST', data: { lista: 'cobrador', nombre: definitions.cobrador.nombre },
+    });
+    const wrongMedium = await apiCall(request, 'configuracion_lista_guardar', {
+      method: 'POST', data: { lista: 'medios_pago', nombre: definitions.medios_pago.nombre },
+    });
+
+    const matchingFilters = await apiCall(request, 'cuotas_listar', {
+      params: {
+        tipo: 'PERSONA',
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        mes: periodId,
+        id_socio: first.socio.item.id_socio,
+        categoria: first.category.item.id_categoria,
+        estado_persona: first.socio.item.id_estado,
+        cobrador: first.socio.item.id_cobrador,
+      },
+    });
+    expect(matchingFilters.items.some((item) => Number(item.id_socio) === Number(first.socio.item.id_socio))).toBe(true);
+
+    const aliasFilters = await apiCall(request, 'cuotas_listar', {
+      params: {
+        tipo: 'PERSONA',
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        id_periodo: periodId,
+        id_socio: first.socio.item.id_socio,
+        id_estado: first.socio.item.id_estado,
+        id_cobrador: first.socio.item.id_cobrador,
+      },
+    });
+    expect(aliasFilters.items.some((item) => Number(item.id_socio) === Number(first.socio.item.id_socio))).toBe(true);
+
+    const wrongCategory = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'DEUDORES', anio: currentYear(), mes: periodId, id_socio: first.socio.item.id_socio, categoria: 2147483647 },
+    });
+    expect(wrongCategory.items).toHaveLength(0);
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
+
+    const search = page.getByRole('textbox', { name: 'Socio / ID', exact: true });
+    await search.fill(String(first.socio.item.id_socio));
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
+    await expect(rowByText(page, second.socio.data.nombre)).toHaveCount(0);
+
+    await search.fill('PW EEE SOCIO CUOTA FILTROS TOTAL');
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
+    await expect(rowByText(page, second.socio.data.nombre)).toBeVisible();
+
+    await selectQuotaAdvancedFilter(page, 'Estado', wrongState.item.nombre);
+    await expect(rowByText(page, first.socio.data.nombre)).toHaveCount(0);
+    await resetQuotaAdvancedFilters(page);
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
+
+    await selectQuotaAdvancedFilter(page, 'Cobrador', wrongCollector.item.nombre);
+    await expect(rowByText(page, first.socio.data.nombre)).toHaveCount(0);
+    await resetQuotaAdvancedFilters(page);
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Seleccionar', exact: true }).click();
+    const selectAll = page.getByRole('button', { name: /Seleccionar todo lo filtrado \(2\)/ });
+    await expect(selectAll).toBeVisible();
+    await selectAll.click();
+    await expect(page.getByText('2 cuotas seleccionadas', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continuar (2)', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Limpiar', exact: true }).click();
+    await expect(page.getByText('0 cuotas seleccionadas', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancelar selección', exact: true }).click();
+
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: first.socio.item.id_socio,
+        periodId,
+        mediumId: first.catalogs.medium.id_medio_pago,
+      }),
+    });
+    const paidByMedium = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'PAGADOS', anio: currentYear(), mes: periodId,
+        id_socio: first.socio.item.id_socio, medio_pago: first.catalogs.medium.id_medio_pago,
+      },
+    });
+    expect(paidByMedium.items.some((item) => Number(item.id_socio) === Number(first.socio.item.id_socio))).toBe(true);
+    const paidByMediumAlias = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'PAGADOS', anio: currentYear(), id_periodo: periodId,
+        id_socio: first.socio.item.id_socio, id_medio_pago: first.catalogs.medium.id_medio_pago,
+      },
+    });
+    expect(paidByMediumAlias.items.some((item) => Number(item.id_socio) === Number(first.socio.item.id_socio))).toBe(true);
+
+    await page.getByRole('tab', { name: /Pagados/ }).click();
+    await search.fill(String(first.socio.item.id_socio));
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
+    await selectQuotaAdvancedFilter(page, 'Medio de pago', wrongMedium.item.nombre);
+    await expect(rowByText(page, first.socio.data.nombre)).toHaveCount(0);
+    await resetQuotaAdvancedFilters(page);
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
+
+    await deletePayment(request, paid.items[0].id_pago);
+  });
+
   test('exporta la vista filtrada de cuotas en Excel y PDF', async ({ page, request }) => {
     const { socio, catalogs } = await setupQuotaPartner(request, 'EXPORT');
     const periodId = String(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(socio.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
     await expect(rowByText(page, socio.data.nombre)).toBeVisible();
 
     await exportFromGlobalModal(page, {

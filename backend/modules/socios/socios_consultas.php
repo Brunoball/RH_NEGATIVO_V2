@@ -450,7 +450,11 @@ trait SociosConsultas
                       FROM socios_historial_estados h2
                       WHERE h2.id_socio = s.id_socio
                         AND h2.tipo_evento = 'BAJA'
-                      ORDER BY COALESCE(h2.fecha_evento, h2.creado_en) DESC,
+                      ORDER BY CASE
+                                   WHEN NULLIF(TRIM(h2.motivo), '') IS NULL THEN 1
+                                   ELSE 0
+                               END ASC,
+                               COALESCE(h2.fecha_evento, h2.creado_en) DESC,
                                h2.id_historial DESC
                       LIMIT 1
                   )";

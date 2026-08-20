@@ -170,8 +170,31 @@ test.describe('Blindaje adicional · Socios y familias', () => {
       id_estado: configItemId(stateA, definitions.estado),
     });
 
+    // Dimensiones backend adicionales del listado: ID exacto, categoría y cobrador.
+    // Son filtros soportados por la API aunque algunos se activen desde controles distintos del front.
+    for (const params of [
+      { id_socio: created.id_socio },
+      { categoria: created.id_categoria },
+      { cobrador: created.id_cobrador },
+    ]) {
+      const filtered = await apiCall(request, 'socios_listar', {
+        params: { vigente: 'VIGENTE', buscar: data.dni, pagina: 1, ...params },
+      });
+      expect(filtered.items.some((item) => Number(item.id_socio) === Number(created.id_socio))).toBe(true);
+    }
+    for (const params of [
+      { id_socio: 2147483647 },
+      { categoria: 2147483647 },
+      { cobrador: 2147483647 },
+    ]) {
+      const filtered = await apiCall(request, 'socios_listar', {
+        params: { vigente: 'VIGENTE', buscar: data.dni, pagina: 1, ...params },
+      });
+      expect(filtered.items).toHaveLength(0);
+    }
+
     await page.goto('/socios/personas');
-    const search = page.getByLabel('Buscar socio');
+    const search = page.getByLabel('Socio / ID', { exact: true });
     await search.fill(data.dni);
     await expect(rowByText(page, data.nombre)).toBeVisible();
 
@@ -617,7 +640,7 @@ test.describe('Blindaje adicional · Cuotas', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Búsqueda' }).fill(a.data.dni);
+    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(a.item.id_socio));
     const row = rowByText(page, a.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${a.data.nombre}` }).click();
@@ -770,7 +793,9 @@ test.describe('Blindaje adicional · Configuración', () => {
     await page.getByRole('tab', { name: 'Períodos', exact: true }).click();
     await expect(page).toHaveURL(/lista=periodo/);
     await expect(page.getByRole('button', { name: 'Nuevo período', exact: true })).toHaveCount(0);
-    await expect(page.getByText(/7 períodos.*estructurales/i)).toBeVisible();
+    const periodInfo = page.getByRole('button', { name: 'Información sobre Períodos', exact: true });
+    await periodInfo.hover();
+    await expect(page.getByRole('tooltip')).toContainText(/7 períodos.*estructurales/i);
     const firstPeriodRow = page.getByRole('table', { name: 'Períodos' }).getByRole('row').filter({ hasText: /PERÍODO 1/i }).first();
     await expect(firstPeriodRow).toBeVisible();
     await expect(firstPeriodRow.getByRole('button', { name: /Editar/i })).toBeDisabled();

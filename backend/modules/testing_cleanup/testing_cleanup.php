@@ -12,7 +12,7 @@ declare(strict_types=1);
  * - descuentos familiares: descripcion PW E2E DESC *
  * - logins inválidos:      usuario pw_e2e_*
  * - login de preparación:  User-Agent PW-RH-E2E-SETUP/*
- * - contabilidad opciones:   PW E2E CT *
+ * - contabilidad opciones:   PW E2E CT * / PW EEE CT *
  * - contabilidad movimientos: detalle PW E2E CONTABLE * / comprobante PW-E2E-*
  *
  * Nunca borra por fechas, IDs altos, dominios genéricos ni coincidencias amplias.
@@ -197,16 +197,16 @@ final class TestingCleanup
             $testContableOptions = self::tableExists($db, 'contable_opciones')
                 ? self::ids(
                     $db,
-                    "SELECT id_opcion FROM contable_opciones WHERE nombre LIKE 'PW E2E CT %'"
+                    "SELECT id_opcion FROM contable_opciones WHERE nombre LIKE 'PW E2E CT %' OR nombre LIKE 'PW EEE CT %'"
                 )
                 : [];
             $testContableIncome = self::tableExists($db, 'contable_ingresos')
                 ? self::ids(
                     $db,
                     "SELECT id_ingreso FROM contable_ingresos
-                     WHERE proveedor LIKE 'PW E2E CT %'
-                        OR categoria LIKE 'PW E2E CT %'
-                        OR concepto LIKE 'PW E2E CT %'
+                     WHERE proveedor LIKE 'PW E2E CT %' OR proveedor LIKE 'PW EEE CT %'
+                        OR categoria LIKE 'PW E2E CT %' OR categoria LIKE 'PW EEE CT %'
+                        OR concepto LIKE 'PW E2E CT %' OR concepto LIKE 'PW EEE CT %'
                         OR detalle LIKE 'PW E2E CONTABLE %'"
                 )
                 : [];
@@ -214,9 +214,9 @@ final class TestingCleanup
             if (self::tableExists($db, 'contable_egresos')) {
                 $statement = $db->prepare(
                     "SELECT id_egreso, archivo_path FROM contable_egresos
-                     WHERE proveedor LIKE 'PW E2E CT %'
-                        OR categoria LIKE 'PW E2E CT %'
-                        OR concepto LIKE 'PW E2E CT %'
+                     WHERE proveedor LIKE 'PW E2E CT %' OR proveedor LIKE 'PW EEE CT %'
+                        OR categoria LIKE 'PW E2E CT %' OR categoria LIKE 'PW EEE CT %'
+                        OR concepto LIKE 'PW E2E CT %' OR concepto LIKE 'PW EEE CT %'
                         OR detalle LIKE 'PW E2E CONTABLE %'
                         OR numero_comprobante LIKE 'PW-E2E-%'"
                 );
@@ -478,8 +478,8 @@ final class TestingCleanup
                 'grupos_sanguineos' => 'PWE2E-* / PWE2E+*',
                 'medios_pago' => 'PW E2E MED *',
                 'periodos' => 'id > 7 y PW E2E PER *',
-                'contable_opciones' => 'PW E2E CT *',
-                'contable_movimientos' => 'PW E2E CT * / PW E2E CONTABLE * / PW-E2E-*',
+                'contable_opciones' => 'PW E2E CT * / PW EEE CT *',
+                'contable_movimientos' => 'PW E2E CT * / PW EEE CT * / PW E2E CONTABLE * / PW-E2E-*',
             ],
         ];
     }

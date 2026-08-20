@@ -3,6 +3,17 @@ declare(strict_types=1);
 
 trait SociosGestion
 {
+    /**
+     * Contrato interno del trait.
+     *
+     * Estos métodos son implementados por SociosConsultas, que se compone
+     * junto con SociosGestion dentro de la clase Socios. Declararlos como
+     * requisitos abstractos permite que PHP e Intelephense conozcan el
+     * contrato entre ambos traits sin duplicar la implementación.
+     */
+    abstract private static function detalle(PDO $db, int $id): ?array;
+    abstract private static function impactoEliminacion(PDO $db, int $id): array;
+
     private static function guardarDatos(array $auth, array $body): array
     {
         $db = $auth['db'];
@@ -126,28 +137,110 @@ trait SociosGestion
 
             $before = self::detalle($db, $id);
             self::cerrarVinculosFamiliaresPorBaja($db, $id, $date);
+
+            // Marcamos hasta qué fila de historial existía ANTES de cambiar la
+            // vigencia. Algunas bases heredadas tienen un trigger sobre socios
+            // que, al ejecutar el UPDATE siguiente, crea automáticamente una
+            // BAJA sin motivo. Si luego insertáramos otra BAJA tendríamos dos
+            // eventos para la misma transición y la fila automática (con la hora
+            // actual) podría ganar en las consultas aunque motivo fuese NULL.
+            $historyMarkerStatement = $db->prepare(
+                'SELECT COALESCE(MAX(id_historial), 0)
+                 FROM socios_historial_estados
+                 WHERE id_socio = ?'
+            );
+            $historyMarkerStatement->execute([$id]);
+            $historyMarker = (int)$historyMarkerStatement->fetchColumn();
+
             $db->prepare('UPDATE socios SET vigente = 0 WHERE id_socio = ?')->execute([$id]);
+
+            self::registrarHistorialBajaTrasCambioVigencia(
+                $db,
+                $id,
+                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
+                $date,
+                $reason,
+                (int)$auth['id_usuario'],
+                $historyMarker
+            );
+
             $after = self::detalle($db, $id);
             if (!$after) throw new RuntimeException('No se pudo recuperar el socio después de la baja.');
 
-            self::insertarHistorialEstado(
-                $db,
-                $id,
-                'BAJA',
-                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
-                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
-                true,
-                false,
-                $date . ' 00:00:00',
-                $reason,
-                null,
-                $auth['id_usuario']
-            );
             self::auditarSocio($db, $auth, 'socios', $id, 'UPDATE', $before, $after);
             return $after;
         });
 
         return ['item' => $saved];
+    }
+
+    /**
+     * Registra la BAJA sin duplicar el evento que pueda crear un trigger
+     * heredado al cambiar socios.vigente. Si el UPDATE generó una BAJA nueva
+     * después de $historyMarker, completamos ESA misma fila con los datos
+     * ingresados por el usuario. Si no existe trigger, usamos el flujo normal.
+     */
+    private static function registrarHistorialBajaTrasCambioVigencia(
+        PDO $db,
+        int $id,
+        ?int $stateId,
+        string $date,
+        string $reason,
+        int $userId,
+        int $historyMarker
+    ): void {
+        $generated = $db->prepare(
+            "SELECT id_historial
+             FROM socios_historial_estados
+             WHERE id_socio = ?
+               AND id_historial > ?
+               AND tipo_evento = 'BAJA'
+               AND vigente_anterior = 1
+               AND vigente_nuevo = 0
+             ORDER BY id_historial DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $generated->execute([$id, $historyMarker]);
+        $generatedId = (int)($generated->fetchColumn() ?: 0);
+
+        if ($generatedId > 0) {
+            $update = $db->prepare(
+                "UPDATE socios_historial_estados
+                 SET id_estado_anterior = ?,
+                     id_estado_nuevo = ?,
+                     vigente_anterior = 1,
+                     vigente_nuevo = 0,
+                     fecha_evento = ?,
+                     motivo = ?,
+                     id_usuario = ?,
+                     origen = 'SISTEMA'
+                 WHERE id_historial = ?"
+            );
+            $update->execute([
+                $stateId,
+                $stateId,
+                $date . ' 00:00:00',
+                $reason,
+                $userId,
+                $generatedId,
+            ]);
+            return;
+        }
+
+        self::insertarHistorialEstado(
+            $db,
+            $id,
+            'BAJA',
+            $stateId,
+            $stateId,
+            true,
+            false,
+            $date . ' 00:00:00',
+            $reason,
+            null,
+            $userId
+        );
     }
 
     private static function reactivarDatos(array $auth, int $id, string $date, ?string $reason): array

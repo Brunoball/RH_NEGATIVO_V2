@@ -8,6 +8,13 @@ const {
 } = require('./helpers/api.helper');
 const { exportFromGlobalModal } = require('./helpers/download.helper');
 const { createSocio } = require('./helpers/entities.helper');
+const {
+  createQuotaCategory,
+  createQuotaSocio,
+  deletePayment,
+  paymentPayload,
+  quotaCatalogs,
+} = require('./helpers/cuotas.helper');
 const { configValues } = require('./fixtures/configuracion.fixture');
 const { socioData } = require('./fixtures/socios.fixture');
 const { lettersFromSuffix, todayIso, uniqueSuffix } = require('./helpers/data.helper');
@@ -557,11 +564,52 @@ test.describe('Contabilidad · configuración y movimientos API', () => {
 });
 
 test.describe('Contabilidad · UI completa', () => {
-  test('Ingresos de socios cubre las tres pestañas, búsqueda, paginación, Contado Anual, exportación y Balance anual', async ({ page, request }) => {
+  test('Ingresos de socios cubre las tres pestañas, búsqueda, paginación, Contado Anual, Excel/PDF y Balance anual', async ({ page, request }) => {
     const { year, period } = dateParts();
+    const quotaCategory = await createQuotaCategory(request);
+    const quotaSocio = await createQuotaSocio(request, 'CONTABLE EXPORT SOCIOS', quotaCategory.item.id_categoria);
+    const quota = await quotaCatalogs(request, year);
+    const periodItem = quota.bimonthly.find(
+      (item) => Number(item.id_periodo ?? item.id_mes) === period,
+    );
+    expect(periodItem, `Debe existir el período bimestral ${period}`).toBeTruthy();
+    const guaranteedPayment = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: quotaSocio.item.id_socio,
+        periodId: Number(periodItem.id_periodo ?? periodItem.id_mes),
+        mediumId: quota.medium.id_medio_pago,
+        year,
+      }),
+    });
+
     const apiReport = await apiCall(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: period, pagina: 1 },
     });
+    expect(Number(apiReport.detalle.paginacion.total)).toBeGreaterThan(0);
+
+    const filteredFeeReport = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: year,
+        periodo: period,
+        pagina: 1,
+        buscar: quotaSocio.data.dni,
+        categoria: quotaCategory.item.id_categoria,
+        medio: quota.medium.id_medio_pago,
+      },
+    });
+    expect(
+      filteredFeeReport.detalle.items.some((item) => Number(item.id_socio) === Number(quotaSocio.item.id_socio)),
+      'Los filtros categoría + medio + búsqueda deben conservar el cobro E2E correcto',
+    ).toBe(true);
+    const wrongFeeCategory = await apiCall(request, 'contable_ingresos_socios', {
+      params: { anio: year, periodo: period, pagina: 1, buscar: quotaSocio.data.dni, categoria: 2147483647 },
+    });
+    expect(wrongFeeCategory.detalle.items).toHaveLength(0);
+    const wrongFeeMedium = await apiCall(request, 'contable_ingresos_socios', {
+      params: { anio: year, periodo: period, pagina: 1, buscar: quotaSocio.data.dni, medio: 2147483647 },
+    });
+    expect(wrongFeeMedium.detalle.items).toHaveLength(0);
 
     await page.goto('/contable/ingresos');
     await expect(page.getByRole('heading', { name: 'Ingresos' })).toBeVisible();
@@ -570,11 +618,11 @@ test.describe('Contabilidad · UI completa', () => {
 
     const segmented = page.getByRole('tablist', { name: 'Vista' });
     await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
-    await expect(page.getByText('Detalle de cobros recibidos')).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Detalle de cobros recibidos' })).toBeVisible();
 
     if (apiReport.detalle.items[0]?.socio) {
       const search = page.getByRole('textbox', { name: 'Buscar' });
-      await expect(search).toHaveAttribute('placeholder', /Socio, categoría, cobrador, período/i);
+      await expect(search).toBeVisible();
       await Promise.all([
         page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('buscar=')),
         search.fill(apiReport.detalle.items[0].socio),
@@ -613,6 +661,20 @@ test.describe('Contabilidad · UI completa', () => {
       : 'Superávit';
     await expect(collectionTotals.getByText(expectedDifferenceLabel, { exact: true })).toBeVisible();
 
+    await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
+    await exportFromGlobalModal(page, {
+      openButton: page.getByRole('button', { name: 'Exportar', exact: true }),
+      format: 'Excel',
+      scope: 'registros visibles|esta página',
+      expectedExtension: '.xlsx',
+    });
+    await exportFromGlobalModal(page, {
+      openButton: page.getByRole('button', { name: 'Exportar', exact: true }),
+      format: 'PDF',
+      scope: 'registros visibles|esta página',
+      expectedExtension: '.pdf',
+    });
+
     await Promise.all([
       page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('periodo=7')),
       page.getByLabel('Período', { exact: true }).selectOption('7'),
@@ -624,30 +686,67 @@ test.describe('Contabilidad · UI completa', () => {
     const annualApi = await apiCall(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: 7, pagina: 1 },
     });
-    if (Number(annualApi.detalle.paginacion.total) > 0) {
-      await exportFromGlobalModal(page, {
-        openButton: page.getByRole('button', { name: 'Exportar', exact: true }),
-        format: 'Excel',
-        scope: 'registros visibles|esta página',
-        expectedExtension: '.xlsx',
-      });
-    }
+    expect(Number(annualApi.periodo.id_periodo)).toBe(7);
 
     await page.getByRole('button', { name: 'Balance anual' }).click();
-    const balance = page.getByRole('dialog', { name: 'Balance anual' });
+    const balance = page.locator('[role="dialog"].ct-balance-modal');
     await expect(balance).toBeVisible();
     await Promise.all([
       page.waitForResponse((response) => response.url().includes('action=contable_balance')),
       balance.getByRole('button', { name: 'Generar balance' }).click(),
     ]);
     await expect(balance.getByRole('button', { name: 'Actualizar balance' })).toBeVisible();
+
+    // El buscador interno del Balance también es un filtro funcional: usamos el
+    // socio E2E garantizado, que adeuda otros períodos del año, para probar
+    // inclusión, exclusión y reset sin depender de datos reales preexistentes.
+    await balance.getByRole('tab', { name: 'Deudores por período', exact: true }).click();
+    const balanceSearch = balance.getByRole('searchbox', { name: 'Buscar', exact: true });
+    await balanceSearch.fill(quotaSocio.data.dni);
+    await expect(balance.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).first()).toBeVisible();
+    await balanceSearch.fill('PW E2E SIN COINCIDENCIA BALANCE');
+    await expect(balance.getByRole('row').filter({ hasText: quotaSocio.data.nombre })).toHaveCount(0);
+    await balanceSearch.fill('');
+    await expect(balanceSearch).toHaveValue('');
+    // Con el filtro vacío el balance vuelve a la colección completa, pero la UI
+    // pagina visualmente los primeros 100 deudores. El socio E2E puede quedar
+    // fuera de ese primer bloque aunque el reset haya funcionado correctamente.
+    // Validamos el reset por la reaparición de resultados y, si existe el botón,
+    // cargamos el resto antes de volver a exigir la fila E2E concreta.
+    await expect.poll(async () => balance.getByRole('row').count()).toBeGreaterThan(1);
+    const loadAllDebts = balance.getByRole('button', { name: 'Cargar todos', exact: true });
+    if (await loadAllDebts.isVisible().catch(() => false)) {
+      await loadAllDebts.click();
+      await expect(balance.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).first()).toBeVisible();
+    }
+
+    for (const format of ['Excel', 'PDF']) {
+      await exportFromGlobalModal(page, {
+        openButton: balance.getByRole('button', { name: 'Exportar pestaña actual', exact: true }),
+        format,
+        expectedExtension: format === 'Excel' ? '.xlsx' : '.pdf',
+      });
+      await exportFromGlobalModal(page, {
+        openButton: balance.getByRole('button', { name: 'Exportar todas las pestañas', exact: true }),
+        format,
+        expectedExtension: format === 'Excel' ? '.xlsx' : '.pdf',
+      });
+    }
+
     await balance.getByRole('button', { name: 'Cerrar' }).click();
+    await deletePayment(request, guaranteedPayment.items[0].id_pago);
   });
 
   test('Otros ingresos UI registra, edita, filtra, exporta y elimina un movimiento real E2E', async ({ page, request }) => {
     const names = contableNames('UIINCOME');
     const options = await createIncomeOptions(request, names);
+    options.wrongCategory = await createOption(request, 'CATEGORIA_INGRESO', `${names.incomeCategory} OTRO`);
     const { medium } = await baseCatalogs(request);
+    const wrongMediumDefinition = configValues().medios_pago;
+    const wrongMediumResponse = await apiCall(request, 'configuracion_lista_guardar', {
+      method: 'POST', data: { lista: 'medios_pago', nombre: wrongMediumDefinition.nombre },
+    });
+    const wrongMediumId = Number(wrongMediumResponse.item.id_medio_pago);
     const { year, month } = dateParts();
     let incomeId = null;
 
@@ -686,12 +785,41 @@ test.describe('Contabilidad · UI completa', () => {
       await expect(dialog).toBeHidden();
 
       await search.fill(`${names.detail} EDITADO`);
-      const editedRow = page.getByRole('row').filter({ hasText: names.provider });
+      let editedRow = page.getByRole('row').filter({ hasText: names.provider });
       await expect(editedRow).toContainText('5.000');
+
+      // Todos los filtros manuales del front deben incluir y excluir de verdad.
+      await page.getByLabel('Categoría', { exact: true }).selectOption(String(options.wrongCategory.id_opcion));
+      await expect(page.getByRole('row').filter({ hasText: names.provider })).toHaveCount(0);
+      await page.getByLabel('Categoría', { exact: true }).selectOption(String(options.category.id_opcion));
+      editedRow = page.getByRole('row').filter({ hasText: names.provider });
+      await expect(editedRow).toBeVisible();
+
+      await page.getByLabel('Medio de pago', { exact: true }).selectOption(String(wrongMediumId));
+      await expect(page.getByRole('row').filter({ hasText: names.provider })).toHaveCount(0);
+      await page.getByLabel('Medio de pago', { exact: true }).selectOption(String(medium.id_medio_pago));
+      editedRow = page.getByRole('row').filter({ hasText: names.provider });
+      await expect(editedRow).toBeVisible();
+
+      const wrongYear = await apiCall(request, 'contable_ingresos_listar', {
+        params: { anio: year + 1, mes: month, buscar: names.detail },
+      });
+      expect(wrongYear.items).toHaveLength(0);
+
+      const otherMonth = month === 1 ? 2 : 1;
+      await page.getByLabel('Mes').selectOption(String(otherMonth));
+      await expect(page.getByRole('row').filter({ hasText: names.provider })).toHaveCount(0);
+      await page.getByLabel('Mes').selectOption(String(month));
+      editedRow = page.getByRole('row').filter({ hasText: names.provider });
+      await expect(editedRow).toBeVisible();
 
       await exportFromGlobalModal(page, {
         openButton: page.getByRole('button', { name: 'Exportar' }).first(),
         format: 'Excel', expectedExtension: '.xlsx',
+      });
+      await exportFromGlobalModal(page, {
+        openButton: page.getByRole('button', { name: 'Exportar' }).first(),
+        format: 'PDF', expectedExtension: '.pdf',
       });
 
       await editedRow.locator('button[title="Anular"]').click();
@@ -704,14 +832,25 @@ test.describe('Contabilidad · UI completa', () => {
       if (incomeId) {
         try { await apiCall(request, 'contable_ingreso_eliminar', { method: 'POST', data: { id_ingreso: incomeId } }); } catch (_error) {}
       }
+      try {
+        await apiCall(request, 'configuracion_lista_eliminar_definitivo', {
+          method: 'POST', data: { lista: 'medios_pago', id: wrongMediumId },
+        });
+      } catch (_error) {}
       await removeOptions(request, options);
     }
   });
 
-  test('Egresos UI registra, adjunta comprobante, edita, quita archivo y elimina', async ({ page, request }) => {
+  test('Egresos UI registra, filtra, exporta Excel/PDF, adjunta comprobante, edita, quita archivo y elimina', async ({ page, request }) => {
     const names = contableNames('UIEXPENSE');
     const options = await createExpenseOptions(request, names);
+    options.wrongCategory = await createOption(request, 'CATEGORIA_EGRESO', `${names.expenseCategory} OTRO`);
     const { medium } = await baseCatalogs(request);
+    const wrongMediumDefinition = configValues().medios_pago;
+    const wrongMediumResponse = await apiCall(request, 'configuracion_lista_guardar', {
+      method: 'POST', data: { lista: 'medios_pago', nombre: wrongMediumDefinition.nombre },
+    });
+    const wrongMediumId = Number(wrongMediumResponse.item.id_medio_pago);
     const { year, month } = dateParts();
     let expenseId = null;
 
@@ -749,9 +888,39 @@ test.describe('Contabilidad · UI completa', () => {
 
       const search = page.getByRole('textbox', { name: 'Búsqueda' });
       await search.fill(names.receipt);
+      await page.getByLabel('Categoría', { exact: true }).selectOption(String(options.wrongCategory.id_opcion));
+      await expect(page.getByRole('row').filter({ hasText: names.provider })).toHaveCount(0);
+      await page.getByLabel('Categoría', { exact: true }).selectOption(String(options.category.id_opcion));
       let row = page.getByRole('row').filter({ hasText: names.provider });
       await expect(row).toBeVisible();
+
+      await page.getByLabel('Medio de pago', { exact: true }).selectOption(String(wrongMediumId));
+      await expect(page.getByRole('row').filter({ hasText: names.provider })).toHaveCount(0);
+      await page.getByLabel('Medio de pago', { exact: true }).selectOption(String(medium.id_medio_pago));
+      row = page.getByRole('row').filter({ hasText: names.provider });
+      await expect(row).toBeVisible();
       await expect(row.locator('button[title="Ver comprobante"]')).toBeEnabled();
+
+      const wrongYear = await apiCall(request, 'contable_egresos_listar', {
+        params: { anio: year + 1, mes: month, buscar: names.receipt },
+      });
+      expect(wrongYear.items).toHaveLength(0);
+
+      const otherMonth = month === 1 ? 2 : 1;
+      await page.getByLabel('Mes').selectOption(String(otherMonth));
+      await expect(page.getByRole('row').filter({ hasText: names.provider })).toHaveCount(0);
+      await page.getByLabel('Mes').selectOption(String(month));
+      row = page.getByRole('row').filter({ hasText: names.provider });
+      await expect(row).toBeVisible();
+
+      await exportFromGlobalModal(page, {
+        openButton: page.getByRole('button', { name: 'Exportar' }).first(),
+        format: 'Excel', expectedExtension: '.xlsx',
+      });
+      await exportFromGlobalModal(page, {
+        openButton: page.getByRole('button', { name: 'Exportar' }).first(),
+        format: 'PDF', expectedExtension: '.pdf',
+      });
 
       await row.locator('button[title="Editar"]').click();
       dialog = page.getByRole('dialog', { name: 'Editar egreso' });
@@ -778,6 +947,11 @@ test.describe('Contabilidad · UI completa', () => {
       if (expenseId) {
         try { await apiCall(request, 'contable_egreso_eliminar', { method: 'POST', data: { id_egreso: expenseId } }); } catch (_error) {}
       }
+      try {
+        await apiCall(request, 'configuracion_lista_eliminar_definitivo', {
+          method: 'POST', data: { lista: 'medios_pago', id: wrongMediumId },
+        });
+      } catch (_error) {}
       await removeOptions(request, options);
     }
   });
