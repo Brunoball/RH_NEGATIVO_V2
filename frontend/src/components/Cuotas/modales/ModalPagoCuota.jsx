@@ -537,6 +537,16 @@ export default function ModalPagoCuota({
             >
               {registrationPaid ? (
                 <div className="cuotas-registration-paid">
+                  <button
+                    type="button"
+                    className="cuotas-registration-paid__delete"
+                    onClick={requestDeleteRegistration}
+                    aria-label="Eliminar pago de inscripción"
+                    title="Eliminar pago de inscripción"
+                  >
+                    <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
+                  </button>
+
                   <span className="cuotas-registration-paid__icon" aria-hidden="true">
                     <FontAwesomeIcon icon={faIdCard} />
                   </span>
@@ -549,33 +559,34 @@ export default function ModalPagoCuota({
                         ? ` · ${registrationPayment.medio_pago}`
                         : " · medio no informado"}
                     </small>
-                    <p>
-                      La inscripción se cobra una sola vez por socio. Si este pago
-                      fue cargado por error, podés eliminarlo para que vuelva a
-                      quedar pendiente.
-                    </p>
-                    <button
-                      type="button"
-                      className="mov-btn mov-btn--danger"
-                      style={{ justifySelf: "start", marginTop: 8 }}
-                      onClick={requestDeleteRegistration}
-                    >
-                      <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
-                      Eliminar pago de inscripción
-                    </button>
                   </div>
                 </div>
               ) : (
                 <>
                   <header className="cuotas-registration-card__header">
-                    <div>
-                      <span>Inscripción única</span>
-                      <strong>Registrar pago de ingreso</strong>
+                    <div className="cuotas-registration-card__identity">
+                      <span className="cuotas-registration-card__icon" aria-hidden="true">
+                        <FontAwesomeIcon icon={faIdCard} />
+                      </span>
+                      <div className="cuotas-registration-card__copy">
+                        <div className="cuotas-registration-card__eyebrow">
+                          <span>Inscripción</span>
+                          <em>Pago único</em>
+                        </div>
+                        <strong>Registrar pago de ingreso</strong>
+                        <small>Este cobro se realiza una sola vez por socio.</small>
+                      </div>
                     </div>
-                    <small>Este cobro se realiza una sola vez por socio.</small>
+
+                    <div className="cuotas-registration-card__suggested">
+                      <span>Importe sugerido</span>
+                      <strong>{money(registrationContext?.monto_sugerido || 0)}</strong>
+                      <small>Podés modificarlo</small>
+                    </div>
                   </header>
 
-                  <div className="cuotas-registration-fields">
+                  <div className="cuotas-registration-card__body">
+                    <div className="cuotas-registration-fields">
                     <FloatingField
                       label="Monto de inscripción *"
                       active={Boolean(paymentForm.monto_inscripcion)}
@@ -629,15 +640,15 @@ export default function ModalPagoCuota({
                         ))}
                       </select>
                     </FloatingField>
-                  </div>
+                    </div>
 
-                  <div className="cuotas-registration-note" role="note">
-                    <FontAwesomeIcon icon={faIdCard} aria-hidden="true" />
-                    <span>
-                      El importe sugerido se completa automáticamente con el valor
-                      de inscripción vigente. Podés reemplazarlo por otro monto
-                      antes de registrar el pago.
-                    </span>
+                    <div className="cuotas-registration-note" role="note">
+                      <FontAwesomeIcon icon={faIdCard} aria-hidden="true" />
+                      <span>
+                        El valor vigente se completa automáticamente. Si corresponde,
+                        podés ingresar otro importe antes de registrar el pago.
+                      </span>
+                    </div>
                   </div>
                 </>
               )}

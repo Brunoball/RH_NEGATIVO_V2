@@ -131,17 +131,17 @@
 }
 
 .cuotas-head-filters .cuotas-year-filter {
-  flex: 0 1 70px;
-  width: 70px;
-  min-width: 0;
-  max-width: 70px;
+  flex: 0 0 80px;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
 }
 
 .cuotas-head-filters .cuotas-month-filter {
-  flex: 0 0 130px;
-  width: 130px;
-  min-width: 130px;
-  max-width: 130px;
+  flex: 0 0 140px;
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
 }
 
 .cuotas-head-filters .cuotas-partner-state-filter {
@@ -360,14 +360,96 @@
   background: transparent;
 }
 
+.cuotas-pagination__left {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 8px 12px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* Chips de filtros activos: mismo patrón visual que Socios. */
+.cuotas-activeFilters {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  flex: 0 1 auto;
+  justify-content: flex-start;
+  gap: 7px 9px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.cuotas-activeFilters__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.cuotas-activeFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  padding: 3px 4px 3px 11px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.cuotas-activeFilterChip > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cuotas-activeFilterChip strong {
+  color: #1d4ed8;
+  font-weight: 900;
+}
+
+.cuotas-activeFilterChip button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.cuotas-activeFilterChip button:hover,
+.cuotas-activeFilterChip button:focus-visible {
+  background: #dbeafe;
+  color: #1e3a8a;
+  outline: none;
+}
+
 .cuotas-pagination__summary {
   margin: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
   color: var(--text-secondary);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .cuotas-pagination__summary strong {
@@ -375,12 +457,27 @@
   font-weight: 800;
 }
 
-.cuotas-pagination__summary span {
+.cuotas-pagination__summaryFull,
+.cuotas-pagination__summaryCompact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.cuotas-pagination__summaryCompact,
+.cuotas-pagination__loadingCompact {
+  display: none;
+}
+
+.cuotas-pagination__loadingFull,
+.cuotas-pagination__loadingCompact {
   margin-left: 6px;
   color: var(--primary-600);
   font-size: 10px;
   font-weight: 800;
   text-align: right;
+  white-space: nowrap;
 }
 
 .cuotas-pagination__controls {
@@ -849,6 +946,16 @@
     transform: none;
   }
 
+  .cuotas-pagination__summaryFull,
+  .cuotas-pagination__loadingFull {
+    display: none;
+  }
+
+  .cuotas-pagination__summaryCompact,
+  .cuotas-pagination__loadingCompact {
+    display: inline-flex;
+  }
+
   .cuotas-lower-actions .cuotas-barcode-lower-action {
     border: 1px solid
       color-mix(
@@ -974,16 +1081,16 @@
   }
 
   .cuotas-head-filters .cuotas-year-filter {
-    width: 70px;
-    min-width: 0;
-    max-width: 70px;
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
     justify-self: end;
   }
 
   .cuotas-head-filters .cuotas-month-filter {
-    width: 130px;
-    min-width: 130px;
-    max-width: 130px;
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
     justify-self: end;
   }
 
@@ -1068,6 +1175,27 @@
   .cuotas-pagination {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .cuotas-pagination__left {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .cuotas-activeFilters {
+    align-items: center;
+    justify-content: flex-start;
+    width: auto;
+    overflow-x: auto;
+  }
+
+  .cuotas-activeFilters__list {
+    max-width: none;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
   }
 
   .cuotas-pagination__controls {

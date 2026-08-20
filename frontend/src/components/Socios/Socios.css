@@ -59,10 +59,10 @@
 
 .socios-grid.socios-grid--bajas {
   grid-template-columns:
-    minmax(80px, .55fr)
+    minmax(64px, .42fr)
     minmax(0, 2fr)
-    minmax(125px, .9fr)
-    minmax(0, 2.7fr)
+    minmax(128px, .72fr)
+    minmax(0, 3.45fr)
     minmax(0, .9fr);
 }
 
@@ -73,9 +73,11 @@
 
 .socios-bajaReasonCell {
   min-width: 0;
+  align-items: flex-start;
+  justify-content: center;
 }
 
-.socios-bajaReasonCell span {
+.socios-bajaReasonCell > span {
   display: block;
   overflow-wrap: anywhere;
   line-height: 1.3;
@@ -1437,4 +1439,12 @@
   .socios-contactInfo__popover {
     transition: none;
   }
+}
+
+/* El motivo de baja aprovecha todo el ancho real de su columna antes de truncarse. */
+.socios-bajaReasonCell > .global-reason-preview,
+.socios-bajaReasonCell > .global-reason-preview__text {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }

@@ -1650,49 +1650,167 @@ html[data-theme="oscuro"] .cuotas-family-card .cuotas-family-members .cuotas-fam
   background: rgb(22 101 52 / 0.38);
 }
 
-/* Inscripción: cobro único de ingreso del socio. */
+/* Inscripción: tarjeta de cobro único de ingreso del socio. */
 .cuotas-registration-card {
+  --cuotas-registration-tone: var(--balto-action);
+  position: relative;
   display: grid;
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid color-mix(in srgb, var(--mov-border) 92%, transparent);
-  border-radius: 12px;
-  background: #fff;
+  overflow: hidden;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--cuotas-registration-tone) 22%,
+    var(--mov-border)
+  );
+  border-radius: 16px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--cuotas-registration-tone) 7%, #fff) 0%,
+    #fff 42%,
+    #fff 100%
+  );
+  box-shadow: 0 14px 34px -28px rgb(15 23 42 / 0.58);
+}
+
+.cuotas-registration-card::before {
+  position: absolute;
+  inset: 14px auto 14px 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: var(--cuotas-registration-tone);
+  content: "";
+}
+
+.cuotas-registration-card::after {
+  position: absolute;
+  top: -52px;
+  right: -38px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--cuotas-registration-tone) 8%, transparent);
+  pointer-events: none;
+  content: "";
 }
 
 .cuotas-registration-card__header {
+  position: relative;
+  z-index: 1;
+  min-height: 92px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding-bottom: 13px;
-  border-bottom: 1px solid color-mix(in srgb, var(--mov-border) 74%, transparent);
+  padding: 17px 18px 16px 20px;
 }
 
-.cuotas-registration-card__header > div {
+.cuotas-registration-card__identity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cuotas-registration-card__icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--cuotas-registration-tone) 26%, transparent);
+  border-radius: 13px;
+  color: var(--cuotas-registration-tone);
+  background: color-mix(in srgb, var(--cuotas-registration-tone) 12%, #fff);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--cuotas-registration-tone) 12%, transparent);
+  font-size: 16px;
+}
+
+.cuotas-registration-card__copy {
+  min-width: 0;
   display: grid;
   gap: 3px;
 }
 
-.cuotas-registration-card__header span {
-  color: var(--balto-action);
-  font-size: 10px;
-  font-weight: 780;
-  letter-spacing: 0.06em;
+.cuotas-registration-card__eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.cuotas-registration-card__eyebrow > span {
+  color: color-mix(in srgb, var(--cuotas-registration-tone) 80%, var(--balto-text));
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-.cuotas-registration-card__header strong {
-  color: var(--balto-ink);
-  font-size: 15px;
+.cuotas-registration-card__eyebrow > em {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--cuotas-registration-tone) 22%, transparent);
+  border-radius: 999px;
+  color: var(--cuotas-registration-tone);
+  background: color-mix(in srgb, var(--cuotas-registration-tone) 8%, #fff);
+  font-size: 8.5px;
+  font-style: normal;
+  font-weight: 720;
+  letter-spacing: 0.025em;
 }
 
-.cuotas-registration-card__header small {
-  max-width: 280px;
+.cuotas-registration-card__copy > strong {
+  color: var(--balto-ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cuotas-registration-card__copy > small {
   color: var(--balto-text);
   font-size: 10.5px;
-  line-height: 1.45;
+  line-height: 1.4;
+}
+
+.cuotas-registration-card__suggested {
+  min-width: 138px;
+  display: grid;
+  gap: 1px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--cuotas-registration-tone) 17%, var(--mov-border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--cuotas-registration-tone) 4%, #fff);
   text-align: right;
+}
+
+.cuotas-registration-card__suggested > span {
+  color: var(--balto-text);
+  font-size: 8.5px;
+  font-weight: 690;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.cuotas-registration-card__suggested > strong {
+  color: var(--balto-ink);
+  font-size: 16px;
+  font-weight: 730;
+  line-height: 1.15;
+}
+
+.cuotas-registration-card__suggested > small {
+  color: var(--balto-text);
+  font-size: 8.5px;
+}
+
+.cuotas-registration-card__body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 11px;
+  margin: 0 12px 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--mov-border) 86%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, #fff 94%, var(--balto-bg));
 }
 
 .cuotas-registration-fields {
@@ -1707,35 +1825,69 @@ html[data-theme="oscuro"] .cuotas-family-card .cuotas-family-members .cuotas-fam
 
 .cuotas-registration-note {
   display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--balto-action) 18%, var(--mov-border));
-  border-radius: 9px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--mov-border) 72%, transparent);
   color: var(--balto-text);
-  background: color-mix(in srgb, var(--balto-action) 4%, #fff);
-  font-size: 10.5px;
-  line-height: 1.45;
+  font-size: 9.5px;
+  line-height: 1.4;
 }
 
 .cuotas-registration-note svg {
   flex: 0 0 auto;
-  margin-top: 2px;
-  color: var(--balto-action);
+  color: var(--cuotas-registration-tone);
+  font-size: 11px;
 }
 
 .cuotas-registration-card.is-paid {
+  --cuotas-registration-tone: var(--balto-success, #22ad5c);
   border-color: rgb(34 197 94 / 0.34);
-  background: #f8fffa;
+  background: linear-gradient(145deg, #f3fff7 0%, #fff 62%);
 }
 
 .cuotas-registration-paid {
-  min-height: 150px;
-  display: flex;
+  position: relative;
+  z-index: 1;
+  min-height: 132px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 15px;
-  padding: 22px;
+  gap: 14px;
+  padding: 20px 58px 20px 22px;
+}
+
+.cuotas-registration-paid__delete {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(225 61 69 / 0.22);
+  border-radius: 9px;
+  padding: 0;
+  color: var(--balto-danger, #e13d45);
+  background: color-mix(in srgb, var(--balto-danger, #e13d45) 7%, #fff);
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 5px 14px -11px rgb(225 61 69 / 0.78);
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.cuotas-registration-paid__delete:hover,
+.cuotas-registration-paid__delete:focus-visible {
+  border-color: rgb(225 61 69 / 0.42);
+  color: #b91c1c;
+  background: color-mix(in srgb, var(--balto-danger, #e13d45) 13%, #fff);
+  transform: translateY(-1px);
+  outline: none;
 }
 
 .cuotas-registration-paid__icon {
@@ -1744,51 +1896,48 @@ html[data-theme="oscuro"] .cuotas-family-card .cuotas-family-members .cuotas-fam
   flex: 0 0 46px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border: 1px solid rgb(34 197 94 / 0.24);
+  border-radius: 13px;
   color: #166534;
   background: #dcfce7;
   font-size: 18px;
 }
 
 .cuotas-registration-paid__content {
+  min-width: 0;
   display: grid;
   gap: 4px;
 }
 
 .cuotas-registration-paid__content > span {
   color: #166534;
-  font-size: 10px;
-  font-weight: 780;
-  letter-spacing: 0.05em;
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.055em;
   text-transform: uppercase;
 }
 
 .cuotas-registration-paid__content > strong {
   color: #14532d;
-  font-size: 21px;
+  font-size: 20px;
+  font-weight: 730;
 }
 
 .cuotas-registration-paid__content > small {
   color: #166534;
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.cuotas-registration-paid__content > p {
-  max-width: 520px;
-  margin: 3px 0 0;
-  color: var(--balto-text);
   font-size: 10.5px;
-  line-height: 1.5;
+  font-weight: 620;
 }
 
 @media (max-width: 760px) {
   .cuotas-registration-card__header {
     display: grid;
+    align-items: start;
   }
 
-  .cuotas-registration-card__header small {
-    max-width: none;
+  .cuotas-registration-card__suggested {
+    min-width: 0;
+    width: 100%;
     text-align: left;
   }
 
@@ -1796,25 +1945,51 @@ html[data-theme="oscuro"] .cuotas-family-card .cuotas-family-members .cuotas-fam
     grid-template-columns: 1fr;
   }
 
+  .cuotas-registration-card__body {
+    margin: 0 9px 9px;
+    padding: 12px;
+  }
+
   .cuotas-registration-paid {
     align-items: flex-start;
-    justify-content: flex-start;
-    padding: 10px 2px;
+    padding: 17px 54px 17px 18px;
+  }
+}
+
+@media (max-width: 520px) {
+  .cuotas-registration-card__identity {
+    align-items: flex-start;
+  }
+
+  .cuotas-registration-card__icon {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .cuotas-registration-paid {
+    grid-template-columns: 1fr;
   }
 }
 
 html[data-theme="oscuro"] .cuotas-registration-card {
-  border-color: color-mix(in srgb, var(--mov-border) 90%, transparent);
-  background: var(--balto-surface, #111827);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--cuotas-registration-tone) 10%, #111827) 0%, #111827 58%);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-card__icon,
+html[data-theme="oscuro"] .cuotas-registration-card__eyebrow > em,
+html[data-theme="oscuro"] .cuotas-registration-card__suggested {
+  background: color-mix(in srgb, var(--cuotas-registration-tone) 12%, #111827);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-card__body {
+  border-color: color-mix(in srgb, var(--mov-border) 88%, transparent);
+  background: color-mix(in srgb, #111827 92%, var(--cuotas-registration-tone));
 }
 
 html[data-theme="oscuro"] .cuotas-registration-card.is-paid {
   border-color: rgb(74 222 128 / 0.4);
-  background: rgb(22 101 52 / 0.12);
-}
-
-html[data-theme="oscuro"] .cuotas-registration-note {
-  background: color-mix(in srgb, var(--balto-action) 8%, transparent);
+  background: linear-gradient(145deg, rgb(22 101 52 / 0.18) 0%, #111827 62%);
 }
 
 html[data-theme="oscuro"] .cuotas-registration-paid__icon {
@@ -1826,4 +2001,18 @@ html[data-theme="oscuro"] .cuotas-registration-paid__content > span,
 html[data-theme="oscuro"] .cuotas-registration-paid__content > strong,
 html[data-theme="oscuro"] .cuotas-registration-paid__content > small {
   color: #bbf7d0;
+}
+
+
+html[data-theme="oscuro"] .cuotas-registration-paid__delete {
+  border-color: rgb(248 113 113 / 0.28);
+  color: #fca5a5;
+  background: rgb(127 29 29 / 0.24);
+}
+
+html[data-theme="oscuro"] .cuotas-registration-paid__delete:hover,
+html[data-theme="oscuro"] .cuotas-registration-paid__delete:focus-visible {
+  border-color: rgb(248 113 113 / 0.46);
+  color: #fecaca;
+  background: rgb(127 29 29 / 0.38);
 }

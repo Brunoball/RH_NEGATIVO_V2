@@ -12,6 +12,7 @@ import {
   faTimes,
   faUserGroup,
   faWallet,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../Global/ModulePage";
 import GlobalDivTable from "../Global/GlobalDivTable";
@@ -395,6 +396,39 @@ function CuotasFilterChoices({ options, value, onChange }) {
         );
       })}
     </div>
+  );
+}
+
+function findCuotasFilterLabel(items, value, valueKey) {
+  return (
+    (items || []).find((item) => String(item?.[valueKey]) === String(value))
+      ?.nombre || String(value)
+  );
+}
+
+function CuotasActiveFilterChips({ chips, onRemove }) {
+  if (!chips.length) return null;
+
+  return (
+    <section className="cuotas-activeFilters" aria-label="Filtros activos">
+      <div className="cuotas-activeFilters__list">
+        {chips.map((chip) => (
+          <span className="cuotas-activeFilterChip" key={chip.key}>
+            <span>
+              <strong>{chip.value}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(chip.key)}
+              aria-label={`Eliminar filtro ${chip.label}: ${chip.value}`}
+              title={`Eliminar filtro ${chip.label}`}
+            >
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -945,6 +979,51 @@ export default function Cuotas() {
   const isPaid = estado === "PAGADOS";
   const isCondoned = estado === "CONDONADOS";
   const isResolved = isPaid || isCondoned;
+  const activeAdvancedFilters = useMemo(
+    () =>
+      [
+        estadoPersona
+          ? {
+              key: "estadoPersona",
+              label: "Estado",
+              value: findCuotasFilterLabel(
+                catalogos.estados,
+                estadoPersona,
+                "id_estado",
+              ),
+            }
+          : null,
+        cobrador
+          ? {
+              key: "cobrador",
+              label: "Cobrador",
+              value: findCuotasFilterLabel(
+                catalogos.cobradores,
+                cobrador,
+                "id_cobrador",
+              ),
+            }
+          : null,
+        isPaid && medioPago
+          ? {
+              key: "medioPago",
+              label: "Medio",
+              value: findCuotasFilterLabel(
+                catalogos.medios_pago,
+                medioPago,
+                "id_medio_pago",
+              ),
+            }
+          : null,
+      ].filter(Boolean),
+    [catalogos, cobrador, estadoPersona, isPaid, medioPago],
+  );
+
+  const removeAdvancedFilter = useCallback((key) => {
+    if (key === "estadoPersona") setEstadoPersona("");
+    if (key === "cobrador") setCobrador("");
+    if (key === "medioPago") setMedioPago("");
+  }, []);
   const exportRecords = useCallback(
     (records) =>
       (records || []).map((item) => ({
@@ -2574,19 +2653,44 @@ export default function Cuotas() {
         </GlobalDivTable>
 
         <div className="cuotas-table-footer">
-          {totalRegistros ? (
+          {totalRegistros || activeAdvancedFilters.length ? (
             <nav
               className="cuotas-pagination"
               aria-label="Paginación de cuotas"
             >
-              <p className="cuotas-pagination__summary">
-                Mostrando <strong>{registroDesde}</strong>–
-                <strong>{registroHasta}</strong> de{" "}
-                <strong>{totalRegistros}</strong> registros
-                {loading ? <span>Cargando página...</span> : null}
-              </p>
+              <div className="cuotas-pagination__left">
+                {totalRegistros ? (
+                  <p className="cuotas-pagination__summary">
+                    <span className="cuotas-pagination__summaryFull">
+                      Mostrando <strong>{registroDesde}</strong>–
+                      <strong>{registroHasta}</strong> de{" "}
+                      <strong>{totalRegistros}</strong> registros
+                    </span>
+                    <span className="cuotas-pagination__summaryCompact">
+                      <strong>{registroDesde}</strong>–
+                      <strong>{registroHasta}</strong> /{" "}
+                      <strong>{totalRegistros}</strong>
+                    </span>
+                    {loading ? (
+                      <>
+                        <span className="cuotas-pagination__loadingFull">
+                          Cargando página...
+                        </span>
+                        <span className="cuotas-pagination__loadingCompact">
+                          Cargando...
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+                <CuotasActiveFilterChips
+                  chips={activeAdvancedFilters}
+                  onRemove={removeAdvancedFilter}
+                />
+              </div>
 
-              <div className="cuotas-pagination__controls">
+              {totalRegistros ? (
+                <div className="cuotas-pagination__controls">
                 <button
                   type="button"
                   onClick={() => setPagina((actual) => Math.max(1, actual - 1))}
@@ -2627,7 +2731,8 @@ export default function Cuotas() {
                 >
                   Siguiente
                 </button>
-              </div>
+                </div>
+              ) : null}
             </nav>
           ) : null}
 

@@ -5,6 +5,7 @@ import {
   faArrowLeft,
   faArrowRotateLeft,
   faCalculator,
+  faInfoCircle,
   faChevronRight,
   faGear,
   faMoneyBillTransfer,
@@ -609,6 +610,12 @@ function CatalogsPanel() {
   };
 
   const usageCount = Number(stateModal?.item?.cantidad_usos || 0);
+  const structuralNotice =
+    activeList === "periodo"
+      ? "Los 7 períodos son estructurales del sistema: no se pueden agregar, editar, dar de baja ni eliminar."
+      : activeList === "estado"
+        ? "ACTIVO y PASIVO son estados estructurales y permanecen protegidos; podés administrar estados auxiliares."
+        : null;
 
   return (
     <>
@@ -639,11 +646,7 @@ function CatalogsPanel() {
         notice={
           !writable
             ? "Tu usuario tiene permiso de consulta. Las modificaciones están deshabilitadas."
-            : activeList === "periodo"
-              ? "Los 7 períodos son estructurales del sistema: no se pueden agregar, editar, dar de baja ni eliminar."
-              : activeList === "estado"
-                ? "ACTIVO y PASIVO son estados estructurales y permanecen protegidos; podés administrar estados auxiliares."
-                : null
+            : null
         }
       >
         <ModuleFeedback
@@ -663,29 +666,51 @@ function CatalogsPanel() {
 
         <section className="config-catalogPanel">
           <header className="config-catalogPanel__toolbar">
-            <div
-              className="config-catalogTabs"
-              role="tablist"
-              aria-label="Catálogos generales"
-            >
-              {Object.entries(CATALOG_META).map(([key, option]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeList === key}
-                  className={activeList === key ? "is-active" : ""}
-                  onClick={() => {
-                    setActiveList(key);
-                    setSearchParams({ lista: key }, { replace: true });
-                    setSearch("");
-                    setFeedback(null);
-                  }}
-                >
-                  <FontAwesomeIcon icon={option.icon} />
-                  {option.title}
-                </button>
-              ))}
+            <div className="config-catalogTabsRow">
+              <div
+                className="config-catalogTabs"
+                role="tablist"
+                aria-label="Catálogos generales"
+              >
+                {Object.entries(CATALOG_META).map(([key, option]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeList === key}
+                    className={activeList === key ? "is-active" : ""}
+                    onClick={() => {
+                      setActiveList(key);
+                      setSearchParams({ lista: key }, { replace: true });
+                      setSearch("");
+                      setFeedback(null);
+                    }}
+                  >
+                    <FontAwesomeIcon icon={option.icon} />
+                    {option.title}
+                  </button>
+                ))}
+              </div>
+
+              {structuralNotice ? (
+                <span className="config-catalogInfo">
+                  <button
+                    type="button"
+                    className="config-catalogInfo__trigger"
+                    aria-label={`Información sobre ${meta.title}`}
+                    aria-describedby="config-catalog-structural-info"
+                  >
+                    <FontAwesomeIcon icon={faInfoCircle} aria-hidden="true" />
+                  </button>
+                  <span
+                    className="config-catalogInfo__tooltip"
+                    id="config-catalog-structural-info"
+                    role="tooltip"
+                  >
+                    {structuralNotice}
+                  </span>
+                </span>
+              ) : null}
             </div>
             <strong>
               {loading

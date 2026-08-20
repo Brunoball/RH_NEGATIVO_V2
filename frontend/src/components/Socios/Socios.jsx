@@ -35,6 +35,7 @@ import InfoModal, {
   InfoSummary,
 } from "../Global/Modales/InfoModal";
 import ModalEliminarGlobal from "../Global/Modales/ModalEliminarGlobal";
+import ModalMotivoGlobal, { MotivoPreviewGlobal } from "../Global/Modales/ModalMotivoGlobal";
 import ModalExportarGlobal from "../Global/Modales/ModalExportarGlobal";
 import ModuleFeedback from "../Global/ModuleFeedback";
 import BotonExportarGlobal from "../Global/Botones/BotonExportarGlobal";
@@ -734,7 +735,7 @@ function BirthdayContactCard({ items, onView, onClose, writable }) {
   );
 }
 
-const SociosRows = memo(function SociosRows({ items, writable, showBajas, onHistory, onEdit, onState, onDelete }) {
+const SociosRows = memo(function SociosRows({ items, writable, showBajas, onHistory, onEdit, onState, onDelete, onReason }) {
   return items.map((item) => (
     <div
       className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row socios-grid ${showBajas ? "socios-grid--bajas" : ""} socios-contactRow ${contactToneClass(item.ultimo_contacto_estado)}`}
@@ -755,7 +756,13 @@ const SociosRows = memo(function SociosRows({ items, writable, showBajas, onHist
             <strong>{item.fecha_baja ? formatDate(item.fecha_baja) : "SIN FECHA"}</strong>
           </div>
           <div className="mov-gridCell socios-bajaReasonCell">
-            <span>{item.motivo_baja || "SIN MOTIVO INFORMADO"}</span>
+            <MotivoPreviewGlobal
+              text={item.motivo_baja}
+              emptyText="SIN MOTIVO INFORMADO"
+              onOpen={() => onReason?.(item)}
+              title="Ver motivo de baja completo"
+              ariaLabel={`Ver motivo de baja completo de ${item.nombre}`}
+            />
           </div>
         </>
       ) : (
@@ -1154,6 +1161,7 @@ export default function Socios() {
   const [saving, setSaving] = useState(false);
   const [stateModal, setStateModal] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
+  const [reasonModal, setReasonModal] = useState(null);
   const [stateDate, setStateDate] = useState(localToday());
   const [infoModal, setInfoModal] = useState(null);
   const [infoTab, setInfoTab] = useState(INFO_TAB_GENERAL);
@@ -1468,7 +1476,7 @@ export default function Socios() {
           loadingLabel="Cargando socios..."
           skeletonRows={7}
           columns={isBajas ? [
-            { label: "ID socio", align: "center" },
+            { label: "ID", align: "center" },
             "Socio",
             { label: "Fecha de baja", align: "center" },
             "Motivo",
@@ -1490,7 +1498,7 @@ export default function Socios() {
               <span>Cambiá los filtros o creá un nuevo registro.</span>
             </div>
           ) : null}
-          <SociosRows items={items} writable={writable} showBajas={isBajas} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} />
+          <SociosRows items={items} writable={writable} showBajas={isBajas} onHistory={openHistory} onEdit={openEdit} onState={openState} onDelete={openDelete} onReason={setReasonModal} />
         </GlobalDivTable>
 
         <footer className="socios-pagination">
@@ -1632,6 +1640,20 @@ export default function Socios() {
           </>
         ) : null}
       </InfoModal>
+
+      <ModalMotivoGlobal
+        open={Boolean(reasonModal)}
+        title="Motivo de baja"
+        subtitle={
+          reasonModal
+            ? `Socio: ${reasonModal.nombre} · Baja: ${formatDate(reasonModal.fecha_baja)}`
+            : ""
+        }
+        label="Motivo registrado"
+        text={reasonModal?.motivo_baja}
+        emptyText="SIN MOTIVO INFORMADO"
+        onClose={() => setReasonModal(null)}
+      />
 
       <ModalEliminarGlobal
         open={Boolean(stateModal)}

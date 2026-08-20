@@ -1,0 +1,110 @@
+/* Modal global para visualizar motivos u observaciones extensas. */
+.global-reason-modal.entity-modal {
+  width: min(580px, 100%);
+}
+
+.global-reason-modal .entity-modal__body {
+  padding: 16px 20px 20px;
+}
+
+.global-reason-modal__content {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--entity-modal-action, #2563eb) 18%,
+    var(--entity-modal-border, #e5e7eb)
+  );
+  border-radius: 14px;
+  background: color-mix(
+    in srgb,
+    var(--entity-modal-action, #2563eb) 4%,
+    var(--surface-color, #fff)
+  );
+}
+
+.global-reason-modal__content > span {
+  color: color-mix(
+    in srgb,
+    var(--entity-modal-action, #2563eb) 82%,
+    var(--entity-modal-ink, #1f2937)
+  );
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.global-reason-modal__content p {
+  margin: 0;
+  color: var(--entity-modal-ink, #1f2937);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.global-reason-preview__text,
+.global-reason-preview > span {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--entity-modal-text, var(--text-secondary, #64748b));
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-reason-preview {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
+  gap: 3px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.global-reason-preview:hover {
+  background: color-mix(
+    in srgb,
+    var(--entity-modal-action, #2563eb) 8%,
+    transparent
+  );
+}
+
+.global-reason-preview:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px
+    color-mix(
+      in srgb,
+      var(--entity-modal-action, #2563eb) 22%,
+      transparent
+    );
+}
+
+.global-reason-preview small {
+  color: color-mix(
+    in srgb,
+    var(--entity-modal-action, #2563eb) 86%,
+    var(--entity-modal-ink, #1f2937)
+  );
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+  justify-self: start;
+}

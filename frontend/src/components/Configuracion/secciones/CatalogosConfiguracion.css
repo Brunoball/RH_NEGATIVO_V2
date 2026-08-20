@@ -636,3 +636,120 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Avisos contextuales de Estados y Períodos: info compacta junto a las pestañas. */
+.config-catalogTabsRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-catalogTabsRow .config-catalogTabs {
+  min-width: 0;
+}
+
+.config-catalogInfo {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.config-catalogInfo__trigger {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--balto-action) 26%, transparent);
+  border-radius: 50%;
+  color: var(--balto-action);
+  background: color-mix(in srgb, var(--primary-color) 6%, #fff);
+  box-shadow: 0 5px 14px -12px rgb(15 23 42 / 0.75);
+  font: inherit;
+  font-size: 12px;
+  cursor: help;
+  transition:
+    color var(--mov-trans),
+    background var(--mov-trans),
+    border-color var(--mov-trans),
+    box-shadow var(--mov-trans),
+    transform var(--mov-trans);
+}
+
+.config-catalogInfo__trigger:hover,
+.config-catalogInfo__trigger:focus-visible {
+  color: #fff;
+  border-color: var(--balto-action);
+  outline: none;
+  background: var(--balto-action);
+  box-shadow: 0 8px 18px -12px rgb(15 23 42 / 0.82);
+  transform: translateY(-1px);
+}
+
+.config-catalogInfo__tooltip {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  width: min(320px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--balto-action) 18%, var(--border-color));
+  border-radius: 11px;
+  color: var(--text-secondary, var(--balto-midnight));
+  background: #fff;
+  box-shadow: 0 14px 30px -18px rgb(15 23 42 / 0.45);
+  font-size: 10.5px;
+  font-weight: 560;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    visibility 150ms ease;
+  visibility: hidden;
+}
+
+.config-catalogInfo__tooltip::before {
+  position: absolute;
+  top: -5px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--balto-action) 18%, var(--border-color));
+  border-left: 1px solid color-mix(in srgb, var(--balto-action) 18%, var(--border-color));
+  background: #fff;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.config-catalogInfo:hover .config-catalogInfo__tooltip,
+.config-catalogInfo:focus-within .config-catalogInfo__tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+@media (max-width: 760px) {
+  .config-catalogTabsRow {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .config-catalogTabsRow .config-catalogTabs {
+    flex: 1 1 auto;
+  }
+
+  .config-catalogInfo {
+    margin-top: 4px;
+  }
+
+  .config-catalogInfo:hover .config-catalogInfo__tooltip,
+  .config-catalogInfo:focus-within .config-catalogInfo__tooltip {
+    transform: translateY(0);
+  }
+}
