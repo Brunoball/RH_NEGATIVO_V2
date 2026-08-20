@@ -103,6 +103,18 @@ function BalanceSummary({ items }) {
   );
 }
 
+function IncomeSummary({ ariaLabel, items }) {
+  return (
+    <SummaryCards
+      title=""
+      ariaLabel={ariaLabel}
+      variant="dashboard"
+      className="ct-income-dashboard-summary"
+      items={items}
+    />
+  );
+}
+
 function SearchBox({ value, onChange, placeholder }) {
   return (
     <FloatingField
@@ -129,14 +141,10 @@ function IncomePagination({
   loading = false,
   noun = "registros",
   onPageChange,
-  summaryAriaLabel,
-  summaryInTitle = false,
-  summaryItems = [],
-  summaryTitle = "Resumen",
   totalPages,
   totalRecords,
 }) {
-  if (!totalRecords && !summaryItems.length) return null;
+  if (!totalRecords && !actions) return null;
 
   const pageOptions = paginationItems(currentPage, totalPages);
   const paginationSummary = totalRecords ? (
@@ -150,25 +158,17 @@ function IncomePagination({
   return (
     <footer
       className="global-pagination ct-income-pagination"
-      aria-label={`Resumen, paginación y acciones de ${noun}`}
+      aria-label={`Paginación y acciones de ${noun}`}
     >
-      <SummaryCards
-        title={summaryInTitle ? paginationSummary : summaryTitle}
-        ariaLabel={summaryAriaLabel}
-        className={`ct-income-pagination__cards ${summaryInTitle ? "has-pagination-summary" : ""}`.trim()}
-        items={summaryItems}
-      />
       {totalRecords ? (
         <div
           className="ct-income-pagination__navigation"
           role="navigation"
           aria-label={`Paginación de ${noun}`}
         >
-          {!summaryInTitle ? (
-            <p className="global-pagination__summary">
-              {paginationSummary}
-            </p>
-          ) : null}
+          <p className="global-pagination__summary">
+            {paginationSummary}
+          </p>
           <div className="global-pagination__right">
             <div className="global-pagination__controls">
               <button
@@ -238,6 +238,26 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
 
   return (
     <>
+      <IncomeSummary
+        ariaLabel="Resumen de cobros recibidos"
+        items={[
+          {
+            key: "payments",
+            icon: faPeopleGroup,
+            label: "Pagos registrados",
+            detail: "Cobros recibidos del período",
+            value: Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR"),
+          },
+          {
+            key: "amount",
+            icon: faCalculator,
+            label: "Monto cobrado",
+            detail: `${Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR")} pagos`,
+            tone: "success",
+            value: money(section?.resumen?.importe),
+          },
+        ]}
+      />
       <GlobalDivTable
         className="ct-income-table has-bottom-pagination"
         bodyClassName="entity-table-wrap"
@@ -256,7 +276,7 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
         loading={loading}
         loadingLabel="Cargando cobros de socios..."
         skeletonActionColumn={false}
-        skeletonRows={7}
+        skeletonRows={4}
       >
         {!loading && !items.length ? (
           <div className="module-empty">
@@ -296,16 +316,6 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
         loading={loading}
         noun="pagos"
         onPageChange={(nextPage) => onPageChange?.(nextPage)}
-        summaryAriaLabel="Resumen de cobros recibidos"
-        summaryInTitle
-        summaryItems={[
-          {
-            key: "payments",
-            label: "Detalle de cobros recibidos",
-            detail: `${Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR")} pagos`,
-            value: money(section?.resumen?.importe),
-          },
-        ]}
         totalPages={totalPages}
         totalRecords={totalRecords}
       />
@@ -336,6 +346,34 @@ function PartnerDetail({ actions, section, loading }) {
 
   return (
     <>
+      <IncomeSummary
+        ariaLabel="Totales de socios por estado"
+        items={[
+          {
+            key: "active",
+            icon: faUserPlus,
+            label: "Total activos",
+            detail: `Año ${section?.anio || "—"}`,
+            tone: "success",
+            value: Number(summary.activos || 0).toLocaleString("es-AR"),
+          },
+          {
+            key: "passive",
+            icon: faUserMinus,
+            label: "Total pasivos",
+            detail: `Año ${section?.anio || "—"}`,
+            tone: "danger",
+            value: Number(summary.pasivos || 0).toLocaleString("es-AR"),
+          },
+          {
+            key: "total",
+            icon: faPeopleGroup,
+            label: "Total general",
+            detail: "Activos, pasivos y sin estado",
+            value: Number(summary.total || 0).toLocaleString("es-AR"),
+          },
+        ]}
+      />
       <GlobalDivTable
         className="ct-income-table has-bottom-pagination"
         bodyClassName="entity-table-wrap"
@@ -346,7 +384,7 @@ function PartnerDetail({ actions, section, loading }) {
         loading={loading}
         loadingLabel="Cargando detalle de socios..."
         skeletonActionColumn={false}
-        skeletonRows={7}
+        skeletonRows={4}
       >
         {!loading && !totalRecords ? (
           <div className="module-empty">
@@ -375,28 +413,6 @@ function PartnerDetail({ actions, section, loading }) {
         loading={loading}
         noun="categorías"
         onPageChange={setPage}
-        summaryAriaLabel="Totales de socios por estado"
-        summaryItems={[
-          {
-            key: "active",
-            label: "Total activos",
-            detail: `Año ${section?.anio || "—"}`,
-            value: Number(summary.activos || 0).toLocaleString("es-AR"),
-          },
-          {
-            key: "passive",
-            label: "Total pasivos",
-            detail: `Año ${section?.anio || "—"}`,
-            value: Number(summary.pasivos || 0).toLocaleString("es-AR"),
-          },
-          {
-            key: "total",
-            label: "Total general",
-            detail: "Activos, pasivos y sin estado",
-            value: Number(summary.total || 0).toLocaleString("es-AR"),
-          },
-        ]}
-        summaryTitle="Resumen de socios"
         totalPages={totalPages}
         totalRecords={totalRecords}
       />
@@ -438,16 +454,52 @@ function CollectionDetail({ actions, section, period, loading }) {
 
   return (
     <>
-      <section className="ct-old-category-prices">
-        <strong>CATEGORÍAS DE MONTO</strong>
-        <div>
-          {(section?.categorias_monto || []).map((item) => (
-            <span key={item.id_categoria}>
-              {item.nombre} <b>{money(item.mensual)}</b> <small>Anual: {money(item.anual)} · Monto por período</small>
-            </span>
-          ))}
-        </div>
-      </section>
+      <IncomeSummary
+        ariaLabel="Totales de cobranza del período"
+        items={[
+          {
+            key: "fees",
+            icon: faCalculator,
+            label: "Cuotas recaudadas",
+            detail: "Sólo pagos de cuotas",
+            tone: "success",
+            value: money(summary.cuotas_recaudadas),
+          },
+          {
+            key: "registrations",
+            icon: faUserPlus,
+            label: "Inscripciones recaudadas",
+            detail: `${summary.inscripciones_socios || 0} socios`,
+            value: money(summary.inscripciones_recaudadas),
+          },
+          {
+            key: "expected",
+            icon: faPeopleGroup,
+            label: "Cuotas esperadas",
+            detail: `${summary.socios_esperados || 0} socios · ${period?.etiqueta || "Período"}`,
+            value: money(summary.cuotas_esperadas),
+          },
+          {
+            key: "difference",
+            icon: faTriangleExclamation,
+            label: difference >= 0 ? "Faltante" : "Superávit",
+            detail: difference >= 0
+              ? "Esperado menos recaudado"
+              : "Recaudado sobre lo esperado",
+            tone: difference >= 0 ? "warning" : "balance",
+            value: money(Math.abs(difference)),
+          },
+          ...(section?.categorias_monto || []).map((item) => ({
+            key: `category-${item.id_categoria}`,
+            icon: faCalculator,
+            label: normalize(item.nombre).startsWith("categoria")
+              ? item.nombre
+              : `Categoría ${item.nombre || "—"}`,
+            detail: `Monto por período · ${money(item.anual)} anual`,
+            value: money(item.mensual),
+          })),
+        ]}
+      />
       <GlobalDivTable
         className="ct-income-table has-bottom-pagination"
         bodyClassName="entity-table-wrap"
@@ -456,7 +508,7 @@ function CollectionDetail({ actions, section, period, loading }) {
           "Período / grupo",
           { label: "Esperado", align: "right" },
           { label: "Recaudado", align: "right" },
-          { label: "Socios", align: "right" },
+          { label: "Socios", align: "center" },
           { label: "Dif. (Esp-Rec)", align: "right" },
         ]}
         ariaLabel="Detalle de cobranza"
@@ -464,7 +516,7 @@ function CollectionDetail({ actions, section, period, loading }) {
         loading={loading}
         loadingLabel="Cargando detalle de cobranza..."
         skeletonActionColumn={false}
-        skeletonRows={7}
+        skeletonRows={4}
       >
         {!loading && !totalRecords ? (
           <div className="module-empty">
@@ -478,7 +530,7 @@ function CollectionDetail({ actions, section, period, loading }) {
             <div className="mov-gridCell is-strong">{period?.etiqueta || "PERÍODO"}</div>
             <div className="mov-gridCell is-right">{money(summary.cuotas_esperadas)}</div>
             <div className="mov-gridCell is-right">{money(summary.cuotas_recaudadas)}</div>
-            <div className="mov-gridCell is-right">{Number(summary.socios_esperados || 0).toLocaleString("es-AR")}</div>
+            <div className="mov-gridCell is-center">{Number(summary.socios_esperados || 0).toLocaleString("es-AR")}</div>
             <div className="mov-gridCell is-right ct-income-difference">{money(summary.diferencia_cuotas)}</div>
           </div>
         ) : null}
@@ -491,7 +543,7 @@ function CollectionDetail({ actions, section, period, loading }) {
             <div className="mov-gridCell"><span className={`ct-old-badge is-${row.tipo}`}>{row.nombre}</span></div>
             <div className="mov-gridCell is-right">{row.esperado === null ? "—" : money(row.esperado)}</div>
             <div className="mov-gridCell is-right">{money(row.recaudado)}</div>
-            <div className="mov-gridCell is-right">{Number(row.socios || 0).toLocaleString("es-AR")}</div>
+            <div className="mov-gridCell is-center">{Number(row.socios || 0).toLocaleString("es-AR")}</div>
             <div className="mov-gridCell is-right ct-income-difference">{row.diferencia === null ? "—" : money(row.diferencia)}</div>
           </div>
         ))}
@@ -504,36 +556,6 @@ function CollectionDetail({ actions, section, period, loading }) {
         loading={loading}
         noun="grupos"
         onPageChange={setPage}
-        summaryAriaLabel="Totales de cobranza del período"
-        summaryItems={[
-          {
-            key: "fees",
-            label: "Cuotas recaudadas",
-            detail: "Sólo pagos de cuotas",
-            value: money(summary.cuotas_recaudadas),
-          },
-          {
-            key: "registrations",
-            label: "Inscripciones recaudadas",
-            detail: `${summary.inscripciones_socios || 0} socios`,
-            value: money(summary.inscripciones_recaudadas),
-          },
-          {
-            key: "expected",
-            label: "Cuotas esperadas",
-            detail: `${summary.socios_esperados || 0} socios · ${period?.etiqueta || "Período"}`,
-            value: money(summary.cuotas_esperadas),
-          },
-          {
-            key: "difference",
-            label: difference >= 0 ? "Faltante" : "Superávit",
-            detail: difference >= 0
-              ? "Esperado menos recaudado"
-              : "Recaudado sobre lo esperado",
-            value: money(Math.abs(difference)),
-          },
-        ]}
-        summaryTitle="Resumen de cobranza"
         totalPages={totalPages}
         totalRecords={totalRecords}
       />
@@ -738,7 +760,7 @@ function BalanceModal({ open, onClose, onFeedback }) {
         hideSubmit
         hideCancel
         closeOnBackdrop={false}
-        modalClassName="ct-balance-modal"
+        modalClassName={`ct-balance-modal ${balance ? "is-generated" : "is-pending"}`}
         wide
       >
         <div className="entity-form ct-balance-form">

@@ -2,14 +2,21 @@
 @media(max-width:1100px){.ct-old-cards--seven,.ct-old-cards--six,.ct-old-cards--five,.ct-old-cards--four{grid-template-columns:repeat(2,minmax(0,1fr))}.ct-old-main-toolbar,.ct-balance-toolbar,.ct-old-pane-head{align-items:stretch;flex-direction:column}.ct-old-search{min-width:0;width:100%}.ct-balance-range{grid-template-columns:1fr 1fr}.ct-balance-range button{grid-column:1/-1;justify-self:stretch}.ct-old-table{min-width:980px}}
 .ct-old-table-wrap.has-pagination{flex:1 1 auto;border-radius:14px 14px 0 0}.ct-old-pagination{border-color:#dde5ef;border-radius:0 0 14px 14px}.ct-old-pagination .global-pagination__summary span{margin-left:8px}
 
-/* Balance anual: estructura global de modal, formularios, pestañas y métricas. */
+/* Balance anual: conserva el ancho y expande únicamente su altura. */
 .ct-balance-modal.entity-modal--wide {
   width: min(1320px, calc(100vw - 36px));
-  height: min(890px, calc(100dvh - 36px));
   max-height: calc(100dvh - 36px);
   border-radius: var(--entity-modal-radius);
   background: var(--entity-modal-bg);
   box-shadow: var(--entity-modal-shadow);
+}
+
+.ct-balance-modal.is-pending.entity-modal--wide {
+  height: auto;
+}
+
+.ct-balance-modal.is-generated.entity-modal--wide {
+  height: min(890px, calc(100dvh - 36px));
 }
 
 .ct-balance-form {
@@ -414,6 +421,9 @@
 @media (max-width: 720px) {
   .ct-balance-modal.entity-modal--wide {
     width: 100%;
+  }
+
+  .ct-balance-modal.is-generated.entity-modal--wide {
     height: auto;
   }
 
@@ -472,13 +482,25 @@
   font-size: 11.5px;
 }
 
+.ct-income-dashboard-summary.global-summaryCards--dashboard {
+  flex: 0 0 auto;
+  margin: 0 0 10px;
+  padding: 4px 10px 0;
+}
+
+.ct-income-dashboard-summary .global-summaryCards__list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
 .ct-income-table {
-  min-height: 300px;
-  flex: 1 0 300px;
+
+  max-height:  calc(100dvh - 340px);
+
+  flex: 0 1  calc(100dvh - 430px);
 }
 
 .ct-income-table .entity-table-wrap {
-  min-height: 250px;
+  min-height: 175px;
   max-height: none;
 }
 
@@ -528,6 +550,11 @@
   text-align: right;
 }
 
+.ct-income-grid--collection > :nth-child(4) {
+  justify-content: center;
+  text-align: center;
+}
+
 .ct-income-money,
 .ct-income-number,
 .ct-income-grid--collection > :nth-child(n + 2) {
@@ -539,12 +566,10 @@
   background: color-mix(in srgb, var(--balto-bg) 68%, #fff);
 }
 
-.ct-income-depth-1 > :first-child {
-  padding-left: 30px;
-}
-
+.ct-income-depth-0 > :first-child,
+.ct-income-depth-1 > :first-child,
 .ct-income-depth-2 > :first-child {
-  padding-left: 50px;
+  padding-left: 10px;
 }
 
 .ct-income-difference {
@@ -557,38 +582,11 @@
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 10px;
-  min-height: 60px;
+  min-height: 54px;
   padding: 7px 12px;
   overflow-x: auto;
-}
-
-.ct-income-pagination__cards.global-summaryCards {
-  min-width: 320px;
-  flex: 1 1 auto;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 9px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.ct-income-pagination__cards .global-summaryCards__title {
-  font-size: 11px;
-}
-
-.ct-income-pagination__cards.has-pagination-summary .global-summaryCards__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 400;
-  white-space: normal;
 }
 
 .ct-income-pagination .ct-income-pagination__number {
@@ -596,41 +594,19 @@
   font-weight: 800;
 }
 
-.ct-income-pagination__cards .global-summaryCards__list {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-}
-
-.ct-income-pagination__cards .global-summaryCards__item {
-  min-width: 120px;
-  min-height: 47px;
-  flex: 1 1 130px;
-  padding: 7px 9px;
-  border-radius: 9px;
-  box-shadow: none;
-}
-
-.ct-income-pagination__cards .global-summaryCards__label {
-  font-size: 10.5px;
-}
-
-.ct-income-pagination__cards .global-summaryCards__value {
-  font-size: 11px;
-}
-
 .ct-income-pagination__navigation {
   min-width: 0;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 .ct-income-pagination__navigation .global-pagination__summary {
-  justify-content: flex-end;
+  margin-right: auto;
+  justify-content: flex-start;
 }
 
 .ct-income-pagination__actions.global-tableActions {
@@ -703,9 +679,6 @@
     overflow: hidden;
   }
 
-  .ct-income-pagination__cards.global-summaryCards {
-    min-width: 300px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -713,17 +686,26 @@
     padding-inline: 10px;
   }
 
+  .ct-income-dashboard-summary.global-summaryCards--dashboard {
+    padding-inline: 0;
+  }
+
+  .ct-income-table {
+    min-height: 210px;
+    height: 260px;
+    max-height: 260px;
+    flex-basis: 260px;
+  }
+
+  .ct-income-table .entity-table-wrap {
+    min-height: 155px;
+  }
+
   .global-pagination.ct-income-pagination {
     display: flex;
     flex-direction: row;
     align-items: center;
     padding: 8px 10px;
-  }
-
-  .ct-income-pagination__cards.global-summaryCards {
-    min-width: 320px;
-    grid-template-columns: auto minmax(0, 1fr);
-    margin: 0;
   }
 
   .ct-income-pagination__actions .mov-btn {

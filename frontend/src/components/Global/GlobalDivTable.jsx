@@ -63,7 +63,7 @@ export default function GlobalDivTable({
           current === nextSkeletonRows ? current : nextSkeletonRows,
         );
 
-        if (empty) {
+        if (loading || empty) {
           body.scrollTop = 0;
           setHasVerticalScroll(false);
           setScrollbarWidth(0);
@@ -108,7 +108,7 @@ export default function GlobalDivTable({
 
   return (
     <div
-      className={`global-divTable ${empty ? "is-empty" : ""} ${hasVerticalScroll ? "has-y-scroll" : ""} ${className}`.trim()}
+      className={`global-divTable ${empty ? "is-empty" : ""} ${loading ? "is-loading" : ""} ${!loading && hasVerticalScroll ? "has-y-scroll" : ""} ${className}`.trim()}
       role="table"
       aria-label={ariaLabel}
       aria-busy={loading}

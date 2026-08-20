@@ -764,6 +764,12 @@
   scrollbar-gutter: stable;
 }
 
+.global-divTable.is-loading > .global-divTable__wrap {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  overscroll-behavior: none;
+}
+
 .global-divTable.is-empty > .global-divTable__wrap {
   display: flex;
   flex-direction: column;
