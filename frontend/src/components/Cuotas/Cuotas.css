@@ -344,6 +344,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-top: 6px;
   border-top: 1px solid var(--mov-border);
   background: color-mix(in srgb, var(--balto-bg) 58%, #fff);
 }
@@ -367,7 +368,6 @@
   flex-wrap: nowrap;
   gap: 8px 12px;
   min-width: 0;
-  overflow-x: auto;
 }
 
 /* Chips de filtros activos: mismo patrón visual que Socios. */
@@ -447,6 +447,8 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
+  position: relative;
+  top: 5px;
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
@@ -468,6 +470,10 @@
 .cuotas-pagination__summaryCompact,
 .cuotas-pagination__loadingCompact {
   display: none;
+}
+
+.cuotas-pagination__summaryCompact {
+  padding-inline: 4px;
 }
 
 .cuotas-pagination__loadingFull,
@@ -1948,4 +1954,54 @@ html[data-theme="oscuro"] .cuotas-family-expand-btn:hover {
   .cuotas-lower-actions .cuotas-multiple-action {
     display: none;
   }
+}
+
+/* Skeleton amplio: >1500px mantiene las 24 filas con la altura normal global. */
+@media (min-width: 1501px) {
+  .cuotas-page .module-card .cuotas-table.is-loading > .entity-table-wrap {
+    height: auto;
+    min-height: calc(24 * 67px);
+    max-height: none;
+  }
+
+  .cuotas-table.is-loading .mov-skeletonWrap {
+    display: flex;
+    height: auto;
+  }
+
+  .cuotas-table.is-loading .mov-row--skeleton .mov-gridCell {
+    min-height: 67px;
+    height: auto;
+  }
+}
+
+
+.cuotas-pagination__summaryCompact {
+  align-items: center;
+  gap: 8px;
+}
+
+.cuotas-pagination__summaryRange {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cuotas-pagination__summarySeparator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 6px;
+}
+
+/* Contador: sin desplazamiento vertical */
+
+.cuotas-pagination__summary {
+  align-self: center;
+  margin-top: 0;
+  transform: none;
+}
+
+.cuotas-pagination__summaryCompact {
+  margin-top: 0;
+  transform: none;
 }

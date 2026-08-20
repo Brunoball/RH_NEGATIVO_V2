@@ -76,6 +76,22 @@ function ProgressItem({ icon, label, value, detail }) {
   );
 }
 
+
+function DataItem({ icon, label, value, detail }) {
+  return (
+    <article className="admin-dashboard__dataItem">
+      <div className="admin-dashboard__dataIcon">
+        <FontAwesomeIcon icon={icon} />
+      </div>
+      <div className="admin-dashboard__dataBody">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        {detail ? <small>{detail}</small> : null}
+      </div>
+    </article>
+  );
+}
+
 function PaymentChart({ items }) {
   const maximum = useMemo(
     () => Math.max(1, ...items.map((item) => Number(item.pagadas || 0))),
@@ -260,19 +276,56 @@ export default function Dashboard() {
             <PaymentChart items={summary.serie_cuotas || []} />
           </article>
 
-          <aside className="admin-dashboard__panel admin-dashboard__panel--status">
-            <header className="admin-dashboard__panelHead">
-              <div>
-                <h2>Calidad de los datos</h2>
-                <p>Controles sobre socios activos.</p>
+          <div className="admin-dashboard__sideColumn">
+            <aside className="admin-dashboard__panel admin-dashboard__panel--status">
+              <header className="admin-dashboard__panelHead">
+                <div>
+                  <h2>Calidad de los datos</h2>
+                  <p>Controles sobre socios activos.</p>
+                </div>
+              </header>
+              <div className="admin-dashboard__progressList">
+                {statusItems.map((item) => (
+                  <ProgressItem key={item.label} {...item} />
+                ))}
               </div>
-            </header>
-            <div className="admin-dashboard__progressList">
-              {statusItems.map((item) => (
-                <ProgressItem key={item.label} {...item} />
-              ))}
-            </div>
-          </aside>
+            </aside>
+
+            <aside className="admin-dashboard__panel admin-dashboard__panel--data">
+              <header className="admin-dashboard__panelHead">
+                <div>
+                  <h2>Datos registrados</h2>
+                  <p>Resumen rápido del padrón y del período actual.</p>
+                </div>
+              </header>
+              <div className="admin-dashboard__dataGrid">
+                <DataItem
+                  icon={faUsers}
+                  label="Personas activas"
+                  value={Number(socios.personas_activas || 0)}
+                  detail="Registradas actualmente"
+                />
+                <DataItem
+                  icon={faUsers}
+                  label="Socios de baja"
+                  value={Number(socios.inactivos || 0)}
+                  detail="Fuera del padrón activo"
+                />
+                <DataItem
+                  icon={faTags}
+                  label="Con categoría"
+                  value={Number(socios.con_categoria || 0)}
+                  detail="Socios categorizados"
+                />
+                <DataItem
+                  icon={faCircleCheck}
+                  label="Cobros del mes"
+                  value={Number(cuotas.cobros_registrados_mes || 0)}
+                  detail={`Período ${periodo.mes_nombre || "actual"}`}
+                />
+              </div>
+            </aside>
+          </div>
         </div>
 
 

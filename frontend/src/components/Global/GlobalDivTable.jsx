@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import DataTableSkeleton from "./DataTableSkeleton";
 
 const SKELETON_ROW_HEIGHT = 67;
+const LARGE_SCREEN_BREAKPOINT = 1500;
+const LARGE_SCREEN_SKELETON_ROWS = 24;
 
 /**
  * Estructura global para tablas construidas con divs.
@@ -39,8 +41,10 @@ export default function GlobalDivTable({
   );
   const [hasVerticalScroll, setHasVerticalScroll] = useState(false);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
-  const [visibleSkeletonRows, setVisibleSkeletonRows] = useState(
-    minimumSkeletonRows,
+  const [visibleSkeletonRows, setVisibleSkeletonRows] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth > LARGE_SCREEN_BREAKPOINT
+      ? LARGE_SCREEN_SKELETON_ROWS
+      : minimumSkeletonRows,
   );
 
   useEffect(() => {
@@ -51,13 +55,15 @@ export default function GlobalDivTable({
     const updateScrollbar = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
+        const isLargeScreen =
+          typeof window !== "undefined" &&
+          window.innerWidth > LARGE_SCREEN_BREAKPOINT;
         const rowsNeededToFillBody = loading
           ? Math.ceil(body.clientHeight / SKELETON_ROW_HEIGHT)
           : minimumSkeletonRows;
-        const nextSkeletonRows = Math.max(
-          minimumSkeletonRows,
-          rowsNeededToFillBody,
-        );
+        const nextSkeletonRows = isLargeScreen
+          ? LARGE_SCREEN_SKELETON_ROWS
+          : Math.max(minimumSkeletonRows, rowsNeededToFillBody);
 
         setVisibleSkeletonRows((current) =>
           current === nextSkeletonRows ? current : nextSkeletonRows,

@@ -2667,8 +2667,11 @@ export default function Cuotas() {
                       <strong>{totalRegistros}</strong> registros
                     </span>
                     <span className="cuotas-pagination__summaryCompact">
-                      <strong>{registroDesde}</strong>–
-                      <strong>{registroHasta}</strong> /{" "}
+                      <span className="cuotas-pagination__summaryRange">
+                        <strong>{registroDesde}</strong>–
+                        <strong>{registroHasta}</strong>
+                      </span>
+                      <span className="cuotas-pagination__summarySeparator">/</span>
                       <strong>{totalRegistros}</strong>
                     </span>
                     {loading ? (
