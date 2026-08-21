@@ -127,6 +127,14 @@ const CATALOG_META = {
   },
 };
 
+const catalogUsageLabel = (listKey, count) => {
+  const plural = Number(count) !== 1;
+  if (["medios_pago", "periodo"].includes(listKey)) {
+    return plural ? "movimientos asociados" : "movimiento asociado";
+  }
+  return plural ? "socios asociados" : "socio asociado";
+};
+
 const emptyForm = (lista = "categoria") => {
   const meta = CATALOG_META[lista] || CATALOG_META.categoria;
   const values = { lista, id: "" };
@@ -310,7 +318,7 @@ function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState
 
       <div className="config-catalogTable__head" role="row">
         <span role="columnheader">Opción</span>
-        <span role="columnheader">Uso</span>
+        <span role="columnheader">Uso actual</span>
         <span role="columnheader">Estado</span>
         <span
           className="config-catalogTable__actionsHeading"
@@ -332,6 +340,10 @@ function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState
           items.map((item) => {
             const id = item[meta.idField];
             const usageCount = Number(item.cantidad_usos || 0);
+            const protectedUsageCount = Number(
+              item.cantidad_usos_protegidos ?? usageCount,
+            );
+            const historicalOnly = protectedUsageCount > usageCount;
             const active = Boolean(item.activo);
             const stateAction = active ? "baja" : "reactivar";
             const coreState = listKey === "estado" && [1, 2].includes(Number(id));
@@ -360,14 +372,10 @@ function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState
                 <div
                   className="config-catalogUsage"
                   role="cell"
-                  data-label="Uso"
+                  data-label="Uso actual"
                 >
                   <strong>{usageCount}</strong>
-                  <span>
-                    {usageCount === 1
-                      ? "registro asociado"
-                      : "registros asociados"}
-                  </span>
+                  <span>{catalogUsageLabel(listKey, usageCount)}</span>
                 </div>
 
                 <div role="cell" data-label="Estado">
@@ -417,13 +425,15 @@ function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState
                         type="button"
                         className="mov-iconBtn mov-iconBtn--danger"
                         onClick={() => onDelete(item)}
-                        disabled={usageCount > 0 || structural}
+                        disabled={protectedUsageCount > 0 || structural}
                         title={
                           structural
                             ? "Opción estructural: no se puede eliminar"
                             : usageCount > 0
                               ? "No se puede eliminar definitivamente mientras tenga registros asociados; podés darlo de baja"
-                              : "Eliminar definitivamente"
+                              : historicalOnly
+                                ? "No se puede eliminar definitivamente porque tiene historial asociado; podés darlo de baja"
+                                : "Eliminar definitivamente"
                         }
                         aria-label={`Eliminar definitivamente ${item.nombre}`}
                       >
@@ -512,7 +522,7 @@ function CatalogsPanel() {
       icon: faGear,
       label: "EN USO",
       value: inUseCount,
-      detail: "Con registros asociados",
+      detail: "Con uso actual",
       tone: "usage",
     },
   ];

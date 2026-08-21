@@ -115,13 +115,20 @@ trait ConfiguracionGestion
             $before = configuracion_item($db, $definition, $id, true);
             if (!$before) api_error('La opción solicitada no existe.', 'OPCION_NO_ENCONTRADA', 404);
             self::validarCambioEstadoCatalogoEstructural($definition, $id);
-            $usageCount = configuracion_cantidad_usos($db, $definition, $id);
-            if ($usageCount > 0) {
+            $currentUsageCount = configuracion_cantidad_usos_actuales($db, $definition, $id);
+            $protectedUsageCount = configuracion_cantidad_usos($db, $definition, $id);
+            if ($protectedUsageCount > 0) {
+                $reason = $currentUsageCount > 0
+                    ? "tiene {$currentUsageCount} registros actualmente asociados"
+                    : "conserva {$protectedUsageCount} referencias históricas protegidas";
                 api_error(
-                    "No se puede eliminar definitivamente porque esta {$definition['etiqueta']} tiene {$usageCount} registros asociados. Podés darla de baja para impedir nuevos usos sin perder información histórica.",
+                    "No se puede eliminar definitivamente porque esta {$definition['etiqueta']} {$reason}. Podés darla de baja para impedir nuevos usos sin perder información histórica.",
                     'OPCION_EN_USO',
                     409,
-                    ['cantidad_usos' => $usageCount]
+                    [
+                        'cantidad_usos' => $currentUsageCount,
+                        'cantidad_usos_protegidos' => $protectedUsageCount,
+                    ]
                 );
             }
             if ($definition['lista'] === 'categoria') {

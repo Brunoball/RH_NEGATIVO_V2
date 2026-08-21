@@ -19,7 +19,10 @@ test.describe('Dashboard', () => {
     expect(Number(summary.cuotas.cumplimiento_mes || 0)).toBeLessThanOrEqual(100);
   });
 
-  test('UI renderiza tarjetas, gráfico y controles de calidad con datos reales', async ({ page }) => {
+  test('UI renderiza tarjetas, gráfico, controles de calidad y Datos registrados con valores reales', async ({ page, request }) => {
+    const result = await apiCall(request, 'dashboard_resumen');
+    const summary = result.resumen;
+
     await page.goto('/panel');
     await expect(page.getByRole('heading', { name: 'Panel de gestión' })).toBeVisible();
     for (const label of ['Socios activos', 'Cuotas cubiertas', 'Cuotas pendientes', 'Saldo del mes']) {
@@ -27,9 +30,30 @@ test.describe('Dashboard', () => {
     }
     await expect(page.getByRole('heading', { name: 'Cuotas registradas' })).toBeVisible();
     await expect(page.getByRole('img', { name: 'Cuotas registradas durante los últimos seis períodos' })).toBeVisible();
+
     await expect(page.getByRole('heading', { name: 'Calidad de los datos' })).toBeVisible();
     await expect(page.getByText('Socios con categoría', { exact: true })).toBeVisible();
     await expect(page.getByText('Personas con familia', { exact: true })).toBeVisible();
+    if (summary.fuentes?.recordatorios_disponibles === false) {
+      await expect(page.getByText('Recordatorios habilitados', { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByText('Recordatorios habilitados', { exact: true })).toBeVisible();
+    }
+
+    const dataPanel = page.locator('.admin-dashboard__panel--data');
+    await expect(dataPanel.getByRole('heading', { name: 'Datos registrados' })).toBeVisible();
+    const dataItems = [
+      ['Personas activas', summary.socios.personas_activas],
+      ['Socios de baja', summary.socios.inactivos],
+      ['Con categoría', summary.socios.con_categoria],
+      ['Cobros del mes', summary.cuotas.cobros_registrados_mes],
+    ];
+    for (const [label, value] of dataItems) {
+      const item = dataPanel.locator('.admin-dashboard__dataItem').filter({ hasText: label });
+      await expect(item, `Falta la tarjeta nueva del dashboard: ${label}`).toBeVisible();
+      await expect(item.getByText(label, { exact: true })).toBeVisible();
+      await expect(item.locator('strong')).toHaveText(String(Number(value || 0)));
+    }
   });
 
   test('UI muestra error controlado y Reintentar recupera el dashboard', async ({ page }) => {

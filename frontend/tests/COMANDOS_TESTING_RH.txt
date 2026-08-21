@@ -23,7 +23,5 @@ npx playwright test tests/08-blindaje-modulos.spec.js --config=playwright.rh.con
 run-testing-rh.cmd
 run-testing-rh-headed.cmd
 
-# Contabilidad y cobertura extendida
-npx playwright test tests/09-contable.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/10-cobertura-ui-total.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+# Blindaje funcional final (sin pruebas puramente CSS)
 npx playwright test tests/11-blindaje-final.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list

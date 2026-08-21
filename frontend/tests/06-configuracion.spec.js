@@ -11,6 +11,8 @@ const { SESSION_KEY } = require('./helpers/auth.helper');
 const { todayIso } = require('./helpers/data.helper');
 const { createQuotaCategory, createQuotaSocio, currentYear, deletePayment, paymentPayload, quotaCatalogs } = require('./helpers/cuotas.helper');
 const { configValues, userData } = require('./fixtures/configuracion.fixture');
+const { socioData } = require('./fixtures/socios.fixture');
+const { createSocio } = require('./helpers/entities.helper');
 
 async function createConfigItem(request, list, definition) {
   const result = await apiCall(request, 'configuracion_lista_guardar', {
@@ -54,6 +56,44 @@ test.describe('Configuración · catálogos', () => {
       expect(Array.isArray(data.listas?.[key]), key).toBe(true);
       expect(data.resumen).toHaveProperty(`${key}_activos`);
     }
+  });
+
+  test('Uso actual de catálogos no suma auditorías ni historial como si fueran asociaciones duplicadas', async ({ request, page }) => {
+    const definitions = configValues();
+    const category = await createConfigItem(request, 'categoria', definitions.categoria);
+    const collector = await createConfigItem(request, 'cobrador', definitions.cobrador);
+    const state = await createConfigItem(request, 'estado', definitions.estado);
+    const blood = await createConfigItem(request, 'grupo_sanguineo', definitions.grupo_sanguineo);
+
+    await createSocio(request, socioData('CONFIG USO ACTUAL'), {
+      id_categoria: itemId(category, definitions.categoria),
+      id_cobrador: itemId(collector, definitions.cobrador),
+      id_estado: itemId(state, definitions.estado),
+      id_grupo_sanguineo: itemId(blood, definitions.grupo_sanguineo),
+      fecha_ingreso: `${currentYear()}-01-01`,
+    });
+
+    const data = await apiCall(request, 'configuracion_obtener');
+    for (const [list, created, definition] of [
+      ['categoria', category, definitions.categoria],
+      ['cobrador', collector, definitions.cobrador],
+      ['estado', state, definitions.estado],
+      ['grupo_sanguineo', blood, definitions.grupo_sanguineo],
+    ]) {
+      const item = (data.listas?.[list] || []).find(
+        (row) => Number(row[definition.idField]) === itemId(created, definition),
+      );
+      expect(item, list).toBeTruthy();
+      expect(Number(item.cantidad_usos), `${list} debe contar sólo el socio actual`).toBe(1);
+      expect(Number(item.cantidad_usos_protegidos), `${list} debe conservar la protección histórica`).toBeGreaterThanOrEqual(1);
+    }
+
+    await page.goto('/configuracion/catalogos?lista=categoria');
+    const search = page.getByRole('textbox', { name: 'Buscar' });
+    await search.fill(category.nombre);
+    const row = rowByText(page, category.nombre);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(/1\s*socio asociado/);
   });
 
   test('CRUD, duplicados y estados funcionan en los cinco catálogos editables; Períodos queda estructural', async ({ request }) => {

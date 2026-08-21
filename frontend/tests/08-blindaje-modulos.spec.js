@@ -759,6 +759,10 @@ test.describe('Blindaje adicional · Cuotas', () => {
 
 test.describe('Blindaje adicional · Configuración', () => {
   test('UI ejecuta ciclo completo en los cinco catálogos editables y protege Períodos estructurales', async ({ page }) => {
+    // Son cinco CRUD UI completos en serie. En la corrida real llegó a Períodos
+    // pero agotó el timeout global de 60 s; este test necesita margen propio.
+    test.setTimeout(120_000);
+
     const definitions = configValues();
     const catalogs = [
       { key: 'categoria', tab: 'Categorías', singular: 'categoría', fields: [['Nombre *', 'nombre'], ['Monto mensual *', 'monto_mensual'], ['Monto anual *', 'monto_anual']] },

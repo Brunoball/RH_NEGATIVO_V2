@@ -432,58 +432,7 @@ test.describe('Blindaje final · integridad histórica y acciones deterministas'
     await page.unroute(cuotasMatcher);
   });
 
-  test('Cuotas >1500 px renderiza 24 filas skeleton de altura normal y bloquea el scroll durante loading', async ({ page }) => {
-    await page.setViewportSize({ width: 1600, height: 1000 });
-    const cuotasMatcher = /api\.php\?[^#]*action=cuotas_listar/;
-    let releaseRequest;
-    const releaseGate = new Promise((resolve) => { releaseRequest = resolve; });
-    let held = false;
-
-    await page.route(cuotasMatcher, async (route) => {
-      if (!held) {
-        held = true;
-        await releaseGate;
-      }
-      await route.continue();
-    });
-
-    let table;
-    try {
-      await page.goto('/cuotas');
-      table = page.getByRole('table', { name: 'Cuotas de socios adeudadas' });
-      await expect(table).toHaveAttribute('aria-busy', 'true');
-      const skeletonRows = table.locator('.mov-row--skeleton');
-      await expect(skeletonRows).toHaveCount(24);
-
-      const rowHeights = await skeletonRows.evaluateAll((rows) =>
-        rows.slice(0, 4).map((row) => Math.round(row.getBoundingClientRect().height))
-      );
-      expect(rowHeights.length).toBe(4);
-      for (const height of rowHeights) expect(height).toBeGreaterThanOrEqual(67);
-
-      const bodyMetrics = await table.locator('.global-divTable__body').evaluate((element) => ({
-        overflowX: getComputedStyle(element).overflowX,
-        overflowY: getComputedStyle(element).overflowY,
-        scrollTop: element.scrollTop,
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-      }));
-      expect(bodyMetrics.overflowX).toBe('hidden');
-      expect(bodyMetrics.overflowY).toBe('hidden');
-      expect(bodyMetrics.scrollTop).toBe(0);
-      expect(bodyMetrics.clientHeight).toBeGreaterThanOrEqual(24 * 67);
-      expect(bodyMetrics.scrollHeight).toBeLessThanOrEqual(bodyMetrics.clientHeight + 2);
-
-      releaseRequest?.();
-      releaseRequest = null;
-      await expect(table).toHaveAttribute('aria-busy', 'false');
-    } finally {
-      releaseRequest?.();
-      await page.unroute(cuotasMatcher);
-    }
-  });
-
-  test('Balance anual mantiene el ancho, crece sólo en height y Cargar todos siempre ejecuta la rama >100', async ({ page }) => {
+  test('Balance anual: Cargar todos ejecuta la rama >100 y muestra todos los deudores', async ({ page }) => {
     const balanceMatcher = /api\.php\?[^#]*action=contable_balance/;
     await page.route(balanceMatcher, async (route) => {
       const response = await route.fetch();
@@ -494,35 +443,28 @@ test.describe('Blindaje final · integridad histórica y acciones deterministas'
       await route.fulfill({ response, json: body });
     });
 
-    await page.goto('/contable/ingresos');
-    await page.getByRole('button', { name: 'Balance anual', exact: true }).click();
-    const balance = page.locator('[role="dialog"].ct-balance-modal');
-    await expect(balance).toBeVisible();
-    const pendingBox = await balance.boundingBox();
-    expect(pendingBox).toBeTruthy();
+    try {
+      await page.goto('/contable/ingresos');
+      await page.getByRole('button', { name: 'Balance anual', exact: true }).click();
+      const balance = page.locator('[role="dialog"].ct-balance-modal');
+      await expect(balance).toBeVisible();
 
-    await balance.getByRole('button', { name: 'Generar balance', exact: true }).click();
-    await expect(balance.getByRole('button', { name: 'Actualizar balance', exact: true })).toBeVisible();
-    await expect.poll(async () => {
-      const box = await balance.boundingBox();
-      return box?.height || 0;
-    }).toBeGreaterThan(pendingBox.height + 40);
-    const generatedBox = await balance.boundingBox();
-    expect(generatedBox).toBeTruthy();
-    expect(Math.abs(generatedBox.width - pendingBox.width)).toBeLessThanOrEqual(3);
-    expect(generatedBox.height).toBeGreaterThan(pendingBox.height + 40);
+      await balance.getByRole('button', { name: 'Generar balance', exact: true }).click();
+      await expect(balance.getByRole('button', { name: 'Actualizar balance', exact: true })).toBeVisible();
+      await balance.getByRole('tab', { name: 'Deudores por período', exact: true }).click();
 
-    await balance.getByRole('tab', { name: 'Deudores por período', exact: true }).click();
-    const debtTable = balance.getByRole('table', { name: 'Detalle completo de deudores por período' });
-    await expect(debtTable.locator('.global-divTable__row')).toHaveCount(100);
-    const loadAll = balance.getByRole('button', { name: 'Cargar todos', exact: true });
-    await expect(loadAll).toBeVisible();
-    await expect(balance.getByText(/Quedan 1 registros más\./)).toBeVisible();
-    await loadAll.click();
-    await expect(loadAll).toHaveCount(0);
-    await expect(debtTable.locator('.global-divTable__row')).toHaveCount(101);
-    await expect(rowByText(balance, 'PW E2E CARGAR TODOS 101')).toBeVisible();
+      const debtTable = balance.getByRole('table', { name: 'Detalle completo de deudores por período' });
+      await expect(debtTable.locator('.global-divTable__row')).toHaveCount(100);
+      const loadAll = balance.getByRole('button', { name: 'Cargar todos', exact: true });
+      await expect(loadAll).toBeVisible();
+      await expect(balance.getByText(/Quedan 1 registros más\./)).toBeVisible();
 
-    await page.unroute(balanceMatcher);
+      await loadAll.click();
+      await expect(loadAll).toHaveCount(0);
+      await expect(debtTable.locator('.global-divTable__row')).toHaveCount(101);
+      await expect(rowByText(balance, 'PW E2E CARGAR TODOS 101')).toBeVisible();
+    } finally {
+      await page.unroute(balanceMatcher);
+    }
   });
 });

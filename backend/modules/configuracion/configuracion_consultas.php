@@ -30,7 +30,8 @@ trait ConfiguracionConsultas
             $id = (int)$row[$idField];
             $row[$idField] = $id;
             $row['activo'] = (bool)$row['activo'];
-            $row['cantidad_usos'] = configuracion_cantidad_usos($db, $definition, $id);
+            $row['cantidad_usos'] = configuracion_cantidad_usos_actuales($db, $definition, $id);
+            $row['cantidad_usos_protegidos'] = configuracion_cantidad_usos($db, $definition, $id);
         }
         unset($row);
         return $rows;

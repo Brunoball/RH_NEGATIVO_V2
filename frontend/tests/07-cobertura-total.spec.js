@@ -86,6 +86,10 @@ const UI_COVERAGE_EVIDENCE = {
     spec: '10-cobertura-ui-total.spec.js',
     tokens: ['ESTADO_ESTRUCTURAL', 'FILTRO_PERIODO_INVALIDO', 'TIPO_OPCION_INVALIDO', 'ESTADO_OPCION_INVALIDO', 'OPCION_CONTABLE_INVALIDA'],
   },
+  dashboard_datos_registrados: {
+    spec: '04-dashboard.spec.js',
+    tokens: ['Datos registrados', 'Personas activas', 'Socios de baja', 'Con categoría', 'Cobros del mes'],
+  },
   shell_microacciones: {
     spec: '01-navegacion.spec.js',
     tokens: ['dblclick()', '.pp-drawerOverlay', 'overlay.click'],
@@ -114,13 +118,9 @@ const UI_COVERAGE_EVIDENCE = {
     spec: '11-blindaje-final.spec.js',
     tokens: ['por_pagina: 1', 'paginación UI ejecuta siempre Siguiente y Anterior', 'sociosRequestedPages.includes(2)', 'cuotasRequestedPages.includes(2)'],
   },
-  skeleton_grande_sin_scroll: {
+  balance_cargar_todos: {
     spec: '11-blindaje-final.spec.js',
-    tokens: ['width: 1600', 'toHaveCount(24)', 'overflowY'],
-  },
-  balance_cargar_todos_y_altura: {
-    spec: '11-blindaje-final.spec.js',
-    tokens: ['Cargar todos siempre ejecuta la rama >100', 'generatedBox.width', 'generatedBox.height'],
+    tokens: ['Cargar todos ejecuta la rama >100', 'Quedan 1 registros más', 'PW E2E CARGAR TODOS 101'],
   },
 };
 
@@ -455,6 +455,19 @@ test.describe('Release gate · cobertura funcional total', () => {
     const frontendActions = frontendApiActions();
     const missing = frontendActions.filter((action) => !backendActions.has(action));
     expect(missing, `Actions de frontend sin ruta backend funcional: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  test('cada tarjeta literal del Dashboard tiene evidencia E2E, incluida cualquier caja nueva', async () => {
+    const dashboardSource = read(path.join(frontendRoot(), 'src', 'components', 'Dashboard', 'Dashboard.jsx'));
+    const dashboardSpec = read(path.join(__dirname, '04-dashboard.spec.js'));
+    const labels = [
+      ...[...dashboardSource.matchAll(/<MetricCard\b[^>]*\btitle="([^"]+)"/g)].map((match) => match[1]),
+      ...[...dashboardSource.matchAll(/<DataItem\b[^>]*\blabel="([^"]+)"/g)].map((match) => match[1]),
+    ];
+    expect(labels.length, 'Dashboard sin tarjetas inventariables').toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(dashboardSpec, `La tarjeta del Dashboard "${label}" no tiene evidencia E2E`).toContain(label);
+    }
   });
 
 

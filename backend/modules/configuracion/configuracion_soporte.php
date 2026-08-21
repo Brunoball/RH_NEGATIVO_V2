@@ -139,12 +139,17 @@ function configuracion_item(PDO $db, array $definition, int $id, bool $lock = fa
     if (!$row) return null;
     $row[$idField] = (int)$row[$idField];
     $row['activo'] = (bool)$row['activo'];
-    $row['cantidad_usos'] = configuracion_cantidad_usos($db, $definition, $id);
+    $row['cantidad_usos'] = configuracion_cantidad_usos_actuales($db, $definition, $id);
+    $row['cantidad_usos_protegidos'] = configuracion_cantidad_usos($db, $definition, $id);
     return $row;
 }
 
-function configuracion_relaciones(array $definition): array
+function configuracion_relaciones_uso_actual(array $definition): array
 {
+    // Estas relaciones representan el uso que el usuario espera ver en la
+    // tabla de Configuración. No incluyen auditorías ni historial de cambios,
+    // porque sumar esas referencias duplica/triplica visualmente una misma
+    // asociación (por ejemplo, una categoría asignada a un socio).
     return match ((string)$definition['lista']) {
         'categoria' => [
             ['tabla' => 'socios', 'columna' => 'id_categoria'],
@@ -154,8 +159,6 @@ function configuracion_relaciones(array $definition): array
         ],
         'estado' => [
             ['tabla' => 'socios', 'columna' => 'id_estado'],
-            ['tabla' => 'socios_historial_estados', 'columna' => 'id_estado_anterior'],
-            ['tabla' => 'socios_historial_estados', 'columna' => 'id_estado_nuevo'],
         ],
         'grupo_sanguineo' => [
             ['tabla' => 'socios', 'columna' => 'id_grupo_sanguineo'],
@@ -173,6 +176,20 @@ function configuracion_relaciones(array $definition): array
     };
 }
 
+function configuracion_relaciones(array $definition): array
+{
+    // Relaciones que protegen la integridad referencial/histórica. Esta lista
+    // puede ser más amplia que la que se muestra como "Uso actual" en UI.
+    $relations = configuracion_relaciones_uso_actual($definition);
+
+    if ((string)$definition['lista'] === 'estado') {
+        $relations[] = ['tabla' => 'socios_historial_estados', 'columna' => 'id_estado_anterior'];
+        $relations[] = ['tabla' => 'socios_historial_estados', 'columna' => 'id_estado_nuevo'];
+    }
+
+    return $relations;
+}
+
 function configuracion_tabla_columna_existe(PDO $db, string $table, string $column): bool
 {
     $statement = $db->prepare(
@@ -181,6 +198,20 @@ function configuracion_tabla_columna_existe(PDO $db, string $table, string $colu
     );
     $statement->execute([$table, $column]);
     return (int)$statement->fetchColumn() === 1;
+}
+
+function configuracion_cantidad_usos_actuales(PDO $db, array $definition, int $id): int
+{
+    $total = 0;
+    foreach (configuracion_relaciones_uso_actual($definition) as $relation) {
+        $table = (string)$relation['tabla'];
+        $column = (string)$relation['columna'];
+        if (!configuracion_tabla_columna_existe($db, $table, $column)) continue;
+        $statement = $db->prepare("SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = ?");
+        $statement->execute([$id]);
+        $total += (int)$statement->fetchColumn();
+    }
+    return $total;
 }
 
 function configuracion_cantidad_usos(PDO $db, array $definition, int $id): int
