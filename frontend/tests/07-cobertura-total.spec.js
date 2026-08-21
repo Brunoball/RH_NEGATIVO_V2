@@ -86,6 +86,42 @@ const UI_COVERAGE_EVIDENCE = {
     spec: '10-cobertura-ui-total.spec.js',
     tokens: ['ESTADO_ESTRUCTURAL', 'FILTRO_PERIODO_INVALIDO', 'TIPO_OPCION_INVALIDO', 'ESTADO_OPCION_INVALIDO', 'OPCION_CONTABLE_INVALIDA'],
   },
+  shell_microacciones: {
+    spec: '01-navegacion.spec.js',
+    tokens: ['dblclick()', '.pp-drawerOverlay', 'overlay.click'],
+  },
+  familias_quitar_antes_de_guardar: {
+    spec: '02-socios.spec.js',
+    tokens: ['Quitar a ${firstData.nombre}', 'reversible', 'firstOptionAgain'],
+  },
+  cuotas_chips_y_limpieza: {
+    spec: '05-cuotas.spec.js',
+    tokens: ['Limpiar búsqueda', 'Eliminar filtro Estado:', 'Eliminar filtro Cobrador:', 'Eliminar filtro Medio:'],
+  },
+  socios_chips_y_estado_info: {
+    spec: '08-blindaje-modulos.spec.js',
+    tokens: ['Limpiar búsqueda', 'Eliminar filtro Estado:', 'Información sobre Estados', 'estados auxiliares'],
+  },
+  integridad_historica_real: {
+    spec: '11-blindaje-final.spec.js',
+    tokens: ['BAJA_SUPERPONE_FAMILIA', 'CRONOLOGIA_SOCIO_INVALIDA', 'FAMILIA_INTERVALO_SUPERPUESTO', 'FECHA_INGRESO_AFECTA_HISTORIAL'],
+  },
+  limite_archivo_real: {
+    spec: '11-blindaje-final.spec.js',
+    tokens: ['ARCHIVO_DEMASIADO_GRANDE', '10 * 1024 * 1024'],
+  },
+  paginacion_determinista: {
+    spec: '11-blindaje-final.spec.js',
+    tokens: ['por_pagina: 1', 'paginación UI ejecuta siempre Siguiente y Anterior', 'sociosRequestedPages.includes(2)', 'cuotasRequestedPages.includes(2)'],
+  },
+  skeleton_grande_sin_scroll: {
+    spec: '11-blindaje-final.spec.js',
+    tokens: ['width: 1600', 'toHaveCount(24)', 'overflowY'],
+  },
+  balance_cargar_todos_y_altura: {
+    spec: '11-blindaje-final.spec.js',
+    tokens: ['Cargar todos siempre ejecuta la rama >100', 'generatedBox.width', 'generatedBox.height'],
+  },
 };
 
 const FUNCTIONAL_FILTER_EVIDENCE = {

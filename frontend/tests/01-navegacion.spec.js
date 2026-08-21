@@ -52,6 +52,13 @@ test.describe('Shell · navegación de módulos incluidos', () => {
     await page.locator('.pp-sidebar').hover();
     await page.getByRole('link', { name: 'Administración', exact: true }).click();
     await expect(page).toHaveURL(/\/panel$/);
+
+    // El botón de un grupo también tiene una acción distinta al clic simple:
+    // doble clic debe ingresar directamente a su ruta por defecto.
+    const sociosGroup = page.getByRole('button', { name: 'Socios', exact: true });
+    await sociosGroup.dblclick();
+    await expect(page).toHaveURL(/\/socios\/personas$/);
+    await expect(sociosGroup).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('menú móvil, perfil y acceso a Configuración responden a sus acciones', async ({ page }) => {
@@ -63,6 +70,13 @@ test.describe('Shell · navegación de módulos incluidos', () => {
     await openMenu.click();
     await expect(page.getByRole('button', { name: 'Cerrar menú' })).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar menú' }).click();
+
+    // El fondo/overlay es una segunda vía real de cierre del drawer móvil.
+    await openMenu.click();
+    const overlay = page.locator('.pp-drawerOverlay');
+    await expect(overlay).toHaveClass(/is-open/);
+    await overlay.click({ position: { x: 385, y: 20 } });
+    await expect(overlay).not.toHaveClass(/is-open/);
 
     await page.getByRole('button', { name: 'Abrir perfil' }).click();
     let profile = page.getByRole('dialog', { name: 'Perfil de usuario' });

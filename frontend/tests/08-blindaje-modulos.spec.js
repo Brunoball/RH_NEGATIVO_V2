@@ -218,6 +218,7 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     await openAdvancedSection(page, 'Estado');
     await page.locator('.socios-filterChoices').getByRole('button', { name: stateA.nombre, exact: true }).click();
     await expect(rowByText(page, data.nombre)).toBeVisible();
+
     await page.locator('.socios-filterChoices').getByRole('button', { name: stateB.nombre, exact: true }).click();
     await expect(rowByText(page, data.nombre)).toHaveCount(0);
     await resetAdvancedFilters(page);
@@ -278,6 +279,48 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     await dateSection.getByLabel(/Hasta/).fill(todayIso());
     await dateSection.getByRole('button', { name: 'Aplicar', exact: true }).click();
     await expect(rowByText(page, data.nombre)).toHaveCount(0);
+  });
+
+  test('limpiar búsqueda y quitar un chip de Estado ejecutan sus acciones sin alterar el resto de filtros', async ({ page, request }) => {
+    const stateDefinition = configValues().estado;
+    const state = await createConfigItem(request, 'estado', stateDefinition);
+    const data = socioData('MICROACCIONES FILTROS');
+    await createSocio(request, data, {
+      fecha_ingreso: `${currentYear()}-01-01`,
+      id_estado: configItemId(state, stateDefinition),
+    });
+
+    await page.goto('/socios/personas');
+    const search = page.getByLabel('Socio / ID', { exact: true });
+    await search.fill(data.dni);
+    await expect(rowByText(page, data.nombre)).toBeVisible();
+
+    const clearSearch = page.getByRole('button', { name: 'Limpiar búsqueda', exact: true });
+    await expect(clearSearch).toBeVisible();
+    await clearSearch.click();
+    await expect(search).toHaveValue('');
+
+    await search.fill(data.dni);
+    await expect(rowByText(page, data.nombre)).toBeVisible();
+    await openAdvancedSection(page, 'Estado');
+    await page.locator('.socios-filterChoices').getByRole('button', { name: state.nombre, exact: true }).click();
+    await expect(rowByText(page, data.nombre)).toBeVisible();
+
+    // Cerramos el desplegable antes de pulsar el chip: la prueba cubre la acción
+    // real del chip y evita que el menú flotante intercepte el click en viewports
+    // donde ambos elementos pueden superponerse.
+    const filterTrigger = page.getByRole('button', { name: /Aplicar Filtros/ });
+    if ((await filterTrigger.getAttribute('aria-expanded')) === 'true') await filterTrigger.click();
+
+    const stateChipRemove = page.getByRole('button', {
+      name: `Eliminar filtro Estado: ${state.nombre}`,
+      exact: true,
+    });
+    await expect(stateChipRemove).toBeVisible();
+    await stateChipRemove.click();
+    await expect(stateChipRemove).toHaveCount(0);
+    await expect(search).toHaveValue(data.dni);
+    await expect(rowByText(page, data.nombre)).toBeVisible();
   });
 
   test('cumpleaños se gestiona desde la UI y el cierre queda persistido en backend', async ({ page, request }) => {
@@ -789,6 +832,16 @@ test.describe('Blindaje adicional · Configuración', () => {
         await expect(rowByText(page, editedName)).toHaveCount(0);
       });
     }
+
+    // Estados también tiene un aviso contextual propio. Se prueba por hover
+    // y por foco para cubrir mouse y teclado/touch accesible.
+    await page.getByRole('tab', { name: 'Estados', exact: true }).click();
+    await expect(page).toHaveURL(/lista=estado/);
+    const stateInfo = page.getByRole('button', { name: 'Información sobre Estados', exact: true });
+    await stateInfo.hover();
+    await expect(page.getByRole('tooltip')).toContainText(/ACTIVO y PASIVO.*estructurales/i);
+    await stateInfo.focus();
+    await expect(page.getByRole('tooltip')).toContainText(/estados auxiliares/i);
 
     await page.getByRole('tab', { name: 'Períodos', exact: true }).click();
     await expect(page).toHaveURL(/lista=periodo/);

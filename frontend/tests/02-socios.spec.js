@@ -384,6 +384,18 @@ test.describe('Socios', () => {
       }
       await expect(dialog.getByText(firstData.nombre, { exact: true }).last()).toBeVisible();
       await expect(dialog.getByText(secondData.nombre, { exact: true }).last()).toBeVisible();
+
+      // En una familia nueva, quitar un integrante antes de guardar debe ser
+      // reversible y no generar una desvinculación histórica inexistente.
+      await dialog.getByRole('button', { name: `Quitar a ${firstData.nombre}`, exact: true }).click();
+      await expect(dialog.getByRole('button', { name: `Quitar a ${firstData.nombre}`, exact: true })).toHaveCount(0);
+      await memberSearch.fill(firstData.dni);
+      const firstOptionAgain = dialog.locator('label.familias-modal__member').filter({ hasText: firstData.nombre });
+      await expect(firstOptionAgain).toBeVisible();
+      await firstOptionAgain.getByRole('checkbox').check();
+      await dialog.getByRole('button', { name: /Agregar miembros/ }).click();
+      await expect(dialog.getByText(firstData.nombre, { exact: true }).last()).toBeVisible();
+
       await dialog.getByRole('button', { name: 'Crear familia' }).click();
       await expectFeedback(page, 'Familia creada correctamente.');
 

@@ -956,7 +956,16 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    const quotaSearch = page.getByRole('textbox', { name: 'Socio / ID', exact: true });
+    await quotaSearch.fill(String(socio.item.id_socio));
+    await expect(rowByText(page, socio.data.nombre)).toBeVisible();
+
+    // La X global del buscador debe resetear únicamente la búsqueda.
+    const clearQuotaSearch = page.getByRole('button', { name: 'Limpiar búsqueda', exact: true });
+    await expect(clearQuotaSearch).toBeVisible();
+    await clearQuotaSearch.click();
+    await expect(quotaSearch).toHaveValue('');
+    await quotaSearch.fill(String(socio.item.id_socio));
 
     await page.evaluate(() => {
       window.__pwQuotaPopups = [];
@@ -997,6 +1006,15 @@ test.describe('Cuotas · UI', () => {
       expect(state, 'El estado del socio debe estar disponible en filtros de Cuotas').toBeTruthy();
       await selectQuotaAdvancedFilter(page, 'Estado', state.nombre);
       await expect(rowByText(page, socio.data.nombre)).toBeVisible();
+      await closeQuotaAdvancedFilters(page);
+      const removeStateChip = page.getByRole('button', {
+        name: `Eliminar filtro Estado: ${state.nombre}`,
+        exact: true,
+      });
+      await expect(removeStateChip).toBeVisible();
+      await removeStateChip.click();
+      await expect(removeStateChip).toHaveCount(0);
+      await expect(rowByText(page, socio.data.nombre)).toBeVisible();
     }
     const collector = (catalogs.catalogos.cobradores || []).find(
       (item) => String(item.id_cobrador) === String(socio.item.id_cobrador),
@@ -1004,6 +1022,13 @@ test.describe('Cuotas · UI', () => {
     expect(collector, 'El cobrador del socio debe estar disponible en filtros de Cuotas').toBeTruthy();
     await selectQuotaAdvancedFilter(page, 'Cobrador', collector.nombre);
     await closeQuotaAdvancedFilters(page);
+    const removeCollectorChip = page.getByRole('button', {
+      name: `Eliminar filtro Cobrador: ${collector.nombre}`,
+      exact: true,
+    });
+    await expect(removeCollectorChip).toBeVisible();
+    await removeCollectorChip.click();
+    await expect(removeCollectorChip).toHaveCount(0);
     row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
@@ -1028,6 +1053,13 @@ test.describe('Cuotas · UI', () => {
     await selectQuotaAdvancedFilter(page, 'Medio de pago', catalogs.medium.nombre);
     await expect(rowByText(page, socio.data.nombre)).toBeVisible();
     await closeQuotaAdvancedFilters(page);
+    const removeMediumChip = page.getByRole('button', {
+      name: `Eliminar filtro Medio: ${catalogs.medium.nombre}`,
+      exact: true,
+    });
+    await expect(removeMediumChip).toBeVisible();
+    await removeMediumChip.click();
+    await expect(removeMediumChip).toHaveCount(0);
     row = rowByText(page, socio.data.nombre);
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
     await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PAGADO');
