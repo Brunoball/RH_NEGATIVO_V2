@@ -53,37 +53,28 @@ function MetricCard({ icon, title, value, detail, tone = "default", keepValueVis
   );
 }
 
-function ProgressItem({ icon, label, value, detail }) {
-  const normalized = Math.max(0, Math.min(100, Number(value || 0)));
-
+function GeneralIndicator({ icon, label, value, detail, tone = "default" }) {
   return (
-    <article className="admin-dashboard__progressItem">
-      <div className="admin-dashboard__progressHead">
-        <span>
-          <FontAwesomeIcon icon={icon} />
-          {label}
-        </span>
-        <strong>{normalized}%</strong>
+    <article className={`admin-dashboard__indicator is-${tone}`}>
+      <div className="admin-dashboard__indicatorIcon">
+        <FontAwesomeIcon icon={icon} />
       </div>
-      <div
-        className="admin-dashboard__progressTrack"
-        aria-label={`${label}: ${normalized}%`}
-      >
-        <i style={{ width: `${normalized}%` }} />
+      <div className="admin-dashboard__indicatorBody">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        {detail ? <small>{detail}</small> : null}
       </div>
-      <small>{detail}</small>
     </article>
   );
 }
 
-
-function DataItem({ icon, label, value, detail }) {
+function FeaturedGeneralIndicator({ icon, label, value, detail, tone = "default" }) {
   return (
-    <article className="admin-dashboard__dataItem">
-      <div className="admin-dashboard__dataIcon">
+    <article className={`admin-dashboard__indicator admin-dashboard__indicator--featured is-${tone}`}>
+      <div className="admin-dashboard__indicatorIcon admin-dashboard__indicatorIcon--featured">
         <FontAwesomeIcon icon={icon} />
       </div>
-      <div className="admin-dashboard__dataBody">
+      <div className="admin-dashboard__indicatorBody admin-dashboard__indicatorBody--featured">
         <span>{label}</span>
         <strong>{value}</strong>
         {detail ? <small>{detail}</small> : null}
@@ -198,6 +189,17 @@ export default function Dashboard() {
     });
   }
 
+  const qualityAverage = statusItems.length
+    ? Math.round(
+        statusItems.reduce((total, item) => total + Number(item.value || 0), 0) /
+          statusItems.length,
+      )
+    : 0;
+
+  const qualityDetail = statusItems
+    .map((item) => `${item.label}: ${Math.max(0, Math.min(100, Number(item.value || 0)))}%`)
+    .join(" · ");
+
   return (
     <section className="admin-dashboard">
       <header className="admin-dashboard__header">
@@ -276,59 +278,61 @@ export default function Dashboard() {
             <PaymentChart items={summary.serie_cuotas || []} />
           </article>
 
-          <div className="admin-dashboard__sideColumn">
-            <aside className="admin-dashboard__panel admin-dashboard__panel--status">
-              <header className="admin-dashboard__panelHead">
-                <div>
-                  <h2>Calidad de los datos</h2>
-                  <p>Controles sobre socios activos.</p>
-                </div>
-              </header>
-              <div className="admin-dashboard__progressList">
-                {statusItems.map((item) => (
-                  <ProgressItem key={item.label} {...item} />
-                ))}
+          <aside className="admin-dashboard__panel admin-dashboard__panel--indicators">
+            <header className="admin-dashboard__panelHead">
+              <div>
+                <h2>Indicadores generales</h2>
+                <p>Totales principales del padrón y calidad de los datos.</p>
               </div>
-            </aside>
+            </header>
 
-            <aside className="admin-dashboard__panel admin-dashboard__panel--data">
-              <header className="admin-dashboard__panelHead">
-                <div>
-                  <h2>Datos registrados</h2>
-                  <p>Resumen rápido del padrón y del período actual.</p>
-                </div>
-              </header>
-              <div className="admin-dashboard__dataGrid">
-                <DataItem
-                  icon={faUsers}
-                  label="Personas activas"
-                  value={Number(socios.personas_activas || 0)}
-                  detail="Registradas actualmente"
-                />
-                <DataItem
-                  icon={faUsers}
-                  label="Socios de baja"
-                  value={Number(socios.inactivos || 0)}
-                  detail="Fuera del padrón activo"
-                />
-                <DataItem
-                  icon={faTags}
-                  label="Con categoría"
-                  value={Number(socios.con_categoria || 0)}
-                  detail="Socios categorizados"
-                />
-                <DataItem
-                  icon={faCircleCheck}
-                  label="Cobros del mes"
-                  value={Number(cuotas.cobros_registrados_mes || 0)}
-                  detail={`Período ${periodo.mes_nombre || "actual"}`}
-                />
-              </div>
-            </aside>
-          </div>
+            <div className="admin-dashboard__indicatorGrid">
+              <FeaturedGeneralIndicator
+                icon={faCircleCheck}
+                label="Calidad general de datos"
+                value={`${qualityAverage}%`}
+                detail={qualityDetail}
+                tone="quality"
+              />
+
+              <GeneralIndicator
+                icon={faUsers}
+                label="Personas activas"
+                value={Number(socios.personas_activas || 0)}
+                detail="Registradas actualmente"
+                tone="people"
+              />
+              <GeneralIndicator
+                icon={faUsers}
+                label="Socios de baja"
+                value={Number(socios.inactivos || 0)}
+                detail="Fuera del padrón activo"
+                tone="muted"
+              />
+              <GeneralIndicator
+                icon={faTags}
+                label="Con categoría"
+                value={Number(socios.con_categoria || 0)}
+                detail="Socios categorizados"
+                tone="category"
+              />
+              <GeneralIndicator
+                icon={faCircleCheck}
+                label="Cobros del mes"
+                value={Number(cuotas.cobros_registrados_mes || 0)}
+                detail={`Período ${periodo.mes_nombre || "actual"}`}
+                tone="success"
+              />
+            </div>
+          </aside>
         </div>
 
-
+        <footer className="admin-dashboard__footer">
+          Desarrollado por{" "}
+          <a href="https://3devsnet.com" target="_blank" rel="noopener noreferrer">
+            3devs.solutions
+          </a>
+        </footer>
       </div>
     </section>
   );

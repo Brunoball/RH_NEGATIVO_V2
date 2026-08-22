@@ -258,7 +258,7 @@
 }
 
 .admin-dashboard__mainGrid {
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.72fr);
 }
 
 .admin-dashboard__panel {
@@ -596,7 +596,7 @@
     min-height: 0;
     display: grid;
     flex: 1 1 auto;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .admin-dashboard__mainGrid {
@@ -697,5 +697,282 @@
   .admin-dashboard__panelHead {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+/* =========================================================
+   INDICADORES GENERALES — bloque unificado estilo Balto
+========================================================= */
+.admin-dashboard__panel--indicators {
+  min-width: 0;
+  min-height: 288px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-dashboard__panel--indicators .admin-dashboard__panelHead {
+  min-height: 68px;
+  flex: 0 0 auto;
+}
+
+.admin-dashboard__indicatorGrid {
+  min-height: 0;
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(84px, 1.15fr) repeat(2, minmax(64px, 1fr));
+  align-content: stretch;
+  gap: 8px;
+  overflow: hidden;
+  padding: 5px 16px 16px;
+}
+
+.admin-dashboard__indicator {
+  --indicator-tone: var(--dashboard-action);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--indicator-tone) 15%, var(--dashboard-border));
+  border-radius: var(--blue-inst-radius);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--indicator-tone) 7%, var(--dashboard-surface)),
+    var(--dashboard-surface)
+  );
+  box-shadow: 0 10px 26px -24px color-mix(in srgb, var(--dashboard-ink) 45%, transparent);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-dashboard__indicator:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--indicator-tone) 26%, var(--dashboard-border));
+  box-shadow: 0 16px 32px -25px color-mix(in srgb, var(--dashboard-ink) 55%, transparent);
+}
+
+.admin-dashboard__indicator.is-quality {
+  --indicator-tone: var(--dashboard-action);
+}
+
+.admin-dashboard__indicator.is-people {
+  --indicator-tone: #2563eb;
+}
+
+.admin-dashboard__indicator.is-muted {
+  --indicator-tone: var(--dashboard-muted);
+}
+
+.admin-dashboard__indicator.is-category {
+  --indicator-tone: var(--dashboard-warning);
+}
+
+.admin-dashboard__indicator.is-success {
+  --indicator-tone: var(--dashboard-success);
+}
+
+.admin-dashboard__indicatorIcon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--indicator-tone);
+  background: color-mix(in srgb, var(--indicator-tone) 12%, var(--dashboard-surface));
+  font-size: 12px;
+}
+
+.admin-dashboard__indicatorBody {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-dashboard__indicatorBody > span {
+  overflow: hidden;
+  color: var(--dashboard-muted);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-dashboard__indicatorBody strong {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dashboard-ink);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-dashboard__indicatorBody small {
+  overflow: hidden;
+  color: var(--dashboard-muted);
+  font-size: 8px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.admin-dashboard__indicator--featured {
+  grid-column: 1 / -1;
+  min-height: 0;
+  height: 100%;
+  padding: clamp(11px, 1vw, 14px);
+  border-color: color-mix(in srgb, var(--indicator-tone) 24%, var(--dashboard-border));
+  background: radial-gradient(
+      120px 90px at 100% 0%,
+      color-mix(in srgb, var(--indicator-tone) 14%, transparent),
+      transparent 62%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--indicator-tone) 9%, var(--dashboard-surface)),
+      var(--dashboard-surface)
+    );
+}
+
+.admin-dashboard__indicatorIcon--featured {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.admin-dashboard__indicatorBody--featured {
+  gap: 3px;
+}
+
+.admin-dashboard__indicatorBody--featured strong {
+  font-size: 18px;
+}
+
+.admin-dashboard__indicatorBody--featured small {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+
+.admin-dashboard__footer {
+  flex: 0 0 auto;
+  margin-top: -2px;
+  color: var(--dashboard-muted);
+  font-size: 11.5px;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.admin-dashboard__footer a {
+  color: var(--dashboard-action);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.admin-dashboard__footer a:hover {
+  text-decoration: underline;
+}
+
+/* Los indicadores se adaptan al alto disponible como en Balto:
+   una tarjeta principal y dos filas de tarjetas secundarias. */
+@media (min-width: 1041px) and (max-height: 820px) {
+  .admin-dashboard__panel--indicators .admin-dashboard__panelHead {
+    min-height: 58px;
+    padding-top: 11px;
+    padding-bottom: 7px;
+  }
+
+  .admin-dashboard__indicatorGrid {
+    grid-template-rows: minmax(70px, 1.1fr) repeat(2, minmax(54px, 1fr));
+    gap: 6px;
+    padding: 3px 12px 12px;
+  }
+
+  .admin-dashboard__indicator {
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .admin-dashboard__indicatorIcon {
+    width: 27px;
+    height: 27px;
+    border-radius: 9px;
+    font-size: 11px;
+  }
+
+  .admin-dashboard__indicatorIcon--featured {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .admin-dashboard__indicatorBody strong {
+    font-size: 14px;
+  }
+
+  .admin-dashboard__indicatorBody--featured strong {
+    font-size: 17px;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-dashboard__indicatorGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: minmax(68px, auto);
+    overflow: visible;
+    gap: 10px;
+  }
+
+  .admin-dashboard__indicator,
+  .admin-dashboard__indicator--featured {
+    min-height: 68px;
+    height: auto;
+  }
+
+  .admin-dashboard__footer {
+    padding-bottom: 8px;
+    font-size: 11px;
+    text-align: center;
+  }
+}
+
+@media (min-width: 1041px) {
+  .admin-dashboard__panel--indicators {
+    height: 100%;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 1040px) {
+  .admin-dashboard__panel--indicators {
+    min-height: auto;
+  }
+
+  .admin-dashboard__indicatorGrid {
+    grid-template-rows: none;
+    grid-auto-rows: minmax(70px, auto);
+    overflow: visible;
+  }
+
+  .admin-dashboard__indicator,
+  .admin-dashboard__indicator--featured {
+    min-height: 70px;
+    height: auto;
   }
 }
