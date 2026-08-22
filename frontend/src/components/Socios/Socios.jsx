@@ -20,6 +20,7 @@ import {
   faRotateLeft,
   faTags,
   faTrashCan,
+  faTriangleExclamation,
   faUser,
   faUserSlash,
   faWallet,
@@ -831,26 +832,32 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange, mode }) 
 
   return (
     <div className="socios-form">
-      <div className="socios-form__memberId" aria-label="Número de socio">
-        <span>N.º de socio</span>
-        <strong>{form.id_socio || "—"}</strong>
-        <small>{mode === "edit" ? "ID actual del socio" : "Se asignará al crear el socio"}</small>
-      </div>
-
       <EntityTabs tabs={tabs} value={activeTab} onChange={onTabChange} idPrefix="socios-form" ariaLabel="Datos del socio" />
 
       <EntityTabPane active={activeTab === FORM_TAB_PERSONAL} disableWhenInactive>
         <EntityFormPanel tabValue={FORM_TAB_PERSONAL} idPrefix="socios-form" title="Identificación y contacto" icon={faUser}>
-          <FloatingField label="Nombre *" active={activeValue("nombre")}>
-            <input
-              value={form.nombre}
-              maxLength={50}
-              onChange={(event) => set("nombre", personNameInput(event.target.value, 50))}
-              required
-              placeholder=" "
-              autoComplete="given-name"
-            />
-          </FloatingField>
+          <div className="socios-form__identityRow">
+            <FloatingField label="ID" active className="socios-form__idField">
+              <input
+                value={form.id_socio || ""}
+                readOnly
+                aria-readonly="true"
+                tabIndex={-1}
+                placeholder=" "
+                title={mode === "edit" ? "ID actual del socio" : "ID reservado para el nuevo socio"}
+              />
+            </FloatingField>
+            <FloatingField label="Nombre *" active={activeValue("nombre")}>
+              <input
+                value={form.nombre}
+                maxLength={50}
+                onChange={(event) => set("nombre", personNameInput(event.target.value, 50))}
+                required
+                placeholder=" "
+                autoComplete="given-name"
+              />
+            </FloatingField>
+          </div>
           <FloatingField label="Apellido *" active={activeValue("apellido")}>
             <input
               value={form.apellido}
@@ -1659,19 +1666,24 @@ export default function Socios() {
 
       <CrudModal
         open={discardFormOpen}
-        title="¿Salir sin guardar?"
-        subtitle="Si salís ahora, vas a perder todos los cambios realizados en este socio."
+        title="¿Descartar cambios?"
+        subtitle="Tenés información del socio que todavía no fue guardada."
         onClose={() => setDiscardFormOpen(false)}
         onSubmit={confirmDiscardForm}
-        submitLabel="Sí, salir"
-        cancelLabel="Cancelar"
+        submitLabel="Descartar cambios"
+        cancelLabel="Seguir editando"
         danger
         closeOnBackdrop={false}
         modalClassName="socios-modal socios-modal--discard"
       >
         <div className="socios-formDiscard">
-          <strong>Los cambios todavía no fueron guardados.</strong>
-          <span>Podés cancelar para volver al formulario y seguir editando.</span>
+          <span className="socios-formDiscard__icon" aria-hidden="true">
+            <FontAwesomeIcon icon={faTriangleExclamation} />
+          </span>
+          <div className="socios-formDiscard__copy">
+            <strong>Si salís ahora, los datos que completaste no se guardarán.</strong>
+            <span>Podés seguir editando el socio o descartar los cambios y cerrar el formulario.</span>
+          </div>
         </div>
       </CrudModal>
 
