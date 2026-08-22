@@ -5,7 +5,7 @@ const protectedActions = [
   ['auth_usuario_actual', 'GET'],
   ['auth_logout', 'POST'],
   ['dashboard_resumen', 'GET'],
-  ['socios_listar', 'GET'], ['socios_obtener', 'GET'], ['socios_historial', 'GET'],
+  ['socios_listar', 'GET'], ['socios_obtener', 'GET'], ['socios_historial', 'GET'], ['socios_proximo_id', 'GET'],
   ['socios_guardar', 'POST'], ['socios_eliminar', 'POST'], ['socios_eliminar_definitivo', 'POST'],
   ['socios_reactivar', 'POST'], ['socios_contacto_guardar', 'POST'], ['socios_cumpleanios_cerrar', 'POST'],
   ['familias_listar', 'GET'], ['familias_obtener', 'GET'], ['familias_guardar', 'POST'],

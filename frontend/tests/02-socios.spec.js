@@ -28,7 +28,7 @@ async function fillSocioForm(dialog, data, catalogs, { birthday = false } = {}) 
   await dialog.getByLabel('DNI').fill(data.dni);
   await dialog.getByLabel('Fecha de nacimiento').fill(birthday ? '2008-01-01' : '1999-05-15');
   await dialog.getByLabel('Domicilio', { exact: true }).fill('CALLE PLAYWRIGHT');
-  await dialog.getByLabel('Número').fill('123');
+  await dialog.getByRole('textbox', { name: 'Número', exact: true }).fill('123');
   await dialog.getByLabel('Teléfono móvil').fill(data.movil);
   await dialog.getByLabel('Teléfono fijo').fill(data.fijo);
   await dialog.getByLabel('Domicilio de cobro').fill('DOMICILIO COBRO PLAYWRIGHT');
@@ -117,6 +117,11 @@ test.describe('Socios', () => {
       await page.getByRole('button', { name: 'Nuevo socio' }).click();
       let dialog = page.getByRole('dialog', { name: 'Nuevo socio' });
       await expect(dialog).toBeVisible();
+      const firstIdBox = dialog.getByLabel('Número de socio');
+      await expect(firstIdBox).toContainText('N.º de socio');
+      await expect(firstIdBox).toContainText('Se asignará al crear el socio');
+      const firstShownId = Number(String(await firstIdBox.locator('strong').textContent()).trim());
+      expect(firstShownId).toBeGreaterThan(0);
 
       // Los campos required usan validación nativa del navegador.
       // Antes se esperaba un toast que nunca podía ejecutarse porque el submit
@@ -149,10 +154,30 @@ test.describe('Socios', () => {
       expect(await validationCollector.evaluate((element) => element.checkValidity())).toBe(false);
       await validationCollector.selectOption(String(activeCollector.id_cobrador));
 
-      // Reabre para probar el alta desde los defaults reales del formulario.
+      // Cerrar con cambios no puede descartar silenciosamente el formulario.
       await dialog.getByRole('button', { name: 'Cancelar' }).click();
+      let discardDialog = page.getByRole('dialog', { name: '¿Salir sin guardar?' });
+      await expect(discardDialog).toBeVisible();
+      await expect(discardDialog).toContainText('vas a perder todos los cambios');
+      await discardDialog.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(discardDialog).toBeHidden();
+      await expect(dialog).toBeVisible();
+      await expect(validationName).toHaveValue('PW EEE SOCIO');
+      await expect(validationLastName).toHaveValue('VALIDACION');
+
+      // Confirmar la salida sí descarta el formulario y permite reabrir limpio.
+      await dialog.getByRole('button', { name: 'Cancelar' }).click();
+      discardDialog = page.getByRole('dialog', { name: '¿Salir sin guardar?' });
+      await discardDialog.getByRole('button', { name: 'Sí, salir' }).click();
+      await expect(dialog).toBeHidden();
+
+      // Reabre para probar el alta desde los defaults reales del formulario.
       await page.getByRole('button', { name: 'Nuevo socio' }).click();
       dialog = page.getByRole('dialog', { name: 'Nuevo socio' });
+      const createIdBox = dialog.getByLabel('Número de socio');
+      await expect(createIdBox).toContainText('Se asignará al crear el socio');
+      const shownCreateId = Number(String(await createIdBox.locator('strong').textContent()).trim());
+      expect(shownCreateId).toBeGreaterThan(0);
       await fillSocioForm(dialog, data, catalogs, { birthday: true });
       await dialog.getByRole('button', { name: 'Crear socio' }).click();
       await expectFeedback(page, 'Socio creado correctamente.');
@@ -163,6 +188,7 @@ test.describe('Socios', () => {
       const created = (found.items || []).find((item) => item.dni === data.dni);
       expect(created).toBeTruthy();
       createdId = created.id_socio;
+      expect(Number(createdId)).toBe(shownCreateId);
 
       const search = page.getByLabel('Socio / ID', { exact: true });
       await search.fill(data.dni);
@@ -267,10 +293,30 @@ test.describe('Socios', () => {
       row = rowByText(page, data.nombre);
       await row.getByTitle('Editar socio').click();
       dialog = page.getByRole('dialog', { name: 'Editar socio' });
+      const editIdBox = dialog.getByLabel('Número de socio');
+      await expect(editIdBox).toContainText('ID actual del socio');
+      await expect(editIdBox.locator('strong')).toHaveText(String(createdId));
       const editedPerson = splitFullName(data.nombreEditado);
       await dialog.getByLabel('Nombre *', { exact: true }).fill(editedPerson.nombre);
       await dialog.getByLabel('Apellido *', { exact: true }).fill(editedPerson.apellido);
-      await dialog.getByLabel('Teléfono móvil').fill(`351${data.dni}`.slice(0, 10));
+      const editedMobile = `351${data.dni}`.slice(0, 10);
+      await dialog.getByLabel('Teléfono móvil').fill(editedMobile);
+
+      // Escape también debe pedir confirmación y Cancelar debe conservar todo.
+      await page.keyboard.press('Escape');
+      discardDialog = page.getByRole('dialog', { name: '¿Salir sin guardar?' });
+      await expect(discardDialog).toBeVisible();
+      await discardDialog.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel('Teléfono móvil')).toHaveValue(editedMobile);
+
+      // La X usa la misma protección y tampoco debe perder los cambios.
+      await dialog.getByRole('button', { name: 'Cerrar', exact: true }).click();
+      discardDialog = page.getByRole('dialog', { name: '¿Salir sin guardar?' });
+      await expect(discardDialog).toBeVisible();
+      await discardDialog.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(dialog.getByLabel('Teléfono móvil')).toHaveValue(editedMobile);
+
       await dialog.getByRole('tab', { name: 'Gestión' }).click();
       await dialog.getByLabel('Observaciones').fill(`${data.observaciones} EDITADO`);
       await dialog.getByRole('button', { name: 'Guardar cambios' }).click();

@@ -9,6 +9,7 @@ function register_socios_routes(Router $router): void
     $router->register('socios_listar', 'GET', [Socios::class, 'listar'], true);
     $router->register('socios_obtener', 'GET', [Socios::class, 'obtener'], true);
     $router->register('socios_historial', 'GET', [Socios::class, 'historial'], true);
+    $router->register('socios_proximo_id', 'GET', [Socios::class, 'proximoId'], true);
     $router->register('socios_guardar', 'POST', [Socios::class, 'guardar'], true);
     $router->register('socios_eliminar', 'POST', [Socios::class, 'darBaja'], true);
     $router->register('socios_eliminar_definitivo', 'POST', [Socios::class, 'eliminarDefinitivo'], true);

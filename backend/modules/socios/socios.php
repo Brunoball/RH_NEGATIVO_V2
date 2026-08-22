@@ -29,6 +29,12 @@ final class Socios
         api_success(self::historialDatos($auth['db'], $id));
     }
 
+    public static function proximoId(): never
+    {
+        $auth = auth_context();
+        api_success(['id_socio' => self::proximoIdSocio($auth['db'])]);
+    }
+
     public static function guardar(): never
     {
         $auth = require_admin();

@@ -135,6 +135,7 @@ final class TestingCleanup
         ];
         $skipped = [];
         $contableFiles = [];
+        $autoIncrement = null;
 
         $db->beginTransaction();
         try {
@@ -458,6 +459,14 @@ final class TestingCleanup
             $counts['usuarios'] += self::deleteByIds($db, 'sis_usuarios', 'idUsuario', $testUsers);
 
             $db->commit();
+
+            // DELETE no retrocede AUTO_INCREMENT. Como la suite crea y también
+            // elimina registros (algunos incluso antes del teardown), si no
+            // corregimos los contadores el testing consume números reales del
+            // sistema. Fuera de la transacción dejamos TODAS las tablas con
+            // AUTO_INCREMENT exactamente en MAX(id) + 1, sin renumerar ni
+            // modificar ninguna fila existente.
+            $autoIncrement = self::resetAutoIncrementCounters($db);
             $counts['contable_archivos'] += self::deleteContableFiles($contableFiles);
         } catch (Throwable $error) {
             if ($db->inTransaction()) $db->rollBack();
@@ -467,6 +476,12 @@ final class TestingCleanup
         return [
             'eliminados' => $counts,
             'omitidos_por_seguridad' => $skipped,
+            'auto_increment' => $autoIncrement ?? [
+                'verificado' => false,
+                'tablas_detectadas' => 0,
+                'tablas_reiniciadas' => 0,
+                'tablas' => [],
+            ],
             'criterio' => [
                 'usuarios' => 'pw_e2e_*',
                 'socios' => 'PW E2E SOCIO * / PW EEE SOCIO *',
@@ -482,6 +497,204 @@ final class TestingCleanup
                 'contable_movimientos' => 'PW E2E CT * / PW EEE CT * / PW E2E CONTABLE * / PW-E2E-*',
             ],
         ];
+    }
+
+    /**
+     * Restaura los contadores AUTO_INCREMENT consumidos por Playwright.
+     *
+     * Importante:
+     * - NO renumera filas.
+     * - NO reutiliza huecos internos: siempre usa MAX(pk) + 1.
+     * - Descubre las tablas de forma dinámica para cubrir también tablas
+     *   creadas por módulos (por ejemplo Contabilidad).
+     * - Verifica después de cada ALTER que el contador coincida con el máximo
+     *   real que existe en ese momento.
+     */
+    private static function resetAutoIncrementCounters(PDO $db): array
+    {
+        // En MySQL 8, information_schema.TABLES.AUTO_INCREMENT es una estadística
+        // dinámica y puede quedar cacheada (por defecto hasta 24 h). Si se lee
+        // inmediatamente después de ALTER TABLE puede devolver el contador viejo
+        // y producir un falso negativo en la limpieza E2E. Desactivamos esa caché
+        // sólo para esta conexión. En MariaDB/servidores que no soporten la
+        // variable, el fallback de SHOW CREATE TABLE de tableAutoIncrement() sigue
+        // permitiendo verificar el valor real sin bloquear la suite.
+        self::disableInformationSchemaStatsCache($db);
+
+        $columns = self::autoIncrementColumns($db);
+        $tables = [];
+        $resetCount = 0;
+
+        foreach ($columns as $definition) {
+            $table = (string)($definition['table'] ?? '');
+            $column = (string)($definition['column'] ?? '');
+            self::assertIdentifier($table);
+            self::assertIdentifier($column);
+
+            $nextBefore = self::maxNextId($db, $table, $column);
+            $autoBefore = self::tableAutoIncrement($db, $table);
+            $reset = $autoBefore === null || $autoBefore !== $nextBefore;
+
+            if ($reset) {
+                // MySQL no permite parametrizar identificadores ni el valor de
+                // AUTO_INCREMENT en ALTER TABLE. Los identificadores vienen de
+                // metadata de la propia DB y se validan estrictamente arriba.
+                $db->exec("ALTER TABLE `{$table}` AUTO_INCREMENT = {$nextBefore}");
+                $resetCount++;
+            }
+
+            // Recalculamos tras el ALTER para tolerar de forma segura una alta
+            // real concurrente que haya ocurrido mientras esperaba el lock DDL.
+            $nextAfter = self::maxNextId($db, $table, $column);
+            $autoAfter = self::tableAutoIncrement($db, $table);
+
+            if ($autoAfter === null || $autoAfter !== $nextAfter) {
+                throw new RuntimeException(
+                    "No se pudo verificar AUTO_INCREMENT de {$table}: "
+                    . "esperado {$nextAfter}, obtenido " . ($autoAfter ?? 'NULL') . '.'
+                );
+            }
+
+            $tables[$table] = [
+                'columna' => $column,
+                'max_id' => max(0, $nextAfter - 1),
+                'proximo_id' => $autoAfter,
+                'anterior' => $autoBefore,
+                'reiniciado' => $reset,
+            ];
+        }
+
+        ksort($tables);
+        return [
+            'verificado' => true,
+            'tablas_detectadas' => count($tables),
+            'tablas_reiniciadas' => $resetCount,
+            'tablas' => $tables,
+        ];
+    }
+
+    private static function autoIncrementColumns(PDO $db): array
+    {
+        try {
+            $statement = $db->query(
+                "SELECT TABLE_NAME, COLUMN_NAME
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND EXTRA LIKE '%auto_increment%'
+                 ORDER BY TABLE_NAME"
+            );
+            $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows !== []) {
+                return array_map(
+                    static fn(array $row): array => [
+                        'table' => (string)$row['TABLE_NAME'],
+                        'column' => (string)$row['COLUMN_NAME'],
+                    ],
+                    $rows
+                );
+            }
+        } catch (Throwable $schemaError) {
+            error_log('[e2e_cleanup][auto_increment_metadata] ' . $schemaError->getMessage());
+        }
+
+        // Fallback para hostings con acceso parcial a information_schema.
+        $result = [];
+        $tables = $db->query('SHOW TABLES')->fetchAll(PDO::FETCH_NUM);
+        foreach ($tables as $row) {
+            $table = (string)($row[0] ?? '');
+            self::assertIdentifier($table);
+            $columns = $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($columns as $column) {
+                if (!str_contains(strtolower((string)($column['Extra'] ?? '')), 'auto_increment')) continue;
+                $name = (string)($column['Field'] ?? '');
+                self::assertIdentifier($name);
+                $result[] = ['table' => $table, 'column' => $name];
+            }
+        }
+
+        if ($result === []) {
+            throw new RuntimeException('No se pudieron detectar columnas AUTO_INCREMENT para verificar la limpieza E2E.');
+        }
+        return $result;
+    }
+
+    private static function maxNextId(PDO $db, string $table, string $column): int
+    {
+        self::assertIdentifier($table);
+        self::assertIdentifier($column);
+        $value = (int)$db->query(
+            "SELECT COALESCE(MAX(`{$column}`), 0) + 1 FROM `{$table}`"
+        )->fetchColumn();
+        return max(1, $value);
+    }
+
+    /**
+     * Devuelve el próximo AUTO_INCREMENT evitando depender de estadísticas
+     * cacheadas de information_schema. SHOW CREATE TABLE lee la definición
+     * efectiva de la tabla y expone AUTO_INCREMENT=N cuando el contador es > 1.
+     */
+    private static function tableAutoIncrement(PDO $db, string $table): ?int
+    {
+        self::assertIdentifier($table);
+
+        try {
+            $statement = $db->query("SHOW CREATE TABLE `{$table}`");
+            $row = $statement->fetch(PDO::FETCH_NUM);
+            $createSql = (string)($row[1] ?? '');
+            if ($createSql !== '') {
+                if (preg_match('/\bAUTO_INCREMENT=(\d+)\b/i', $createSql, $match)) {
+                    return (int)$match[1];
+                }
+
+                // Si la tabla tiene columna AUTO_INCREMENT pero SHOW CREATE no
+                // imprime la opción, el contador está en su valor inicial (1).
+                if (stripos($createSql, 'AUTO_INCREMENT') !== false) return 1;
+            }
+        } catch (Throwable $showCreateError) {
+            error_log('[e2e_cleanup][auto_increment_show_create] ' . $showCreateError->getMessage());
+        }
+
+        try {
+            $statement = $db->prepare(
+                'SELECT AUTO_INCREMENT
+                 FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = ?
+                 LIMIT 1'
+            );
+            $statement->execute([$table]);
+            $value = $statement->fetchColumn();
+            if ($value !== false && $value !== null) return (int)$value;
+        } catch (Throwable $schemaError) {
+            error_log('[e2e_cleanup][auto_increment_table] ' . $schemaError->getMessage());
+        }
+
+        $statement = $db->query('SHOW TABLE STATUS LIKE ' . $db->quote($table));
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        $value = $row['Auto_increment'] ?? null;
+        return $value === null ? null : (int)$value;
+    }
+
+    /**
+     * MySQL 8 cachea columnas estadísticas de information_schema.TABLES, entre
+     * ellas AUTO_INCREMENT. La variable es de sesión, así que no afecta al resto
+     * de la aplicación. MariaDB/versiones antiguas pueden no conocerla: en ese
+     * caso continuamos y verificamos mediante SHOW CREATE TABLE.
+     */
+    private static function disableInformationSchemaStatsCache(PDO $db): void
+    {
+        try {
+            $db->exec('SET SESSION information_schema_stats_expiry = 0');
+        } catch (Throwable $unsupported) {
+            error_log('[e2e_cleanup][information_schema_stats_expiry] ' . $unsupported->getMessage());
+        }
+    }
+
+    private static function assertIdentifier(string $value): void
+    {
+        if ($value === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $value)) {
+            throw new RuntimeException('Identificador inválido al verificar AUTO_INCREMENT E2E.');
+        }
     }
 
     private static function deleteContableFiles(array $paths): int

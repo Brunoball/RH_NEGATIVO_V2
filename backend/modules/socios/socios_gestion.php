@@ -13,6 +13,7 @@ trait SociosGestion
      */
     abstract private static function detalle(PDO $db, int $id): ?array;
     abstract private static function impactoEliminacion(PDO $db, int $id): array;
+    abstract private static function proximoIdSocio(PDO $db): int;
 
     private static function guardarDatos(array $auth, array $body): array
     {
@@ -22,23 +23,41 @@ trait SociosGestion
             $id = positive_id($body['id_socio'], 'socio');
         }
 
+        $requestedNewId = null;
+        if (($body['id_socio_nuevo'] ?? '') !== '' && ($body['id_socio_nuevo'] ?? null) !== null) {
+            if ($id !== null) {
+                api_error('No se puede enviar un número de alta al editar un socio.', 'VALIDATION_ERROR', 422, ['campo' => 'id_socio']);
+            }
+            $requestedNewId = positive_id($body['id_socio_nuevo'], 'número de socio');
+        }
+
         $data = self::validarSocio($db, $body, $id);
 
         try {
-            $result = transaction($db, function () use ($db, $auth, $data, $id): array {
+            $result = transaction($db, function () use ($db, $auth, $data, $id, $requestedNewId): array {
                 if ($id === null) {
+                    $currentNextId = self::proximoIdSocio($db);
+                    $newId = $requestedNewId ?? $currentNextId;
+                    if ($requestedNewId !== null && $requestedNewId !== $currentNextId) {
+                        api_error(
+                            'El número de socio mostrado ya no está disponible. Se debe actualizar antes de crear el socio.',
+                            'ID_SOCIO_DESACTUALIZADO',
+                            409,
+                            ['campo' => 'id_socio', 'id_socio_sugerido' => $currentNextId]
+                        );
+                    }
+
                     $statement = $db->prepare(
                         'INSERT INTO socios
-                         (nombre, id_cobrador, id_grupo_sanguineo, id_categoria, domicilio, numero,
+                         (id_socio, nombre, id_cobrador, id_grupo_sanguineo, id_categoria, domicilio, numero,
                           telefono_movil, telefono_fijo, observaciones, fecha_nacimiento, id_estado,
                           domicilio_cobro, dni, fecha_ingreso, vigente)
                          VALUES
-                         (:nombre, :id_cobrador, :id_grupo_sanguineo, :id_categoria, :domicilio, :numero,
+                         (:id_socio, :nombre, :id_cobrador, :id_grupo_sanguineo, :id_categoria, :domicilio, :numero,
                           :telefono_movil, :telefono_fijo, :observaciones, :fecha_nacimiento, :id_estado,
                           :domicilio_cobro, :dni, :fecha_ingreso, 1)'
                     );
-                    $statement->execute($data);
-                    $newId = (int)$db->lastInsertId();
+                    $statement->execute(['id_socio' => $newId] + $data);
                     $after = self::detalle($db, $newId);
                     if (!$after) {
                         throw new RuntimeException('No se pudo recuperar el socio recién creado.');
@@ -113,7 +132,7 @@ trait SociosGestion
                 return ['item' => $after, 'creado' => false];
             });
         } catch (PDOException $error) {
-            self::resolverErrorPersistenciaSocio($error);
+            self::resolverErrorPersistenciaSocio($db, $error);
         }
 
         return $result;
@@ -1040,10 +1059,19 @@ trait SociosGestion
         ]);
     }
 
-    private static function resolverErrorPersistenciaSocio(PDOException $error): never
+    private static function resolverErrorPersistenciaSocio(PDO $db, PDOException $error): never
     {
         $driverCode = (int)($error->errorInfo[1] ?? 0);
         if ($driverCode === 1062) {
+            $message = strtoupper($error->getMessage());
+            if (str_contains($message, 'PRIMARY')) {
+                api_error(
+                    'El número de socio mostrado acaba de ser utilizado por otra alta. Actualizalo y volvé a guardar.',
+                    'ID_SOCIO_DESACTUALIZADO',
+                    409,
+                    ['campo' => 'id_socio', 'id_socio_sugerido' => self::proximoIdSocio($db)]
+                );
+            }
             api_error('Ya existe un socio con ese DNI.', 'DNI_DUPLICADO', 409, ['campo' => 'dni']);
         }
         if ($driverCode === 1451 || $driverCode === 1452) {

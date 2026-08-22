@@ -138,6 +138,33 @@ trait SociosConsultas
         ];
     }
 
+    /**
+     * Devuelve el próximo número de socio respetando el AUTO_INCREMENT real.
+     * El fallback MAX+1 mantiene compatibilidad con hostings que restrinjan
+     * information_schema.
+     */
+    private static function proximoIdSocio(PDO $db): int
+    {
+        $maxNext = (int)$db->query('SELECT COALESCE(MAX(id_socio), 0) + 1 FROM socios')->fetchColumn();
+        $autoIncrement = 0;
+
+        try {
+            $statement = $db->prepare(
+                'SELECT AUTO_INCREMENT
+                   FROM information_schema.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = ?
+                  LIMIT 1'
+            );
+            $statement->execute(['socios']);
+            $autoIncrement = (int)($statement->fetchColumn() ?: 0);
+        } catch (Throwable $schemaError) {
+            error_log('[socios_proximo_id] ' . $schemaError->getMessage());
+        }
+
+        return max(1, $maxNext, $autoIncrement);
+    }
+
     private static function appendPositiveIdFilter(
         array &$where,
         array &$params,

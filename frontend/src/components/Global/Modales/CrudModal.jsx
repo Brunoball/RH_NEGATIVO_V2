@@ -8,6 +8,7 @@ import useAnimatedModalSize from "./useAnimatedModalSize";
 import "../Global_css/Global_Modals.css";
 
 const openModalStack = [];
+let modalTitleSequence = 0;
 
 function registerOpenModal(modalId) {
   const existingIndex = openModalStack.indexOf(modalId);
@@ -67,6 +68,12 @@ export default function CrudModal({
 }) {
   const modalRef = useRef(null);
   const modalIdRef = useRef(Symbol("crud-modal"));
+  const titleIdRef = useRef(null);
+  if (!titleIdRef.current) {
+    modalTitleSequence += 1;
+    titleIdRef.current = `entity-modal-title-${modalTitleSequence}`;
+  }
+  const titleId = titleIdRef.current;
   const onCloseRef = useRef(onClose);
   const savingRef = useRef(saving);
   onCloseRef.current = onClose;
@@ -113,12 +120,12 @@ export default function CrudModal({
         className={`entity-modal ${wide ? "entity-modal--wide" : ""} ${modalClassName}`.trim()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="entity-modal-title"
+        aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="entity-modal__header">
           <div>
-            <h2 id="entity-modal-title">{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
           <button

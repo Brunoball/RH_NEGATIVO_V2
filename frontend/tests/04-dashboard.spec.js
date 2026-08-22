@@ -19,7 +19,7 @@ test.describe('Dashboard', () => {
     expect(Number(summary.cuotas.cumplimiento_mes || 0)).toBeLessThanOrEqual(100);
   });
 
-  test('UI renderiza tarjetas, gráfico, controles de calidad y Datos registrados con valores reales', async ({ page, request }) => {
+  test('UI renderiza tarjetas, gráfico e Indicadores generales con valores reales', async ({ page, request }) => {
     const result = await apiCall(request, 'dashboard_resumen');
     const summary = result.resumen;
 
@@ -31,17 +31,16 @@ test.describe('Dashboard', () => {
     await expect(page.getByRole('heading', { name: 'Cuotas registradas' })).toBeVisible();
     await expect(page.getByRole('img', { name: 'Cuotas registradas durante los últimos seis períodos' })).toBeVisible();
 
-    await expect(page.getByRole('heading', { name: 'Calidad de los datos' })).toBeVisible();
-    await expect(page.getByText('Socios con categoría', { exact: true })).toBeVisible();
-    await expect(page.getByText('Personas con familia', { exact: true })).toBeVisible();
-    if (summary.fuentes?.recordatorios_disponibles === false) {
-      await expect(page.getByText('Recordatorios habilitados', { exact: true })).toHaveCount(0);
-    } else {
-      await expect(page.getByText('Recordatorios habilitados', { exact: true })).toBeVisible();
-    }
+    const indicators = page.getByRole('complementary').filter({
+      has: page.getByRole('heading', { name: 'Indicadores generales', exact: true }),
+    });
+    await expect(indicators).toBeVisible();
 
-    const dataPanel = page.locator('.admin-dashboard__panel--data');
-    await expect(dataPanel.getByRole('heading', { name: 'Datos registrados' })).toBeVisible();
+    const qualityLabel = indicators.getByText('Calidad general de datos', { exact: true });
+    await expect(qualityLabel).toBeVisible();
+    const qualityCard = qualityLabel.locator('xpath=ancestor::article[1]');
+    await expect(qualityCard).toContainText(`Socios con categoría: ${Number(summary.estado?.socios_con_categoria || 0)}%`);
+    await expect(qualityCard).toContainText(`Personas con familia: ${Number(summary.estado?.socios_con_familia || 0)}%`);
     const dataItems = [
       ['Personas activas', summary.socios.personas_activas],
       ['Socios de baja', summary.socios.inactivos],
@@ -49,9 +48,9 @@ test.describe('Dashboard', () => {
       ['Cobros del mes', summary.cuotas.cobros_registrados_mes],
     ];
     for (const [label, value] of dataItems) {
-      const item = dataPanel.locator('.admin-dashboard__dataItem').filter({ hasText: label });
-      await expect(item, `Falta la tarjeta nueva del dashboard: ${label}`).toBeVisible();
-      await expect(item.getByText(label, { exact: true })).toBeVisible();
+      const labelNode = indicators.getByText(label, { exact: true });
+      await expect(labelNode, `Falta el indicador del dashboard: ${label}`).toBeVisible();
+      const item = labelNode.locator('xpath=ancestor::article[1]');
       await expect(item.locator('strong')).toHaveText(String(Number(value || 0)));
     }
   });

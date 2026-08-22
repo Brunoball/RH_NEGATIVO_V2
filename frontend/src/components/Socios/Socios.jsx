@@ -820,7 +820,7 @@ const SociosRows = memo(function SociosRows({ items, writable, showBajas, onHist
   ));
 });
 
-function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
+function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange, mode }) {
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const setText = (key, value, maxLength) => set(key, upperLimitedText(value, maxLength));
   const tabs = [
@@ -831,6 +831,12 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange }) {
 
   return (
     <div className="socios-form">
+      <div className="socios-form__memberId" aria-label="Número de socio">
+        <span>N.º de socio</span>
+        <strong>{form.id_socio || "—"}</strong>
+        <small>{mode === "edit" ? "ID actual del socio" : "Se asignará al crear el socio"}</small>
+      </div>
+
       <EntityTabs tabs={tabs} value={activeTab} onChange={onTabChange} idPrefix="socios-form" ariaLabel="Datos del socio" />
 
       <EntityTabPane active={activeTab === FORM_TAB_PERSONAL} disableWhenInactive>
@@ -1156,8 +1162,11 @@ export default function Socios() {
   }, [loading, totalPages, page]);
 
   const [form, setForm] = useState(() => emptyForm());
+  const [formMode, setFormMode] = useState("create");
+  const initialFormRef = useRef(emptyForm());
   const [formTab, setFormTab] = useState(FORM_TAB_PERSONAL);
   const [formOpen, setFormOpen] = useState(false);
+  const [discardFormOpen, setDiscardFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [stateModal, setStateModal] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
@@ -1195,18 +1204,59 @@ export default function Socios() {
     return result;
   }, [cargar]);
 
-  const openNew = () => {
-    setForm(emptyForm(catalogos));
+  const setFormSession = useCallback((nextForm, mode) => {
+    initialFormRef.current = nextForm;
+    setForm(nextForm);
+    setFormMode(mode);
     setFormTab(FORM_TAB_PERSONAL);
+    setDiscardFormOpen(false);
     setFormOpen(true);
+  }, []);
+
+  const formHasChanges = useCallback(() => (
+    JSON.stringify(form) !== JSON.stringify(initialFormRef.current)
+  ), [form]);
+
+  const closeFormNow = useCallback(() => {
+    setDiscardFormOpen(false);
+    setFormOpen(false);
+  }, []);
+
+  const requestFormClose = useCallback(() => {
+    if (saving) return;
+    if (formHasChanges()) {
+      setDiscardFormOpen(true);
+      return;
+    }
+    closeFormNow();
+  }, [closeFormNow, formHasChanges, saving]);
+
+  const confirmDiscardForm = useCallback((event) => {
+    event?.preventDefault?.();
+    closeFormNow();
+  }, [closeFormNow]);
+
+  const openNew = async () => {
+    try {
+      const result = await sociosApi.proximoId();
+      const nextForm = {
+        ...emptyForm(catalogos),
+        id_socio: String(result.id_socio || ""),
+      };
+      if (!nextForm.id_socio) throw new Error("No se pudo obtener el próximo número de socio.");
+      setFormSession(nextForm, "create");
+    } catch (requestError) {
+      setFeedback({
+        type: "error",
+        message: requestError.message || "No se pudo obtener el próximo número de socio.",
+      });
+    }
   };
 
   const openEdit = async (item) => {
     try {
       const result = await sociosApi.obtener(item.id_socio);
-      setForm(formFromItem(result.item || item));
-      setFormTab(FORM_TAB_PERSONAL);
-      setFormOpen(true);
+      setFormSession(formFromItem(result.item || item), "edit");
     } catch (requestError) {
       setFeedback({ type: "error", message: requestError.message || "No se pudo cargar el socio." });
     }
@@ -1257,16 +1307,37 @@ export default function Socios() {
     }
     setSaving(true);
     try {
-      const { apellido, ...payload } = form;
+      const { apellido, id_socio: memberId, ...payload } = form;
       payload.nombre = [form.nombre, apellido]
         .map((value) => String(value || "").trim())
         .filter(Boolean)
         .join(" ");
+      if (formMode === "edit") {
+        payload.id_socio = memberId;
+      } else {
+        payload.id_socio_nuevo = memberId;
+      }
       const response = await sociosApi.guardar(payload);
       setFeedback({ type: "success", message: response.mensaje || "Socio guardado correctamente." });
-      setFormOpen(false);
+      closeFormNow();
       await refresh();
     } catch (requestError) {
+      if (formMode === "create" && requestError?.code === "ID_SOCIO_DESACTUALIZADO") {
+        try {
+          const next = await sociosApi.proximoId();
+          const newId = String(next.id_socio || "");
+          if (newId) {
+            setForm((current) => ({ ...current, id_socio: newId }));
+            setFeedback({
+              type: "warning",
+              message: `El número de socio anterior acaba de ser utilizado. Se actualizó al N.º ${newId}; los demás datos se conservaron. Volvé a guardar.`,
+            });
+            return;
+          }
+        } catch {
+          // Conservamos todos los datos y mostramos el error original abajo.
+        }
+      }
       const field = requestError?.data?.detalles?.campo || "";
       if (["nombre", "dni", "fecha_nacimiento"].includes(field)) {
         setFormTab(FORM_TAB_PERSONAL);
@@ -1565,18 +1636,43 @@ export default function Socios() {
 
       <CrudModal
         open={formOpen}
-        title={form.id_socio ? "Editar socio" : "Nuevo socio"}
-        subtitle={form.id_socio ? "Actualizá la ficha conservando pagos, contactos e historial." : "Cargá los datos principales y de gestión del socio."}
-        onClose={() => setFormOpen(false)}
+        title={formMode === "edit" ? "Editar socio" : "Nuevo socio"}
+        subtitle={formMode === "edit" ? "Actualizá la ficha conservando pagos, contactos e historial." : "Cargá los datos principales y de gestión del socio."}
+        onClose={requestFormClose}
         onSubmit={save}
         saving={saving}
-        submitLabel={form.id_socio ? "Guardar cambios" : "Crear socio"}
+        submitLabel={formMode === "edit" ? "Guardar cambios" : "Crear socio"}
         modalClassName="socios-modal socios-modal--form"
         closeOnBackdrop={false}
         autoUppercaseInputs={false}
         wide
       >
-        <PartnerForm form={form} setForm={setForm} catalogs={catalogos} activeTab={formTab} onTabChange={setFormTab} />
+        <PartnerForm
+          form={form}
+          setForm={setForm}
+          catalogs={catalogos}
+          activeTab={formTab}
+          onTabChange={setFormTab}
+          mode={formMode}
+        />
+      </CrudModal>
+
+      <CrudModal
+        open={discardFormOpen}
+        title="¿Salir sin guardar?"
+        subtitle="Si salís ahora, vas a perder todos los cambios realizados en este socio."
+        onClose={() => setDiscardFormOpen(false)}
+        onSubmit={confirmDiscardForm}
+        submitLabel="Sí, salir"
+        cancelLabel="Cancelar"
+        danger
+        closeOnBackdrop={false}
+        modalClassName="socios-modal socios-modal--discard"
+      >
+        <div className="socios-formDiscard">
+          <strong>Los cambios todavía no fueron guardados.</strong>
+          <span>Podés cancelar para volver al formulario y seguir editando.</span>
+        </div>
       </CrudModal>
 
       <InfoModal

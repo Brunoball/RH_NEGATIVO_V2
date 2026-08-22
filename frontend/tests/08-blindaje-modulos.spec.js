@@ -111,7 +111,7 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     const name = dialog.getByLabel('Nombre *', { exact: true });
     const lastName = dialog.getByLabel('Apellido *', { exact: true });
     const dni = dialog.getByLabel('DNI');
-    const number = dialog.getByLabel('Número');
+    const number = dialog.getByRole('textbox', { name: 'Número', exact: true });
     const mobile = dialog.getByLabel('Teléfono móvil');
     const address = dialog.getByLabel('Domicilio', { exact: true });
 
@@ -152,6 +152,9 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     await dialog.getByRole('tab', { name: 'Gestión' }).click();
     await expect(observations).toHaveValue('DATO DE GESTIÓN QUE NO DEBE PERDERSE');
     await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    const discardDialog = page.getByRole('dialog', { name: '¿Salir sin guardar?' });
+    await expect(discardDialog).toBeVisible();
+    await discardDialog.getByRole('button', { name: 'Sí, salir' }).click();
     await expect(dialog).toHaveCount(0);
   });
   test('filtros avanzados realmente incluyen/excluyen por letra, sangre, estado, deuda, contacto y fecha', async ({ page, request }) => {

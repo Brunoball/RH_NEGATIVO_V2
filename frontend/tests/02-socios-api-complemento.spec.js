@@ -6,6 +6,40 @@ const { familyData, socioData } = require('./fixtures/socios.fixture');
 const { createQuotaCategory, createQuotaSocio, currentYear, paymentPayload, quotaCatalogs } = require('./helpers/cuotas.helper');
 
 test.describe('Socios y familias · contratos API complementarios', () => {
+  test('próximo número de socio se reserva de forma explícita y nunca cambia silenciosamente', async ({ request }) => {
+    const data = socioData('ID EXPLICITO API');
+    let preview = null;
+    let created = null;
+
+    // Si una alta real concurrente consume el número entre GET y POST, el
+    // contrato correcto es 409 + refrescar el próximo ID. Reintentamos sólo
+    // esa carrera válida para que el test no sea frágil en producción.
+    for (let attempt = 0; attempt < 3 && !created; attempt += 1) {
+      preview = await apiCall(request, 'socios_proximo_id');
+      expect(Number(preview.id_socio)).toBeGreaterThan(0);
+      try {
+        created = await createSocio(request, data, { id_socio_nuevo: Number(preview.id_socio) });
+      } catch (error) {
+        if (error?.code !== 'ID_SOCIO_DESACTUALIZADO') throw error;
+      }
+    }
+
+    expect(created).toBeTruthy();
+    expect(Number(created.id_socio)).toBe(Number(preview.id_socio));
+
+    const next = await apiCall(request, 'socios_proximo_id');
+    expect(Number(next.id_socio)).toBeGreaterThan(Number(created.id_socio));
+
+    await expect(
+      createSocio(request, socioData('ID VIEJO API'), { id_socio_nuevo: Number(created.id_socio) }),
+    ).rejects.toMatchObject({ status: 409, code: 'ID_SOCIO_DESACTUALIZADO' });
+
+    await expectApiError(request, 'socios_guardar', {
+      method: 'POST',
+      data: { id_socio: created.id_socio, id_socio_nuevo: created.id_socio },
+    }, { status: 422, code: 'VALIDATION_ERROR' });
+  });
+
   test('obtener, historial, contacto y ciclo baja/reactivación mantienen persistencia', async ({ request }) => {
     const data = socioData('API COMPLEMENTO');
     const created = await createSocio(request, data);

@@ -42,7 +42,7 @@ const MODAL_SURFACE_MANIFEST = {
   'src/components/Cuotas/modales/ModalCodigoBarras.jsx': { CrudModal: 1, ModalEliminarGlobal: 1 },
   'src/components/Cuotas/modales/ModalPagoCuota.jsx': { CrudModal: 1 },
   'src/components/Principal/Principal.jsx': { ModalPerfil: 1, LogoutModal: 1 },
-  'src/components/Socios/Socios.jsx': { ModalExportarGlobal: 1, CrudModal: 1, InfoModal: 1, ModalMotivoGlobal: 1, ModalEliminarGlobal: 2 },
+  'src/components/Socios/Socios.jsx': { ModalExportarGlobal: 1, CrudModal: 2, InfoModal: 1, ModalMotivoGlobal: 1, ModalEliminarGlobal: 2 },
   'src/components/Socios/secciones/Familias.jsx': { ModalExportarGlobal: 1, CrudModal: 1, InfoModal: 1, ModalEliminarGlobal: 2 },
 };
 
@@ -54,6 +54,10 @@ const RAW_DIALOG_SURFACE_MANIFEST = {
 };
 
 const UI_COVERAGE_EVIDENCE = {
+  socios_numero_y_salida_segura: {
+    spec: '02-socios.spec.js',
+    tokens: ['Número de socio', 'Se asignará al crear el socio', 'ID actual del socio', '¿Salir sin guardar?', 'Sí, salir'],
+  },
   socios_id_motivo_paginacion: {
     spec: '10-cobertura-ui-total.spec.js',
     tokens: ['búsqueda exacta por ID', 'Paginación de socios', 'Referencia de último contacto', 'Motivo de baja', 'Ver motivo de baja completo'],
@@ -86,9 +90,9 @@ const UI_COVERAGE_EVIDENCE = {
     spec: '10-cobertura-ui-total.spec.js',
     tokens: ['ESTADO_ESTRUCTURAL', 'FILTRO_PERIODO_INVALIDO', 'TIPO_OPCION_INVALIDO', 'ESTADO_OPCION_INVALIDO', 'OPCION_CONTABLE_INVALIDA'],
   },
-  dashboard_datos_registrados: {
+  dashboard_indicadores_generales: {
     spec: '04-dashboard.spec.js',
-    tokens: ['Datos registrados', 'Personas activas', 'Socios de baja', 'Con categoría', 'Cobros del mes'],
+    tokens: ['Indicadores generales', 'Calidad general de datos', 'Personas activas', 'Socios de baja', 'Con categoría', 'Cobros del mes'],
   },
   shell_microacciones: {
     spec: '01-navegacion.spec.js',

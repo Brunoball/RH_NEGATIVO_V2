@@ -42,7 +42,19 @@ module.exports = async function globalTeardown() {
         );
       } else {
         const summary = cleanupSummary(cleanup.body);
+        const autoIncrement = cleanup.body?.datos?.auto_increment || cleanup.body?.auto_increment;
+        if (autoIncrement?.verificado !== true) {
+          cleanupError = new Error(
+            'La limpieza final E2E eliminó los registros, pero no confirmó el reinicio de AUTO_INCREMENT.',
+          );
+        }
         console.log(`[Playwright cleanup] ${summary.totalDeleted} registro(s) E2E eliminados.`);
+        if (autoIncrement?.verificado === true) {
+          console.log(
+            `[Playwright cleanup] AUTO_INCREMENT verificado en ${Number(autoIncrement.tablas_detectadas) || 0} tabla(s); ` +
+              `${Number(autoIncrement.tablas_reiniciadas) || 0} contador(es) corregido(s).`,
+          );
+        }
         if (Object.keys(summary.skipped).length) {
           console.warn('[Playwright cleanup] Omitidos por seguridad:', summary.skipped);
         }

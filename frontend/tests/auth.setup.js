@@ -69,6 +69,13 @@ module.exports = async function globalSetup() {
           `${detail ? `\nDetalle backend: ${detail}` : ''}`,
       );
     }
+    const staleAutoIncrement = staleCleanup.body?.datos?.auto_increment || staleCleanup.body?.auto_increment;
+    if (staleAutoIncrement?.verificado !== true) {
+      throw new Error(
+        'La limpieza E2E preventiva no confirmó el reinicio de AUTO_INCREMENT. ' +
+          'Actualizá backend/modules/testing_cleanup/testing_cleanup.php antes de ejecutar la suite.',
+      );
+    }
 
     const suffix = `${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`.toLowerCase();
     const runnerUsername = `pw_e2e_runner_${suffix}`;

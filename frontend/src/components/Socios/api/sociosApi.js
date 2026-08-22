@@ -4,6 +4,7 @@ export const sociosApi = {
   listar: (params) => apiGet("socios_listar", params),
   obtener: (id) => apiGet("socios_obtener", { id }),
   historial: (id) => apiGet("socios_historial", { id }),
+  proximoId: () => apiGet("socios_proximo_id"),
   guardar: (payload) => apiPost("socios_guardar", payload),
   darBaja: (payload) => apiPost("socios_eliminar", payload),
   eliminarDefinitivo: (payload) => apiPost("socios_eliminar_definitivo", payload),
