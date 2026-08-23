@@ -122,6 +122,47 @@ abstract class CuotasSoporte
         return sprintf('%04d-%02d-01', $year, $month);
     }
 
+    /**
+     * Fecha efectiva para la composición familiar/reglas de un período.
+     *
+     * Conservamos la regla histórica original (inicio del período) cuando la
+     * operación se realiza fuera de ese bimestre. Si la consulta/pago ocurre
+     * dentro del propio período, usamos esa fecha real para reconocer familias
+     * creadas o modificadas durante el bimestre actual.
+     */
+    protected static function fechaReferenciaPeriodo(
+        int $year,
+        int $periodId,
+        ?string $operationDate = null
+    ): string {
+        $start = self::inicioPeriodo($year, $periodId);
+        $end = self::finPeriodo($year, $periodId);
+        $candidate = $operationDate ?: date('Y-m-d');
+
+        if ($candidate < $start || $candidate > $end) return $start;
+        return $candidate;
+    }
+
+    /**
+     * Un socio que ingresó dentro del bimestre no tenía una cuota/categoría
+     * aplicable el primer día del período. Para él, el precio histórico se
+     * reconstruye desde su fecha de ingreso. Los socios que ya existían
+     * conservan exactamente la regla histórica previa: precio al inicio.
+     */
+    protected static function fechaPrecioSocioPeriodo(
+        int $year,
+        int $periodId,
+        mixed $joinDate
+    ): string {
+        $start = self::inicioPeriodo($year, $periodId);
+        $end = self::finPeriodo($year, $periodId);
+        if ($joinDate === null || trim((string)$joinDate) === '') return $start;
+
+        $joined = (string)$joinDate;
+        if ($joined > $start && $joined <= $end) return $joined;
+        return $start;
+    }
+
     protected static function medioPago(PDO $db, mixed $value): array
     {
         $id = positive_id($value, 'medio de pago');
@@ -327,7 +368,8 @@ abstract class CuotasSoporte
         $statement = $db->prepare(
             'SELECT cantidad_integrantes_desde, cantidad_integrantes_hasta, porcentaje_descuento
              FROM descuentos_familiares
-             WHERE vigencia_desde <= ?
+             WHERE activo = 1
+               AND vigencia_desde <= ?
                AND (vigencia_hasta IS NULL OR vigencia_hasta >= ?)
              ORDER BY cantidad_integrantes_desde DESC, id_descuento_familiar DESC'
         );

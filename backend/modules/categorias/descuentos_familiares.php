@@ -372,6 +372,7 @@ trait DescuentosFamiliaresGestion
             'SELECT id_descuento_familiar
              FROM descuentos_familiares
              WHERE id_descuento_familiar <> :id_excluido
+               AND activo = 1
                AND (cantidad_integrantes_hasta IS NULL
                     OR cantidad_integrantes_hasta >= :cantidad_desde)
                AND (vigencia_hasta IS NULL

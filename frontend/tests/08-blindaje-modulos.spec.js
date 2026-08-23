@@ -568,6 +568,27 @@ test.describe('Blindaje adicional · Categorías y descuentos familiares', () =>
     await apiCall(request, 'descuentos_familiares_eliminar', {
       method: 'POST', data: { id: firstId },
     });
+
+    // Regresión: una regla que ya fue enviada al historial (activo=0) no puede
+    // bloquear una regla nueva aunque conserve exactamente el mismo rango y
+    // la misma fecha de vigencia. Este era el falso "solapamiento activo".
+    const replacement = await apiCall(request, 'descuentos_familiares_guardar', {
+      method: 'POST',
+      data: {
+        cantidad_integrantes_desde: slot.firstFrom,
+        cantidad_integrantes_hasta: slot.firstTo,
+        porcentaje_descuento: '7.75',
+        vigencia_desde: slot.date,
+        vigencia_hasta: slot.date,
+        descripcion: `PW E2E DESC REEMPLAZO HISTORICO ${Date.now()}`,
+      },
+    });
+    expect(replacement.item).toBeTruthy();
+    expect(replacement.item.activo).toBe(true);
+    await apiCall(request, 'descuentos_familiares_eliminar', {
+      method: 'POST', data: { id: replacement.item.id_descuento_familiar },
+    });
+
     await expectApiError(request, 'descuentos_familiares_guardar', {
       method: 'POST',
       data: {

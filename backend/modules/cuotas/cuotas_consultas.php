@@ -21,6 +21,7 @@ abstract class CuotasConsultas extends CuotasSoporte
         $periodId = (int)$period['id_periodo'];
         $periodEnd = self::finPeriodo($year, $periodId);
         $periodReference = self::inicioPeriodo($year, $periodId);
+        $familyReference = self::fechaReferenciaPeriodo($year, $periodId);
         $search = clean_text($filters['buscar'] ?? '', 160, false);
         $partnerFilterId = self::idOpcional($filters['id_socio'] ?? null, 'socio');
         $categoryId = self::idOpcional($filters['categoria'] ?? null, 'categoría');
@@ -68,7 +69,7 @@ abstract class CuotasConsultas extends CuotasSoporte
             $where[] = 's.id_socio = ?';
             $params[] = $partnerFilterId;
         }
-        $rows = self::consultarSocios($db, implode(' AND ', $where), $params, $periodReference);
+        $rows = self::consultarSocios($db, implode(' AND ', $where), $params, $familyReference);
         $partnerIds = array_map('intval', array_column($rows, 'id_socio'));
         $historicalCategories = self::categoriasSociosEnFecha($db, $partnerIds, $periodReference);
         foreach ($rows as &$row) {
@@ -116,7 +117,7 @@ abstract class CuotasConsultas extends CuotasSoporte
         $categoryIds = array_map('intval', array_column($rows, 'id_categoria'));
         $categories = self::mapaCategorias($db, $categoryIds);
         $histories = self::historialesPrecios($db, $categoryIds);
-        $rules = self::reglasDescuento($db, $periodReference);
+        $rules = self::reglasDescuento($db, $familyReference);
 
         $items = [];
         foreach ($rows as $row) {
@@ -143,6 +144,11 @@ abstract class CuotasConsultas extends CuotasSoporte
             $category = $categories[(int)$row['id_categoria']] ?? null;
             $historicalPeriod = $periodEnd < date('Y-m-d');
             if ($state === 'DEUDORES' && (!$category || (!(bool)$category['activo'] && !$historicalPeriod))) continue;
+            $pricingDate = self::fechaPrecioSocioPeriodo(
+                $year,
+                $periodId,
+                $row['fecha_ingreso'] ?? null
+            );
             $items[] = self::armarItem(
                 $row,
                 $category,
@@ -153,7 +159,7 @@ abstract class CuotasConsultas extends CuotasSoporte
                 $payment,
                 $conflict,
                 $annualOrigin,
-                $periodReference
+                $pricingDate
             );
         }
 
@@ -219,6 +225,7 @@ abstract class CuotasConsultas extends CuotasSoporte
         $periodId = (int)$period['id_periodo'];
         $periodEnd = self::finPeriodo($year, $periodId);
         $periodReference = self::inicioPeriodo($year, $periodId);
+        $familyReference = self::fechaReferenciaPeriodo($year, $periodId);
         $search = clean_text($filters['buscar'] ?? '', 160, false);
         $partnerFilterId = self::idOpcional($filters['id_socio'] ?? null, 'socio');
         $categoryId = self::idOpcional($filters['categoria'] ?? null, 'categoría');
@@ -262,7 +269,7 @@ abstract class CuotasConsultas extends CuotasSoporte
         } else {
             $whereSearch = $partnerFilterId !== null ? 's.id_socio = ?' : '1 = 1';
             $paramsSearch = $partnerFilterId !== null ? [$partnerFilterId] : [];
-            $rows = self::consultarSocios($db, $whereSearch, $paramsSearch, $periodReference);
+            $rows = self::consultarSocios($db, $whereSearch, $paramsSearch, $familyReference);
         }
 
         if ($personStateId !== null) {
@@ -561,19 +568,21 @@ abstract class CuotasConsultas extends CuotasSoporte
     ): array {
         self::validarEsquema($db);
 
-        // La fecha de pago define cuándo entra dinero en caja; categoría,
-        // precio y familia de una cuota retroactiva pertenecen al período
-        // aplicado. Por eso cada período reconstruye su propio contexto.
+        // La fecha de pago define cuándo entra dinero en caja. La categoría y
+        // el precio conservan la reconstrucción histórica al inicio del período
+        // (salvo socios que ingresaron dentro del bimestre). La familia usa la
+        // fecha real sólo cuando la operación pertenece a ese mismo período.
         $exists = self::consultarSocios($db, 's.id_socio = ?', [$partnerId], $paymentDate);
         if ($exists === []) api_error('El socio seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
 
         $result = [];
         foreach (self::periodos($db) as $period) {
             $periodId = (int)$period['id_periodo'];
-            $referenceDate = self::inicioPeriodo($year, $periodId);
-            $family = self::familiaDeSocio($db, $partnerId, $referenceDate);
+            $pricingReference = self::inicioPeriodo($year, $periodId);
+            $familyReference = self::fechaReferenciaPeriodo($year, $periodId, $paymentDate);
+            $family = self::familiaDeSocio($db, $partnerId, $familyReference);
             $memberIds = $family
-                ? self::integrantesFamilia($db, (int)$family['id_familia'], $referenceDate)
+                ? self::integrantesFamilia($db, (int)$family['id_familia'], $familyReference)
                 : [$partnerId];
             if (!in_array($partnerId, $memberIds, true)) $memberIds[] = $partnerId;
             $memberIds = array_values(array_unique(array_map('intval', $memberIds)));
@@ -582,7 +591,7 @@ abstract class CuotasConsultas extends CuotasSoporte
                 $db,
                 's.id_socio IN (' . implode(',', array_fill(0, count($memberIds), '?')) . ')',
                 $memberIds,
-                $referenceDate
+                $familyReference
             );
             $rowsById = [];
             foreach ($memberRows as $row) $rowsById[(int)$row['id_socio']] = $row;
@@ -590,7 +599,7 @@ abstract class CuotasConsultas extends CuotasSoporte
                 api_error('El socio seleccionado no existe.', 'SOCIO_NO_ENCONTRADO', 404);
             }
 
-            $historicalCategories = self::categoriasSociosEnFecha($db, $memberIds, $referenceDate);
+            $historicalCategories = self::categoriasSociosEnFecha($db, $memberIds, $pricingReference);
             $categoryIds = array_values(array_unique(array_filter(array_map(
                 static function (int $id) use ($historicalCategories, $rowsById): int {
                     return (int)($historicalCategories[$id] ?? ($rowsById[$id]['id_categoria'] ?? 0));
@@ -611,9 +620,17 @@ abstract class CuotasConsultas extends CuotasSoporte
             unset($row);
 
             $payments = self::pagosRegistrados($db, $memberIds, $year);
-            $rules = self::reglasDescuento($db, $referenceDate);
+            $rules = self::reglasDescuento($db, $familyReference);
             $familyCount = count($memberIds);
+            $familyDiscount = $family
+                ? self::porcentajeDescuento($rules, $familyCount)
+                : 0.0;
 
+            $principalPricingDate = self::fechaPrecioSocioPeriodo(
+                $year,
+                $periodId,
+                $rowsById[$partnerId]['fecha_ingreso'] ?? null
+            );
             $principalItem = self::armarContextoSocio(
                 $rowsById[$partnerId],
                 $categories,
@@ -623,12 +640,17 @@ abstract class CuotasConsultas extends CuotasSoporte
                 $period,
                 $year,
                 $familyCount,
-                $referenceDate
+                $principalPricingDate
             );
 
             $members = [];
             foreach ($memberIds as $memberId) {
                 if (!isset($rowsById[$memberId])) continue;
+                $memberPricingDate = self::fechaPrecioSocioPeriodo(
+                    $year,
+                    $periodId,
+                    $rowsById[$memberId]['fecha_ingreso'] ?? null
+                );
                 $members[] = self::armarContextoSocio(
                     $rowsById[$memberId],
                     $categories,
@@ -638,7 +660,7 @@ abstract class CuotasConsultas extends CuotasSoporte
                     $period,
                     $year,
                     $familyCount,
-                    $referenceDate
+                    $memberPricingDate
                 );
             }
 
@@ -648,6 +670,7 @@ abstract class CuotasConsultas extends CuotasSoporte
                     'id_familia' => (int)$family['id_familia'],
                     'nombre' => (string)$family['nombre'],
                     'cantidad_integrantes' => $familyCount,
+                    'porcentaje_descuento' => number_format($familyDiscount, 2, '.', ''),
                     'integrantes' => $members,
                 ] : null,
             ];

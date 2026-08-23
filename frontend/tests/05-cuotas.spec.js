@@ -3,7 +3,7 @@ const { apiCall, apiResult, expectApiError, readAuthSession } = require('./helpe
 const { exportFromGlobalModal } = require('./helpers/download.helper');
 const { SESSION_KEY } = require('./helpers/auth.helper');
 const { addDaysIso, todayIso } = require('./helpers/data.helper');
-const { cuotaFamilyData } = require('./fixtures/cuotas.fixture');
+const { cuotaCategoryData, cuotaFamilyData } = require('./fixtures/cuotas.fixture');
 const { configValues } = require('./fixtures/configuracion.fixture');
 const {
   createQuotaCategory,
@@ -20,6 +20,11 @@ function rowByText(page, text) {
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function currentBimonthlyPeriodId() {
+  const month = Number(todayIso().slice(5, 7));
+  return Math.max(1, Math.min(6, Math.ceil(month / 2)));
 }
 
 async function openQuotaAdvancedFilters(page) {
@@ -339,6 +344,306 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     });
     expect(waived.items.some((item) => item.id_pago === response.item.id_pago)).toBe(true);
     await deletePayment(request, response.item.id_pago);
+  });
+
+  test('regresión: una categoría creada dentro del bimestre no queda con importe A DEFINIR', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const categoryData = cuotaCategoryData();
+    categoryData.mensual = '8123.45';
+    categoryData.anual = '48000.00';
+
+    const category = await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: categoryData.nombre,
+        monto_mensual: categoryData.mensual,
+        monto_anual: categoryData.anual,
+        vigente_desde: today,
+      },
+    });
+    const socio = await createQuotaSocio(
+      request,
+      'CATEGORIA ALTA BIMESTRE',
+      category.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+
+    const debt = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        mes: periodId,
+        id_socio: socio.item.id_socio,
+      },
+    });
+    expect(debt.items).toHaveLength(1);
+    expect(Number(debt.items[0].monto_base)).toBeCloseTo(Number(categoryData.mensual), 2);
+    expect(Number(debt.items[0].monto_sugerido)).toBeCloseTo(Number(categoryData.mensual), 2);
+
+    const context = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: socio.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(context.principal.puede_pagar).toBe(true);
+    expect(Number(context.principal.monto_base)).toBeCloseTo(Number(categoryData.mensual), 2);
+    expect(Number(context.principal.monto_sugerido)).toBeCloseTo(Number(categoryData.mensual), 2);
+  });
+
+  test('regresión: familia creada dentro del bimestre sigue visible sin descuento y cobra la categoría de cada integrante', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const firstCategoryData = cuotaCategoryData();
+    const secondCategoryData = cuotaCategoryData();
+    secondCategoryData.mensual = '7654.75';
+    secondCategoryData.anual = '42000.00';
+
+    const firstCategory = await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: firstCategoryData.nombre,
+        monto_mensual: firstCategoryData.mensual,
+        monto_anual: firstCategoryData.anual,
+        vigente_desde: today,
+      },
+    });
+    const secondCategory = await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: secondCategoryData.nombre,
+        monto_mensual: secondCategoryData.mensual,
+        monto_anual: secondCategoryData.anual,
+        vigente_desde: today,
+      },
+    });
+
+    const rulesResponse = await apiCall(request, 'descuentos_familiares_listar', {
+      params: { estado: 'todos' },
+    });
+    const rules = Array.isArray(rulesResponse.items) ? rulesResponse.items : [];
+    const activeRules = rules.filter((rule) =>
+      Boolean(rule.activo)
+      && String(rule.vigencia_desde) <= today
+      && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= today),
+    );
+    const coveredByDiscount = (count) => activeRules.some((rule) => {
+      const from = Number(rule.cantidad_integrantes_desde);
+      const to = rule.cantidad_integrantes_hasta == null
+        ? Infinity
+        : Number(rule.cantidad_integrantes_hasta);
+      return count >= from && count <= to && Number(rule.porcentaje_descuento) > 0;
+    });
+    const memberCount = Array.from({ length: 49 }, (_, index) => index + 2)
+      .find((count) => !coveredByDiscount(count));
+    test.skip(
+      memberCount == null,
+      'La configuración actual aplica descuento a todos los grupos de 2 a 50 integrantes; no existe un caso real sin descuento para este test.',
+    );
+
+    const members = [];
+    for (let index = 0; index < memberCount; index += 1) {
+      members.push(await createQuotaSocio(
+        request,
+        `BIMESTRE FAMILIA ${index + 1}`,
+        index === 0 ? firstCategory.item.id_categoria : secondCategory.item.id_categoria,
+        { fecha_ingreso: today },
+      ));
+    }
+    const family = cuotaFamilyData();
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: members.map((member) => ({ id_socio: member.item.id_socio, desde: today })),
+      },
+    });
+
+    const debt = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        mes: periodId,
+        id_socio: members[0].item.id_socio,
+      },
+    });
+    expect(debt.items).toHaveLength(1);
+    expect(Number(debt.items[0].monto_base)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
+    expect(Number(debt.items[0].monto_sugerido)).toBeGreaterThan(0);
+
+    const catalogs = await quotaCatalogs(request);
+    const context = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: members[0].item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(context.familia).not.toBeNull();
+    expect(context.familia.cantidad_integrantes).toBe(memberCount);
+    expect(context.familia.integrantes).toHaveLength(memberCount);
+    // Aunque para este tamaño no haya una regla de descuento, el grupo debe
+    // seguir existiendo en el modal/contexto y cada socio conserva el importe
+    // de su propia categoría, sin convertirlo en A DEFINIR.
+    expect(Number(context.familia.porcentaje_descuento)).toBe(0);
+
+    const firstMember = context.familia.integrantes.find(
+      (item) => Number(item.id_socio) === Number(members[0].item.id_socio),
+    );
+    const secondMember = context.familia.integrantes.find(
+      (item) => Number(item.id_socio) === Number(members[1].item.id_socio),
+    );
+    expect(Number(firstMember.monto_base)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
+    expect(Number(firstMember.monto_sugerido)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
+    expect(Number(secondMember.monto_base)).toBeCloseTo(Number(secondCategoryData.mensual), 2);
+    expect(Number(secondMember.monto_sugerido)).toBeCloseTo(Number(secondCategoryData.mensual), 2);
+
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: members[0].item.id_socio,
+        periodId,
+        mediumId: catalogs.medium.id_medio_pago,
+        date: today,
+        extra: { aplicar_familia: true },
+      }),
+    });
+    expect(paid.items).toHaveLength(memberCount);
+    const paidFirst = paid.items.find((item) => Number(item.id_socio) === Number(members[0].item.id_socio));
+    const paidSecond = paid.items.find((item) => Number(item.id_socio) === Number(members[1].item.id_socio));
+    expect(Number(paidFirst.monto)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
+    expect(Number(paidSecond.monto)).toBeCloseTo(Number(secondCategoryData.mensual), 2);
+    for (const item of paid.items) await deletePayment(request, item.id_pago);
+  });
+
+
+  test('regresión: un descuento enviado al historial deja de descontar inmediatamente aunque su vigencia_hasta sea hoy', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const rulesResponse = await apiCall(request, 'descuentos_familiares_listar', {
+      params: { estado: 'todos' },
+    });
+    const rules = Array.isArray(rulesResponse.items) ? rulesResponse.items : [];
+
+    // guardarDescuento evita solapamientos incluso contra reglas históricas.
+    // Buscamos un tamaño libre HOY para crear una regla E2E aislada.
+    const coversToday = (rule, count) => {
+      const from = Number(rule.cantidad_integrantes_desde);
+      const to = rule.cantidad_integrantes_hasta == null
+        ? Infinity
+        : Number(rule.cantidad_integrantes_hasta);
+      const starts = String(rule.vigencia_desde) <= today;
+      const ends = !rule.vigencia_hasta || String(rule.vigencia_hasta) >= today;
+      return starts && ends && count >= from && count <= to;
+    };
+    const memberCount = Array.from({ length: 49 }, (_, index) => index + 2)
+      .find((count) => !rules.some((rule) => coversToday(rule, count)));
+    test.skip(memberCount == null, 'No existe un rango de integrantes libre para crear la regresión de descuento histórico.');
+
+    const discount = await apiCall(request, 'descuentos_familiares_guardar', {
+      method: 'POST',
+      data: {
+        cantidad_integrantes_desde: memberCount,
+        cantidad_integrantes_hasta: memberCount,
+        porcentaje_descuento: '10.00',
+        vigencia_desde: today,
+        vigencia_hasta: today,
+        descripcion: `PW E2E DESC INACTIVO CUOTAS ${Date.now()}`,
+      },
+    });
+
+    const category = await createQuotaCategory(request);
+    const members = [];
+    for (let index = 0; index < memberCount; index += 1) {
+      members.push(await createQuotaSocio(
+        request,
+        `DESC HIST FAM ${index + 1}`,
+        category.item.id_categoria,
+        { fecha_ingreso: today },
+      ));
+    }
+    const family = cuotaFamilyData();
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: members.map((member) => ({ id_socio: member.item.id_socio, desde: today })),
+      },
+    });
+
+    const before = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: members[0].item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(before.familia).not.toBeNull();
+    expect(Number(before.familia.porcentaje_descuento)).toBeCloseTo(10, 2);
+    expect(Number(before.principal.monto_sugerido)).toBeCloseTo(Number(before.principal.monto_base) * 0.9, 2);
+
+    // Esta acción deja activo=0 y vigencia_hasta=today. Ese era exactamente
+    // el bug: Cuotas miraba sólo las fechas y seguía aplicando 10%.
+    await apiCall(request, 'descuentos_familiares_eliminar', {
+      method: 'POST',
+      data: { id: discount.item.id_descuento_familiar },
+    });
+
+    const after = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: members[0].item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(after.familia).not.toBeNull();
+    expect(after.familia.cantidad_integrantes).toBe(memberCount);
+    expect(after.familia.integrantes).toHaveLength(memberCount);
+    expect(Number(after.familia.porcentaje_descuento)).toBe(0);
+    expect(Number(after.principal.porcentaje_descuento_familiar)).toBe(0);
+    expect(Number(after.principal.monto_sugerido)).toBeCloseTo(Number(after.principal.monto_base), 2);
+
+    const debt = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        mes: periodId,
+        id_socio: members[0].item.id_socio,
+      },
+    });
+    expect(debt.items).toHaveLength(1);
+    expect(Number(debt.items[0].porcentaje_descuento_familiar)).toBe(0);
+    expect(Number(debt.items[0].monto_sugerido)).toBeCloseTo(Number(debt.items[0].monto_base), 2);
+
+    const catalogs = await quotaCatalogs(request);
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: members[0].item.id_socio,
+        periodId,
+        mediumId: catalogs.medium.id_medio_pago,
+        date: today,
+        extra: { aplicar_familia: true },
+      }),
+    });
+    expect(paid.items).toHaveLength(memberCount);
+    for (const item of paid.items) {
+      expect(Number(item.porcentaje_descuento_familiar)).toBe(0);
+      const contextMember = after.familia.integrantes.find(
+        (member) => Number(member.id_socio) === Number(item.id_socio),
+      );
+      expect(contextMember).toBeTruthy();
+      expect(Number(item.monto)).toBeCloseTo(Number(contextMember.monto_base), 2);
+      await deletePayment(request, item.id_pago);
+    }
   });
 
   test('pago familiar expande la operación a todos los integrantes activos', async ({ request }) => {

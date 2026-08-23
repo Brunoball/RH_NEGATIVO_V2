@@ -11,7 +11,7 @@ abstract class CuotasRegistros extends CuotasConsultas
         self::validarEsquema($db);
         $date = self::fechaPago($body['fecha_pago'] ?? date('Y-m-d'));
         $medium = self::medioPago($db, $body['id_medio_pago'] ?? null);
-        $targets = self::normalizarObjetivos($db, $body);
+        $targets = self::normalizarObjetivos($db, $body, $date);
         return self::guardarObjetivos($auth, $targets, $date, $medium, false, null);
     }
 
@@ -305,7 +305,7 @@ abstract class CuotasRegistros extends CuotasConsultas
         });
     }
 
-    private static function normalizarObjetivos(PDO $db, array $body): array
+    private static function normalizarObjetivos(PDO $db, array $body, string $paymentDate): array
     {
         $raw = [];
         if (is_array($body['pagos'] ?? null)) {
@@ -321,17 +321,17 @@ abstract class CuotasRegistros extends CuotasConsultas
             $applyFamily = filter_var($body['aplicar_familia'] ?? false, FILTER_VALIDATE_BOOL);
 
             // Compatibilidad con el endpoint legacy aplicar_familia=true. La
-            // composición familiar se resuelve en la fecha histórica de CADA
-            // período, no en la fecha en la que se está registrando el pago.
-            // Así un pago retroactivo nunca agrega/quita integrantes por
-            // cambios familiares ocurridos después del período adeudado.
+            // composición conserva el inicio para períodos históricos/futuros,
+            // pero durante el bimestre en curso usa la fecha real del pago.
+            // Así una familia creada dentro del período actual aparece y se
+            // expande correctamente sin alterar la composición de deudas viejas.
             foreach ($periodIds as $periodId) {
                 $period = self::periodo($db, $periodId);
                 $resolvedPeriodId = (int)$period['id_periodo'];
                 $partnerIds = [$partnerId];
 
                 if ($applyFamily) {
-                    $referenceDate = self::inicioPeriodo($year, $resolvedPeriodId);
+                    $referenceDate = self::fechaReferenciaPeriodo($year, $resolvedPeriodId, $paymentDate);
                     $family = self::familiaDeSocio($db, $partnerId, $referenceDate);
                     if ($family) {
                         $partnerIds = self::integrantesFamilia(
@@ -488,31 +488,48 @@ abstract class CuotasRegistros extends CuotasConsultas
                 $paymentsByYear[$year] = self::pagosRegistrados($db, $partnerIds, $year);
             }
 
-            $referenceGroups = [];
+            $pricingGroups = [];
+            $familyGroups = [];
             foreach ($targets as $target) {
-                $referenceDate = self::inicioPeriodo((int)$target['anio'], (int)$target['id_periodo']);
-                $referenceGroups[$referenceDate][] = (int)$target['id_socio'];
+                $year = (int)$target['anio'];
+                $periodId = (int)$target['id_periodo'];
+                $partnerId = (int)$target['id_socio'];
+                $pricingReference = self::inicioPeriodo($year, $periodId);
+                $familyReference = self::fechaReferenciaPeriodo($year, $periodId, $date);
+                $pricingGroups[$pricingReference][] = $partnerId;
+                $familyGroups[$familyReference][] = $partnerId;
             }
+
             $historicalCategoriesByDate = [];
             $categoriesByDate = [];
             $historiesByDate = [];
-            $familiesByDate = [];
-            $rulesByDate = [];
-            foreach ($referenceGroups as $referenceDate => $idsAtDate) {
+            foreach ($pricingGroups as $pricingReference => $idsAtDate) {
                 $idsAtDate = array_values(array_unique($idsAtDate));
-                $historicalCategoriesByDate[$referenceDate] = self::categoriasSociosEnFecha(
+                $historicalCategoriesByDate[$pricingReference] = self::categoriasSociosEnFecha(
                     $db,
                     $idsAtDate,
-                    $referenceDate
+                    $pricingReference
                 );
                 $categoryIds = array_values(array_unique(array_filter(array_map(
-                    static fn(int $partnerId): int => (int)($historicalCategoriesByDate[$referenceDate][$partnerId] ?? 0),
+                    static fn(int $partnerId): int => (int)(
+                        $historicalCategoriesByDate[$pricingReference][$partnerId] ?? 0
+                    ),
                     $idsAtDate
                 ))));
-                $categoriesByDate[$referenceDate] = self::mapaCategorias($db, $categoryIds);
-                $historiesByDate[$referenceDate] = self::historialesPrecios($db, $categoryIds);
-                $familiesByDate[$referenceDate] = self::mapaFamiliasSocios($db, $idsAtDate, $referenceDate);
-                $rulesByDate[$referenceDate] = self::reglasDescuento($db, $referenceDate);
+                $categoriesByDate[$pricingReference] = self::mapaCategorias($db, $categoryIds);
+                $historiesByDate[$pricingReference] = self::historialesPrecios($db, $categoryIds);
+            }
+
+            $familiesByDate = [];
+            $rulesByDate = [];
+            foreach ($familyGroups as $familyReference => $idsAtDate) {
+                $idsAtDate = array_values(array_unique($idsAtDate));
+                $familiesByDate[$familyReference] = self::mapaFamiliasSocios(
+                    $db,
+                    $idsAtDate,
+                    $familyReference
+                );
+                $rulesByDate[$familyReference] = self::reglasDescuento($db, $familyReference);
             }
 
             $periodCache = [];
@@ -538,12 +555,13 @@ abstract class CuotasRegistros extends CuotasConsultas
                 if (!(bool)$partner['vigente']) {
                     api_error('No se puede registrar una cuota a un socio dado de baja.', 'SOCIO_INACTIVO', 409);
                 }
-                $referenceDate = self::inicioPeriodo($year, $periodId);
+                $pricingReference = self::inicioPeriodo($year, $periodId);
+                $familyReference = self::fechaReferenciaPeriodo($year, $periodId, $date);
                 $historicalCategoryId = (int)(
-                    $historicalCategoriesByDate[$referenceDate][$partnerId]
+                    $historicalCategoriesByDate[$pricingReference][$partnerId]
                     ?? $partner['id_categoria']
                 );
-                $historicalCategory = $categoriesByDate[$referenceDate][$historicalCategoryId] ?? null;
+                $historicalCategory = $categoriesByDate[$pricingReference][$historicalCategoryId] ?? null;
                 $historicalPeriod = self::finPeriodo($year, $periodId) < date('Y-m-d');
                 if (!$historicalCategory || (!(bool)$historicalCategory['activo'] && !$historicalPeriod)) {
                     api_error('La categoría correspondiente al período está inactiva o ya no existe.', 'CATEGORIA_INACTIVA', 409);
@@ -560,18 +578,23 @@ abstract class CuotasRegistros extends CuotasConsultas
                 $conflict = self::conflictoModalidad($payments, $partnerId, $periodId);
                 if ($conflict !== null) api_error($conflict, 'MODALIDAD_NO_DISPONIBLE', 409);
 
-                $familyInfo = $familiesByDate[$referenceDate][$partnerId] ?? ['familia' => null, 'cantidad' => 0];
+                $familyInfo = $familiesByDate[$familyReference][$partnerId] ?? ['familia' => null, 'cantidad' => 0];
                 $family = $familyInfo['familia'];
                 $familyCount = (int)$familyInfo['cantidad'];
                 $discount = $family
-                    ? self::porcentajeDescuento($rulesByDate[$referenceDate] ?? [], $familyCount)
+                    ? self::porcentajeDescuento($rulesByDate[$familyReference] ?? [], $familyCount)
                     : 0.0;
-                $history = $historiesByDate[$referenceDate][$historicalCategoryId][self::tipoPrecio($periodId)] ?? [];
+                $history = $historiesByDate[$pricingReference][$historicalCategoryId][self::tipoPrecio($periodId)] ?? [];
+                $pricingDate = self::fechaPrecioSocioPeriodo(
+                    $year,
+                    $periodId,
+                    $partner['fecha_ingreso'] ?? null
+                );
                 $base = self::montoCategoriaEnFecha(
                     $historicalCategory,
                     $periodId,
                     $history,
-                    $referenceDate
+                    $pricingDate
                 );
                 if ($base <= 0) {
                     api_error('La categoría no tiene un monto configurado para ese período.', 'MONTO_NO_CONFIGURADO', 409);
