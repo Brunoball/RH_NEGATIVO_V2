@@ -1567,7 +1567,9 @@
 
 .cuotas-family-expand-btn svg {
   font-size: 0.66rem;
-  transition: none;
+  transform: rotate(0deg);
+  transform-origin: center;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cuotas-family-expand-btn.is-open svg {
@@ -1610,28 +1612,51 @@
   line-height: 1.4;
 }
 
+/*
+ * Panel de integrantes: el espacio exterior queda estable durante toda la
+ * transición. Antes se animaba también el margin-top negativo y, al cerrar,
+ * esa segunda variación de layout competía con el 1fr -> 0fr y producía el
+ * tirón visual. El espacio se recupera ahora con padding interno animado.
+ */
 .cuotas-family-members-shell {
+  min-width: 0;
   display: grid;
   grid-template-rows: 0fr;
   margin-top: -13px;
+  padding-top: 0;
+  overflow: clip;
   opacity: 0;
-  transform: translateY(-6px);
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate3d(0, -5px, 0);
+  transform-origin: top center;
   transition:
-    grid-template-rows 190ms ease,
-    margin-top 190ms ease,
+    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding-top 240ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 150ms ease,
-    transform 190ms ease;
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 240ms;
+  will-change: opacity, transform;
 }
 
 .cuotas-family-members-shell.is-open {
   grid-template-rows: 1fr;
-  margin-top: 0;
+  padding-top: 13px;
   opacity: 1;
-  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0);
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding-top 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 170ms ease 35ms,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
 }
 
 .cuotas-family-members {
   min-height: 0;
+  min-width: 0;
   display: grid;
   gap: 8px;
   overflow: hidden;

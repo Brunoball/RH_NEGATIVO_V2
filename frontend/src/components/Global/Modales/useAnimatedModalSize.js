@@ -152,11 +152,27 @@ export default function useAnimatedModalSize(modalRef, open = true) {
       }
     };
 
+    const isPassiveSizeMutation = (mutation) => {
+      const target =
+        mutation.target instanceof Element
+          ? mutation.target
+          : mutation.target?.parentElement;
+
+      return Boolean(target?.closest?.("[data-modal-size-passive='true']"));
+    };
+
     const observer = new MutationObserver((mutations) => {
       // Los estilos/clases que este hook aplica al propio modal también son
       // mutaciones. Las ignoramos para no auto-disparar la animación.
+      //
+      // Algunos componentes internos ya animan su propio alto (por ejemplo,
+      // el desplegable de integrantes de Familia en Cuotas). En esos casos el
+      // modal debe acompañar naturalmente esa animación y no ejecutar, al
+      // mismo tiempo, una segunda transición de `height`. El atributo
+      // data-modal-size-passive permite excluir sólo ese subárbol.
       const hasContentChange = mutations.some((mutation) => {
         if (mutation.target === modal) return false;
+        if (isPassiveSizeMutation(mutation)) return false;
         return true;
       });
 

@@ -382,6 +382,7 @@ export default function ModalPagoCuota({
                 {tipo === "PERSONA" && family ? (
                   <section
                     className="cuotas-family-card"
+                    data-modal-size-passive="true"
                     aria-label="Grupo familiar del socio"
                   >
                   <div className="cuotas-family-card__head">
