@@ -89,10 +89,13 @@
   max-width: 140px;
 }
 
+/* Los buscadores de Contable son el primer elemento que cede ancho cuando
+   el contenido disponible disminuye (por ejemplo, al abrir el sidebar). */
 .contable-head-filters .module-filter--search {
   order: -1;
-  flex: 1 1 170px;
-  min-width: 170px;
+  width: auto;
+  flex: 1 1 210px;
+  min-width: 115px;
   max-width: 250px;
   margin-left: auto;
   justify-self: end;
@@ -100,18 +103,27 @@
 
 .contable-head-filters > .contable-filter--partner-search {
   order: 0;
-  flex: 1 1;
+  width: auto;
+  flex: 1 1 190px;
+  min-width: 120px;
   max-width: 250px;
   margin-left: 0;
 }
 
 .contable-head-filters > .contable-filter--partner-id {
   order: 0;
-  flex: 0 0 105px;
-  width: 105px;
-  min-width: 105px;
+  width: auto;
+  flex: 0 1 105px;
+  min-width: 78px;
   max-width: 105px;
   margin-left: 0;
+}
+
+/* El responsive de este header se calcula con el ancho real de Contable y no
+   sólo con el viewport. Así también reacciona al abrir/cerrar la navegación. */
+.contable-page .module-card {
+  container-name: contable-card;
+  container-type: inline-size;
 }
 
 .contable-table .entity-table-wrap {
@@ -977,6 +989,66 @@
 
 .contable-lower-actions .contable-create-lower svg {
   font-size: 12px;
+}
+
+@container contable-card (max-width: 1240px) {
+  .module-headFilters.contable-head-filters {
+    gap: 8px;
+  }
+
+  .contable-head-filters .module-filter--search {
+    flex-basis: 175px;
+    min-width: 105px;
+    max-width: 210px;
+  }
+
+  .contable-head-filters > .contable-filter--partner-search {
+    flex-basis: 160px;
+    min-width: 110px;
+    max-width: 205px;
+  }
+
+  .contable-head-filters > .contable-filter--partner-id {
+    flex-basis: 92px;
+    min-width: 74px;
+    max-width: 92px;
+  }
+}
+
+@container contable-card (max-width: 1060px) {
+  .module-headFilters.contable-head-filters {
+    gap: 7px;
+  }
+
+  .contable-head-filters .module-filter--search {
+    flex-basis: 145px;
+    min-width: 96px;
+    max-width: 175px;
+  }
+
+  .contable-head-filters > .contable-filter--partner-search {
+    flex-basis: 140px;
+    min-width: 105px;
+    max-width: 175px;
+  }
+
+  .contable-head-filters > .contable-filter--partner-id {
+    flex-basis: 84px;
+    min-width: 70px;
+    max-width: 84px;
+  }
+}
+
+@container contable-card (max-width: 900px) {
+  .module-headFilters.contable-head-filters {
+    flex-wrap: wrap;
+  }
+
+  .contable-head-filters .module-filter--search,
+  .contable-head-filters > .contable-filter--partner-search {
+    flex: 1 1 140px;
+    min-width: 105px;
+  }
 }
 
 @media (max-width: 1499px) {

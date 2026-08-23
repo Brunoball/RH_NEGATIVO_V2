@@ -23,7 +23,7 @@
  */
 .cuotas-head-filters {
   display: flex;
-  flex: 1 1 ;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   align-items: flex-end;
   justify-content: flex-end;
@@ -124,17 +124,20 @@
 }
 
 .cuotas-head-filters .cuotas-search-filter {
-  flex: 1 1 ;
+  flex: 1 1 160px;
   width: 100%;
+  min-width: 110px;
   max-width: 250px;
   margin-left: 0;
 }
 
 .cuotas-head-filters .cuotas-id-filter {
-  flex: 0 0 105px;
-  width: 105px;
-  min-width: 105px;
-  max-width: 105px;
+  flex: 0 1 95px;
+  width: 95px;
+  min-width: 80px;
+  max-width: 95px;
+  margin-left: 0;
+  justify-self: auto;
 }
 
 .cuotas-head-filters .cuotas-year-filter {
@@ -182,15 +185,15 @@
 
 .cuotas-filterTrigger {
   position: relative;
-  min-width: 163px;
+  min-width: 118px;
   min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   border: 0;
   border-radius: 9px;
-  padding: 0 13px;
+  padding: 0 10px;
   background: var(--primary-500, #2563eb);
   color: #fff;
   font: inherit;
@@ -1178,7 +1181,7 @@
   }
 
   .cuotas-filterTrigger {
-    min-width: 150px;
+    min-width: 118px;
   }
 
   .cuotas-filterMenu {

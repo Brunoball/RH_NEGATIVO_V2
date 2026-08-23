@@ -1311,6 +1311,7 @@ export default function ContableModule({ view = "summary" }) {
   return (
     <>
       <ModulePage
+        className="contable-page"
         title={
           view === "summary" ? (
             <span className="ct-page-title">

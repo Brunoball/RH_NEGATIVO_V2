@@ -1,3 +1,44 @@
+/* Header flexible de Familias: las acciones conservan su ancho y el buscador es quien cede espacio. */
+.familias-page .module-card__head {
+  min-width: 0;
+}
+
+.familias-page .module-card__headLeft {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.familias-page .module-card__actions {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content;
+}
+
+.familias-page .module-headFilters {
+  flex: 0 1 250px;
+  width: clamp(110px, 20vw, 250px);
+  min-width: 110px;
+  max-width: 250px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: end;
+}
+
+.familias-page .familias-mainSearch {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+@media (min-width: 1021px) and (max-width: 1350px) {
+  .familias-page .module-headFilters {
+    flex-basis: 210px;
+    width: clamp(105px, 16vw, 210px);
+    min-width: 105px;
+    max-width: 210px;
+  }
+}
+
 /* Medidas y alineaciones exclusivas de la tabla de Familias. */
 .familias-grid {
   grid-template-columns:
@@ -47,4 +88,15 @@
     width: 100%;
     min-width: 0;
   }
+}
+
+/* El buscador de Familias pertenece al bloque derecho del header. */
+.familias-page .module-card__actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.familias-page .module-card__actions .module-headFilters {
+  flex: 0 1 250px;
+  width: clamp(110px, 20vw, 250px);
 }

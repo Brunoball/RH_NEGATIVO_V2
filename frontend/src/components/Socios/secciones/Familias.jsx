@@ -681,6 +681,7 @@ export default function Familias() {
       placeholder: " ",
       value: search,
       onChange: setSearch,
+      className: "familias-mainSearch",
     },
   ];
 
@@ -688,8 +689,10 @@ export default function Familias() {
     <>
       <ModulePage
         title="Familias"
+        className="familias-page"
         filters={filtersUi}
         tabsInTitle
+        headFiltersInActions
         primaryActionLabel="Nueva familia"
         onPrimaryAction={openNew}
         headerActions={
