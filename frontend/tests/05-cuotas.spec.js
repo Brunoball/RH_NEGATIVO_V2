@@ -23,7 +23,7 @@ function escapeRegExp(value) {
 }
 
 async function openQuotaAdvancedFilters(page) {
-  const trigger = page.getByRole('button', { name: /Aplicar Filtros/ });
+  const trigger = page.getByRole('button', { name: /^Filtros(?:\s+\d+)?$/ });
   if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
   return trigger;
 }
@@ -43,7 +43,7 @@ async function resetQuotaAdvancedFilters(page) {
 }
 
 async function closeQuotaAdvancedFilters(page) {
-  const trigger = page.getByRole('button', { name: /Aplicar Filtros/ });
+  const trigger = page.getByRole('button', { name: /^Filtros(?:\s+\d+)?$/ });
   if ((await trigger.getAttribute('aria-expanded')) === 'true') await trigger.click();
 }
 
@@ -282,6 +282,40 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       data: paymentPayload({ socioId: socio.item.id_socio, periodId: annualId, mediumId: catalogs.medium.id_medio_pago }),
     }, { status: 409, code: 'MODALIDAD_NO_DISPONIBLE' });
     await deletePayment(request, bimonth.items[0].id_pago);
+  });
+
+  test('Contado Anual exige los seis períodos disponibles y no puede forzarse por API', async ({ request }) => {
+    const category = await createQuotaCategory(request);
+    const socio = await createQuotaSocio(
+      request,
+      'ANUAL INCOMPLETO API',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-07-01` },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const annualId = Number(catalogs.annual.id_periodo ?? catalogs.annual.id_mes);
+
+    const contexts = await apiCall(request, 'cuotas_contextos_pago', {
+      params: {
+        id_socio: socio.item.id_socio,
+        anio: currentYear(),
+        fecha_pago: todayIso(),
+      },
+    });
+    expect(contexts.periodos['1'].principal.disponible).toBe(false);
+    expect(contexts.periodos[String(annualId)].principal.disponible).toBe(false);
+    expect(contexts.periodos[String(annualId)].principal.motivo_no_disponible).toContain(
+      'seis períodos',
+    );
+
+    await expectApiError(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: socio.item.id_socio,
+        periodId: annualId,
+        mediumId: catalogs.medium.id_medio_pago,
+      }),
+    }, { status: 409, code: 'MODALIDAD_NO_DISPONIBLE' });
   });
 
   test('condonación registra $0 sin medio, bloquea duplicado y puede eliminarse', async ({ request }) => {
@@ -661,6 +695,36 @@ test.describe('Cuotas · API y reglas de negocio', () => {
 });
 
 test.describe('Cuotas · UI', () => {
+  test('Contado Anual queda deshabilitado si falta cualquier período del año', async ({ page, request }) => {
+    const category = await createQuotaCategory(request);
+    const socio = await createQuotaSocio(
+      request,
+      'ANUAL INCOMPLETO UI',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-07-01` },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const annualId = Number(catalogs.annual.id_periodo ?? catalogs.annual.id_mes);
+    const annualName = String(catalogs.annual.nombre || 'CONTADO ANUAL');
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(annualId));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
+
+    const row = rowByText(page, socio.data.nombre);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
+
+    const dialog = page.getByRole('dialog').filter({ hasText: socio.data.nombre }).last();
+    const annualChoice = dialog.getByRole('button', {
+      name: new RegExp(`^${escapeRegExp(annualName)} ${currentYear()}: no disponible$`, 'i'),
+    });
+    await expect(annualChoice).toBeVisible();
+    await expect(annualChoice).toBeDisabled();
+    await expect(annualChoice).toHaveAttribute('aria-pressed', 'false');
+  });
+
   test('flujo visible completo: pagar, comprobante, listar pagado, eliminar, condonar y eliminar condonación', async ({ page, request }) => {
     const { socio, catalogs } = await setupQuotaPartner(request, 'UI CICLO');
     const periodId = String(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
@@ -670,7 +734,7 @@ test.describe('Cuotas · UI', () => {
     await expect(page.getByRole('heading', { name: 'Cuotas' })).toBeVisible();
     await page.getByLabel('Año').selectOption(year);
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     let row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
 
@@ -683,7 +747,7 @@ test.describe('Cuotas · UI', () => {
     await receipt.locator('.payment-receipt-actions__close').click();
 
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     // El estado visible de la tabla es ACTIVO/PASIVO del socio. Que la cuota
     // esté pagada se expresa por la pestaña Pagados y por sus acciones.
@@ -694,14 +758,14 @@ test.describe('Cuotas · UI', () => {
     await actionDialog.getByRole('button', { name: 'Eliminar pago', exact: true }).click();
 
     await page.getByRole('tab', { name: /Deudores/ }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     await row.getByRole('button', { name: `Condonar cuota de ${socio.data.nombre}` }).click();
     actionDialog = page.getByRole('dialog', { name: 'Condonar cuota' });
     await actionDialog.getByRole('button', { name: 'Condonar cuota', exact: true }).click();
 
     await page.getByRole('tab', { name: /Condonados/ }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     // En Condonados la columna Estado sigue mostrando ACTIVO/PASIVO. El $0 y
     // la acción de eliminar condonación identifican correctamente el registro.
@@ -722,7 +786,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill('PW EEE SOCIO CUOTA MULTI');
+    await page.getByRole('textbox', { name: 'Socio', exact: true }).fill('PW EEE SOCIO CUOTA MULTI');
     await page.getByRole('button', { name: 'Seleccionar', exact: true }).first().click();
     await page.getByRole('checkbox', { name: `Seleccionar cuota de ${a.data.nombre}` }).check();
     await page.getByRole('checkbox', { name: `Seleccionar cuota de ${b.data.nombre}` }).check();
@@ -760,7 +824,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(current));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
@@ -861,7 +925,7 @@ test.describe('Cuotas · UI', () => {
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await page.evaluate(() => {
@@ -900,7 +964,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     let row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
@@ -956,7 +1020,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
-    const quotaSearch = page.getByRole('textbox', { name: 'Socio / ID', exact: true });
+    const quotaSearch = page.getByRole('textbox', { name: 'ID', exact: true });
     await quotaSearch.fill(String(socio.item.id_socio));
     await expect(rowByText(page, socio.data.nombre)).toBeVisible();
 
@@ -989,7 +1053,7 @@ test.describe('Cuotas · UI', () => {
       const headers = await page.locator('.cuotas-table').getByRole('columnheader').allTextContents();
       expect(headers.map((value) => value.trim())).toEqual(expectedColumns);
       await expect(page.getByRole('columnheader', { name: 'Medio de pago', exact: true })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: /Aplicar Filtros/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: /^Filtros(?:\s+\d+)?$/ })).toBeVisible();
     };
 
     const lastPopup = () => page.evaluate(() => window.__pwQuotaPopups.at(-1) || null);
@@ -1117,7 +1181,7 @@ test.describe('Cuotas · UI', () => {
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(annualId));
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await expect(row).toContainText(`CONTADO ANUAL ${currentYear()}`);
@@ -1237,17 +1301,30 @@ test.describe('Cuotas · UI', () => {
       params: { estado: 'DEUDORES', anio: currentYear(), mes: periodId, id_socio: first.socio.item.id_socio, categoria: 2147483647 },
     });
     expect(wrongCategory.items).toHaveLength(0);
+    const missingId = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'DEUDORES', anio: currentYear(), mes: periodId, id_socio: 2147483647 },
+    });
+    expect(missingId.items).toHaveLength(0);
 
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
 
-    const search = page.getByRole('textbox', { name: 'Socio / ID', exact: true });
-    await search.fill(String(first.socio.item.id_socio));
+    const idSearch = page.getByRole('textbox', { name: 'ID', exact: true });
+    const socioSearch = page.getByRole('textbox', { name: 'Socio', exact: true });
+    await idSearch.fill(String(first.socio.item.id_socio));
     await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
     await expect(rowByText(page, second.socio.data.nombre)).toHaveCount(0);
+    await idSearch.fill('2147483647');
+    await expect(rowByText(page, first.socio.data.nombre)).toHaveCount(0);
+    await expect(rowByText(page, second.socio.data.nombre)).toHaveCount(0);
+    await idSearch.fill(String(first.socio.item.id_socio));
+    await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
 
-    await search.fill('PW EEE SOCIO CUOTA FILTROS TOTAL');
+    // Los dos campos son independientes: el ID es igualdad exacta y el campo
+    // Socio queda para nombre/DNI. Nunca inferimos uno a partir del otro.
+    await idSearch.fill('');
+    await socioSearch.fill('PW EEE SOCIO CUOTA FILTROS TOTAL');
     await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
     await expect(rowByText(page, second.socio.data.nombre)).toBeVisible();
 
@@ -1295,7 +1372,7 @@ test.describe('Cuotas · UI', () => {
     expect(paidByMediumAlias.items.some((item) => Number(item.id_socio) === Number(first.socio.item.id_socio))).toBe(true);
 
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await search.fill(String(first.socio.item.id_socio));
+    await idSearch.fill(String(first.socio.item.id_socio));
     await expect(rowByText(page, first.socio.data.nombre)).toBeVisible();
     await selectQuotaAdvancedFilter(page, 'Medio de pago', wrongMedium.item.nombre);
     await expect(rowByText(page, first.socio.data.nombre)).toHaveCount(0);
@@ -1311,7 +1388,7 @@ test.describe('Cuotas · UI', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     await expect(rowByText(page, socio.data.nombre)).toBeVisible();
 
     await exportFromGlobalModal(page, {

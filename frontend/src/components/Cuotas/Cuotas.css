@@ -130,6 +130,13 @@
   margin-left: 0;
 }
 
+.cuotas-head-filters .cuotas-id-filter {
+  flex: 0 0 105px;
+  width: 105px;
+  min-width: 105px;
+  max-width: 105px;
+}
+
 .cuotas-head-filters .cuotas-year-filter {
   flex: 0 0 80px;
   width: 80px;
@@ -1081,9 +1088,17 @@
     justify-content: end;
   }
 
-  .cuotas-head-filters .module-filter--tabs,
-  .cuotas-head-filters .cuotas-search-filter {
+  .cuotas-head-filters .module-filter--tabs {
     grid-column: 1 / -1;
+  }
+
+  .cuotas-head-filters .cuotas-search-filter {
+    grid-column: 1;
+  }
+
+  .cuotas-head-filters .cuotas-id-filter {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .cuotas-head-filters .cuotas-year-filter {
@@ -1134,6 +1149,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .cuotas-head-filters .cuotas-id-filter,
   .cuotas-head-filters .cuotas-year-filter,
   .cuotas-head-filters .cuotas-month-filter,
   .cuotas-head-filters .cuotas-partner-state-filter,
@@ -1230,10 +1246,12 @@
   }
 
   .cuotas-head-filters .module-filter--tabs,
-  .cuotas-head-filters .cuotas-search-filter {
+  .cuotas-head-filters .cuotas-search-filter,
+  .cuotas-head-filters .cuotas-id-filter {
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;
+    max-width: none;
   }
 
   .cuotas-payment-grid {

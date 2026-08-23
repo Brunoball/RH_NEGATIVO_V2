@@ -94,6 +94,10 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
   test('Socios: búsqueda exacta por ID, paginación y modal de motivo de baja', async ({ page, request }) => {
     const data = socioData('ID MOTIVO TOTAL');
     const created = await createSocio(request, data);
+    const collisionData = socioData('ID COLISION TOTAL');
+    await createSocio(request, collisionData, {
+      domicilio: `CALLE ${created.id_socio} 2147483647 COINCIDENCIA PARCIAL`,
+    });
 
     await page.goto('/socios/personas');
 
@@ -116,7 +120,20 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
       await expect(sociosPagination.getByRole('button', { name: '1', exact: true })).toHaveAttribute('aria-current', 'page');
     }
 
-    const search = page.getByRole('textbox', { name: 'Socio / ID', exact: true });
+    const search = page.getByRole('textbox', { name: 'ID', exact: true });
+    await search.fill(String(created.id_socio));
+    await expect(rowByText(page, data.nombre)).toBeVisible();
+    await expect(page.locator('.socios-table .global-divTable__row')).toHaveCount(1);
+
+    // Un ID exacto debe tener prioridad sobre coincidencias parciales en otros
+    // campos (DNI, domicilio, teléfonos, etc.).
+    const exactRow = page.locator('.socios-table .global-divTable__row').first();
+    await expect(exactRow).toContainText(String(created.id_socio));
+
+    // Caso que originó el bug: un número inexistente puede estar escrito en
+    // otro dato del padrón, pero el campo ID debe devolver cero resultados.
+    await search.fill('2147483647');
+    await expect(page.locator('.socios-table .global-divTable__row')).toHaveCount(0);
     await search.fill(String(created.id_socio));
     await expect(rowByText(page, data.nombre)).toBeVisible();
 
@@ -152,7 +169,7 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
 
     await page.reload();
     await page.getByRole('tab', { name: 'Bajas', exact: true }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(created.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(created.id_socio));
     const row = rowByText(page, data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', {
@@ -187,7 +204,7 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
       await quotaPagination.getByRole('button', { name: 'Anterior', exact: true }).click();
     }
 
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     let row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${socio.data.nombre}` }).click();
@@ -226,7 +243,7 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
     expect(annualPayment).toBeTruthy();
 
     await page.getByRole('tab', { name: /Pagados/ }).click();
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     row = rowByText(page, socio.data.nombre);
     await expect(row).toContainText(`CONTADO ANUAL ${currentYear()}`);
     await row.getByRole('button', { name: `Eliminar pago de ${socio.data.nombre}` }).click();
@@ -250,7 +267,7 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
     const socio = await createSocio(request, socioData('EXPORT TODOS'));
 
     await page.goto('/socios/personas');
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(socio.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.id_socio));
     await expect(rowByText(page, socio.nombre)).toBeVisible();
     await exportFromGlobalModal(page, {
       openButton: page.getByRole('button', { name: 'Exportar', exact: true }),
@@ -279,7 +296,7 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
       await page.getByLabel('Año').selectOption(String(year));
       await page.getByLabel('Período', { exact: true }).selectOption(String(period));
       await page.getByRole('tablist', { name: 'Vista' }).getByRole('tab', { name: 'Detalle', exact: true }).click();
-      const search = page.getByRole('textbox', { name: 'Buscar', exact: true });
+      const search = page.getByRole('textbox', { name: 'Socio', exact: true });
       await search.fill(quotaSocio.data.nombre);
       await expect(page.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).first()).toBeVisible();
       await exportFromGlobalModal(page, {

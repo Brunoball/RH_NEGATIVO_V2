@@ -63,6 +63,7 @@ abstract class CuotasRegistros extends CuotasConsultas
                  FROM socios s
                  LEFT JOIN cobrador co ON co.id_cobrador = s.id_cobrador
                  WHERE s.id_socio = ?
+                   AND ' . self::filtroSociosOperativos($db, 's') . '
                  LIMIT 1
                  FOR UPDATE'
             );
@@ -175,6 +176,13 @@ abstract class CuotasRegistros extends CuotasConsultas
                     404
                 );
             }
+            if (self::socioEliminado($db, (int)$row['id_socio'])) {
+                api_error(
+                    'La inscripción pertenece a un socio eliminado y se conserva como trazabilidad contable.',
+                    'MOVIMIENTO_HISTORICO_PROTEGIDO',
+                    409
+                );
+            }
 
             $delete = $db->prepare(
                 'DELETE FROM pagos_inscripcion WHERE id_inscripcion = ?'
@@ -263,6 +271,13 @@ abstract class CuotasRegistros extends CuotasConsultas
             $statement->execute([$paymentId]);
             $row = $statement->fetch(PDO::FETCH_ASSOC);
             if (!$row) api_error('El pago ya no existe.', 'PAGO_NO_ENCONTRADO', 404);
+            if (self::socioEliminado($db, (int)$row['id_socio'])) {
+                api_error(
+                    'El pago pertenece a un socio eliminado y se conserva como trazabilidad contable.',
+                    'MOVIMIENTO_HISTORICO_PROTEGIDO',
+                    409
+                );
+            }
 
             $delete = $db->prepare('DELETE FROM pagos WHERE id_pago = ?');
             $delete->execute([$paymentId]);
@@ -404,6 +419,31 @@ abstract class CuotasRegistros extends CuotasConsultas
         ?string $reason
     ): array {
         $db = $auth['db'];
+
+        // Defensa de negocio además de la UI: un cliente directo tampoco puede
+        // registrar/condonar Contado Anual cuando el año no está íntegramente
+        // disponible. contextosPagoDatos() es la misma fuente usada por el modal.
+        foreach ($targets as $target) {
+            if (!self::esAnual((int)$target['id_periodo'])) continue;
+
+            $annualContext = self::contextoPagoDatos(
+                $db,
+                (int)$target['id_socio'],
+                (int)$target['anio'],
+                7,
+                $date
+            );
+            $annualPrincipal = $annualContext['principal'] ?? [];
+            if (!($annualPrincipal['puede_pagar'] ?? false)) {
+                api_error(
+                    (string)($annualPrincipal['motivo_no_disponible']
+                        ?? 'Contado Anual no está disponible para este socio y año.'),
+                    'MODALIDAD_NO_DISPONIBLE',
+                    409
+                );
+            }
+        }
+
         $partnerIds = array_values(array_unique(array_map('intval', array_column($targets, 'id_socio'))));
         sort($partnerIds);
 
@@ -430,6 +470,7 @@ abstract class CuotasRegistros extends CuotasConsultas
                  INNER JOIN categoria c ON c.id_categoria = s.id_categoria
                  LEFT JOIN cobrador co ON co.id_cobrador = s.id_cobrador
                  WHERE s.id_socio IN (' . implode(',', array_fill(0, count($partnerIds), '?')) . ')
+                   AND ' . self::filtroSociosOperativos($db, 's') . '
                  ORDER BY s.id_socio ASC FOR UPDATE'
             );
             $statement->execute($partnerIds);

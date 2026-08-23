@@ -125,7 +125,7 @@ final class Socios
 
         api_success(
             $result,
-            'Socio y registros relacionados eliminados definitivamente.'
+            'Socio eliminado del padrón. Pagos, inscripciones e historial preservados para trazabilidad.'
         );
     }
 }

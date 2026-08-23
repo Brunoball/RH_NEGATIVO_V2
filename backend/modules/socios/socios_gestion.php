@@ -14,6 +14,7 @@ trait SociosGestion
     abstract private static function detalle(PDO $db, int $id): ?array;
     abstract private static function impactoEliminacion(PDO $db, int $id): array;
     abstract private static function proximoIdSocio(PDO $db): int;
+    abstract private static function archivoEliminadosDisponible(PDO $db): bool;
 
     private static function guardarDatos(array $auth, array $body): array
     {
@@ -84,7 +85,9 @@ trait SociosGestion
                 $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
                 $lock->execute([$id]);
                 $rawBefore = $lock->fetch();
-                if (!$rawBefore) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+                if (!$rawBefore || self::esSocioEliminado($db, $id)) {
+                    api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+                }
 
                 $before = self::detalle($db, $id);
                 $statement = $db->prepare(
@@ -145,7 +148,9 @@ trait SociosGestion
             $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
             $lock->execute([$id]);
             $raw = $lock->fetch();
-            if (!$raw) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!$raw || self::esSocioEliminado($db, $id)) {
+                api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            }
             if (!(bool)$raw['vigente']) api_error('El socio ya está dado de baja.', 'SOCIO_YA_BAJA', 409);
 
             if ($raw['fecha_ingreso'] && $date < (string)$raw['fecha_ingreso']) {
@@ -269,34 +274,116 @@ trait SociosGestion
             $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
             $lock->execute([$id]);
             $raw = $lock->fetch();
-            if (!$raw) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!$raw || self::esSocioEliminado($db, $id)) {
+                api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            }
             if ((bool)$raw['vigente']) api_error('El socio ya está vigente.', 'SOCIO_YA_VIGENTE', 409);
 
             self::validarFechaTransicionSocio($db, $id, $date, 'reactivación');
 
             $before = self::detalle($db, $id);
+
+            // Igual que en la baja, algunas bases heredadas poseen un trigger
+            // sobre socios.vigente que registra automáticamente la transición.
+            // Guardamos el último historial previo al UPDATE para poder detectar
+            // exclusivamente la fila creada por ESTE cambio de vigencia.
+            $historyMarkerStatement = $db->prepare(
+                'SELECT COALESCE(MAX(id_historial), 0)
+                 FROM socios_historial_estados
+                 WHERE id_socio = ?'
+            );
+            $historyMarkerStatement->execute([$id]);
+            $historyMarker = (int)$historyMarkerStatement->fetchColumn();
+
             $db->prepare('UPDATE socios SET vigente = 1 WHERE id_socio = ?')->execute([$id]);
+
+            self::registrarHistorialReactivacionTrasCambioVigencia(
+                $db,
+                $id,
+                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
+                $date,
+                $reason ?: 'REACTIVACIÓN DE SOCIO',
+                (int)$auth['id_usuario'],
+                $historyMarker
+            );
+
             $after = self::detalle($db, $id);
             if (!$after) throw new RuntimeException('No se pudo recuperar el socio después de la reactivación.');
 
-            self::insertarHistorialEstado(
-                $db,
-                $id,
-                'REACTIVACION',
-                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
-                $raw['id_estado'] === null ? null : (int)$raw['id_estado'],
-                false,
-                true,
-                $date . ' 00:00:00',
-                $reason ?: 'REACTIVACIÓN DE SOCIO',
-                null,
-                $auth['id_usuario']
-            );
             self::auditarSocio($db, $auth, 'socios', $id, 'UPDATE', $before, $after);
             return $after;
         });
 
         return ['item' => $saved];
+    }
+
+    /**
+     * Registra la REACTIVACION sin duplicar el evento que pueda crear un trigger
+     * heredado al cambiar socios.vigente. Sólo se inspeccionan filas posteriores
+     * a $historyMarker, por lo que dos reactivaciones reales del mismo socio en
+     * una misma fecha siguen conservándose como eventos independientes.
+     */
+    private static function registrarHistorialReactivacionTrasCambioVigencia(
+        PDO $db,
+        int $id,
+        ?int $stateId,
+        string $date,
+        string $reason,
+        int $userId,
+        int $historyMarker
+    ): void {
+        $generated = $db->prepare(
+            "SELECT id_historial
+             FROM socios_historial_estados
+             WHERE id_socio = ?
+               AND id_historial > ?
+               AND tipo_evento = 'REACTIVACION'
+               AND vigente_anterior = 0
+               AND vigente_nuevo = 1
+             ORDER BY id_historial DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $generated->execute([$id, $historyMarker]);
+        $generatedId = (int)($generated->fetchColumn() ?: 0);
+
+        if ($generatedId > 0) {
+            $update = $db->prepare(
+                "UPDATE socios_historial_estados
+                 SET id_estado_anterior = ?,
+                     id_estado_nuevo = ?,
+                     vigente_anterior = 0,
+                     vigente_nuevo = 1,
+                     fecha_evento = ?,
+                     motivo = ?,
+                     id_usuario = ?,
+                     origen = 'SISTEMA'
+                 WHERE id_historial = ?"
+            );
+            $update->execute([
+                $stateId,
+                $stateId,
+                $date . ' 00:00:00',
+                $reason,
+                $userId,
+                $generatedId,
+            ]);
+            return;
+        }
+
+        self::insertarHistorialEstado(
+            $db,
+            $id,
+            'REACTIVACION',
+            $stateId,
+            $stateId,
+            false,
+            true,
+            $date . ' 00:00:00',
+            $reason,
+            null,
+            $userId
+        );
     }
 
     /**
@@ -376,7 +463,9 @@ trait SociosGestion
             $lock = $db->prepare('SELECT id_socio, nombre, fecha_nacimiento, vigente FROM socios WHERE id_socio = ? FOR UPDATE');
             $lock->execute([$id]);
             $socio = $lock->fetch();
-            if (!$socio) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!$socio || self::esSocioEliminado($db, $id)) {
+                api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            }
 
             $statement = $db->prepare(
                 'INSERT INTO socios_contactos
@@ -418,7 +507,9 @@ trait SociosGestion
             $lock = $db->prepare('SELECT id_socio, nombre, fecha_nacimiento, vigente FROM socios WHERE id_socio = ? FOR UPDATE');
             $lock->execute([$id]);
             $socio = $lock->fetch();
-            if (!$socio) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            if (!$socio || self::esSocioEliminado($db, $id)) {
+                api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            }
             if (!(bool)$socio['vigente']) api_error('El socio ya no está vigente.', 'SOCIO_NO_VIGENTE', 409);
             if (!$socio['fecha_nacimiento']) api_error('El socio no tiene fecha de nacimiento registrada.', 'SIN_FECHA_NACIMIENTO', 409);
 
@@ -436,80 +527,100 @@ trait SociosGestion
     {
         $db = $auth['db'];
 
-        $result = transaction($db, function () use ($db, $id): array {
+        // Se crea fuera de la transacción porque CREATE TABLE provoca COMMIT
+        // implícito en MySQL. La tabla es un marcador + snapshot: el socio deja
+        // de existir para los módulos operativos, mientras pagos e historial
+        // permanecen referenciados y Contabilidad conserva trazabilidad completa.
+        self::asegurarArchivoSociosEliminados($db);
+
+        $result = transaction($db, function () use ($db, $auth, $id): array {
             $lock = $db->prepare('SELECT * FROM socios WHERE id_socio = ? FOR UPDATE');
             $lock->execute([$id]);
-            $socio = $lock->fetch();
-            if (!$socio) api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            $socio = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!$socio || self::esSocioEliminado($db, $id)) {
+                api_error('El socio no existe.', 'SOCIO_NO_ENCONTRADO', 404);
+            }
 
-            // El impacto es meramente informativo. Si una tabla opcional no
-            // existe en una instalación local, nunca debe impedir el borrado.
             $impact = self::impactoEliminacion($db, $id);
+            $deletedAt = date('Y-m-d H:i:s');
 
-            // Una eliminación definitiva sólo es válida para altas cargadas por
-            // error que todavía no generaron historia económica ni familiar.
-            // Los movimientos contables deben sobrevivir a la baja del socio.
-            $financial = ((int)($impact['pagos'] ?? 0)) + ((int)($impact['pagos_inscripcion'] ?? 0));
-            $familyLinks = (int)($impact['vinculos_familiares'] ?? 0);
-            if ($financial > 0 || $familyLinks > 0) {
-                api_error(
-                    'No se puede eliminar definitivamente un socio con pagos, inscripciones o vínculos familiares históricos. Dale de baja para conservar intacta la información contable.',
-                    'SOCIO_CON_HISTORIAL_NO_ELIMINABLE',
-                    409,
-                    [
-                        'pagos' => (int)($impact['pagos'] ?? 0),
-                        'pagos_inscripcion' => (int)($impact['pagos_inscripcion'] ?? 0),
-                        'vinculos_familiares' => $familyLinks,
-                    ]
-                );
+            $snapshotJson = json_encode(
+                $socio,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            $impactJson = json_encode(
+                $impact,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            if ($snapshotJson === false || $impactJson === false) {
+                throw new RuntimeException('No se pudo serializar la trazabilidad del socio.');
             }
 
-            // Descubre relaciones a partir del esquema REAL de la conexión y
-            // suma un fallback de las tablas conocidas de RH Negativo V2. De
-            // esta manera una DB local levemente desactualizada no genera 500
-            // por intentar borrar una tabla/columna que todavía no existe.
-            $relations = self::descubrirRelacionesSocio($db);
-            $eliminados = self::eliminarRelacionesSocio($db, $id, $relations);
+            $archive = $db->prepare(
+                'INSERT INTO socios_eliminados
+                 (id_socio, nombre, dni, fecha_eliminacion, id_usuario, datos_socio, impacto)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+            );
+            $archive->execute([
+                $id,
+                (string)$socio['nombre'],
+                $socio['dni'] === null ? null : (string)$socio['dni'],
+                $deletedAt,
+                (int)$auth['id_usuario'],
+                $snapshotJson,
+                $impactJson,
+            ]);
 
-            try {
-                $delete = $db->prepare('DELETE FROM socios WHERE id_socio = ?');
-                $delete->execute([$id]);
-            } catch (PDOException $error) {
-                // Si MySQL todavía informa una FK, intentamos descubrir de
-                // nuevo únicamente las FK reales y limpiarlas una vez más.
-                // Esto cubre esquemas que agregaron una tabla nueva y evita
-                // desactivar FOREIGN_KEY_CHECKS, que podría dejar huérfanos.
-                $driverCode = (int)($error->errorInfo[1] ?? 0);
-                if ($driverCode !== 1451 && $driverCode !== 1452) throw $error;
+            // El socio deja de integrar familias desde la eliminación, pero el
+            // vínculo histórico se conserva para descuentos/informes pasados.
+            $familyClose = $db->prepare(
+                'UPDATE familias_socios
+                 SET activo = 0,
+                     hasta = CASE
+                         WHEN hasta IS NOT NULL AND hasta < ? THEN hasta
+                         WHEN desde IS NOT NULL AND desde > ? THEN desde
+                         ELSE ?
+                     END,
+                     actualizado_en = CURRENT_TIMESTAMP
+                 WHERE id_socio = ? AND activo = 1'
+            );
+            $today = substr($deletedAt, 0, 10);
+            $familyClose->execute([$today, $today, $today, $id]);
+            $closedFamilyLinks = $familyClose->rowCount();
 
-                $extra = self::descubrirForeignKeysSocio($db);
-                $extraDeleted = self::eliminarRelacionesSocio($db, $id, $extra);
-                foreach ($extraDeleted as $table => $count) {
-                    $eliminados[$table] = ($eliminados[$table] ?? 0) + $count;
-                }
-
-                $delete = $db->prepare('DELETE FROM socios WHERE id_socio = ?');
-                $delete->execute([$id]);
-            }
-
-            if ($delete->rowCount() !== 1) {
-                throw new RuntimeException('El registro principal del socio no fue eliminado.');
-            }
+            // Liberamos el DNI para que una carga equivocada pueda eliminarse y
+            // luego registrarse correctamente. El DNI original queda inmutable
+            // en socios_eliminados y Contabilidad lo recupera desde allí.
+            $releaseIdentity = $db->prepare(
+                'UPDATE socios
+                 SET dni = NULL
+                 WHERE id_socio = ?'
+            );
+            $releaseIdentity->execute([$id]);
 
             return [
                 'id_socio' => $id,
                 'impacto' => $impact,
-                'eliminados' => $eliminados,
+                'preservados' => [
+                    'pagos' => (int)($impact['pagos'] ?? 0),
+                    'pagos_inscripcion' => (int)($impact['pagos_inscripcion'] ?? 0),
+                    'contactos' => (int)($impact['contactos'] ?? 0),
+                    'historial_estados' => (int)($impact['historial_estados'] ?? 0),
+                    'vinculos_familiares' => (int)($impact['vinculos_familiares'] ?? 0),
+                ],
+                'vinculos_familiares_cerrados' => $closedFamilyLinks,
+                'fecha_eliminacion' => $deletedAt,
                 '_auditoria' => [
                     'socio' => $socio,
                     'impacto' => $impact,
-                    'eliminados' => $eliminados,
+                    'preservados' => true,
+                    'fecha_eliminacion' => $deletedAt,
                 ],
             ];
         });
 
-        // La auditoría se escribe después del COMMIT. Si por un problema de
-        // auditoría falla el INSERT, el socio ya eliminado no reaparece.
+        // La auditoría mantiene semántica DELETE aunque internamente usemos un
+        // tombstone histórico para no destruir movimientos económicos.
         $auditData = $result['_auditoria'] ?? null;
         unset($result['_auditoria']);
         if ($auditData !== null) {
@@ -522,6 +633,34 @@ trait SociosGestion
         }
 
         return $result;
+    }
+
+    private static function asegurarArchivoSociosEliminados(PDO $db): void
+    {
+        $db->exec(
+            "CREATE TABLE IF NOT EXISTS socios_eliminados (
+                id_socio INT NOT NULL,
+                nombre VARCHAR(100) NOT NULL,
+                dni VARCHAR(15) NULL,
+                fecha_eliminacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                id_usuario INT NULL,
+                datos_socio LONGTEXT NOT NULL,
+                impacto LONGTEXT NOT NULL,
+                PRIMARY KEY (id_socio),
+                KEY idx_socios_eliminados_fecha (fecha_eliminacion),
+                KEY idx_socios_eliminados_dni (dni)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    private static function esSocioEliminado(PDO $db, int $id): bool
+    {
+        if (!self::archivoEliminadosDisponible($db)) return false;
+        $statement = $db->prepare(
+            'SELECT 1 FROM socios_eliminados WHERE id_socio = ? LIMIT 1'
+        );
+        $statement->execute([$id]);
+        return (bool)$statement->fetchColumn();
     }
 
     /**
@@ -721,8 +860,8 @@ trait SociosGestion
         }
 
         $dni = preg_replace('/\D+/', '', (string)($body['dni'] ?? '')) ?? '';
-        if ($dni !== '' && !preg_match('/^[0-9]{6,15}$/', $dni)) {
-            api_error('El DNI debe contener entre 6 y 15 dígitos.', 'VALIDATION_ERROR', 422, ['campo' => 'dni']);
+        if ($dni !== '' && !preg_match('/^[0-9]{8}$/D', $dni)) {
+            api_error('El DNI debe tener exactamente 8 números.', 'VALIDATION_ERROR', 422, ['campo' => 'dni']);
         }
         if ($dni !== '') {
             $sql = 'SELECT id_socio FROM socios WHERE dni = ?' . ($editingId !== null ? ' AND id_socio <> ?' : '') . ' LIMIT 1';

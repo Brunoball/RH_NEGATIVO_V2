@@ -79,8 +79,9 @@ trait FamiliasGestion
                 // puedan asignar al mismo socio a dos familias diferentes.
                 $people = $db->prepare(
                     "SELECT id_socio, nombre, dni, vigente
-                     FROM socios
-                     WHERE id_socio IN ({$placeholders})
+                     FROM socios s
+                     WHERE s.id_socio IN ({$placeholders})
+                       AND " . self::familiasFiltroSociosOperativos($db, 's') . "
                      FOR UPDATE"
                 );
                 $people->execute($memberIds);

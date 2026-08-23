@@ -34,9 +34,10 @@ trait SociosConsultas
             $terms = preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
             foreach (array_slice($terms, 0, 8) as $index => $term) {
                 $key = "buscar_{$index}";
-                $where[] = "CONCAT_WS(' ', q.nombre, q.dni, q.domicilio, q.numero, q.telefono_movil,
-                            q.telefono_fijo, q.domicilio_cobro, q.categoria, q.cobrador,
-                            q.estado, q.grupo_sanguineo) LIKE :{$key}";
+                // El buscador "Socio" se limita a identidad. El ID tiene su
+                // filtro exacto independiente (`id_socio`) para que un número no
+                // coincida accidentalmente con domicilio, teléfono u otros datos.
+                $where[] = "CONCAT_WS(' ', q.nombre, q.dni) LIKE :{$key}";
                 $params[$key] = '%' . $term . '%';
             }
         }
@@ -101,7 +102,7 @@ trait SociosConsultas
         $page = (int)$page;
 
         $sqlWhere = $where === [] ? '' : 'WHERE ' . implode(' AND ', $where);
-        $dataset = self::baseDatasetSql();
+        $dataset = self::baseDatasetSql($db);
 
         $count = $db->prepare("SELECT COUNT(*) FROM ({$dataset}) q {$sqlWhere}");
         $count->execute($params);
@@ -139,30 +140,99 @@ trait SociosConsultas
     }
 
     /**
-     * Devuelve el próximo número de socio respetando el AUTO_INCREMENT real.
-     * El fallback MAX+1 mantiene compatibilidad con hostings que restrinjan
-     * information_schema.
+     * Devuelve el próximo número REAL del padrón.
+     *
+     * El id_socio es también el número de socio, por lo que un número que ya
+     * existió no debe reutilizarse aunque el registro se elimine físicamente.
+     * MAX(socios.id_socio) por sí solo no alcanza para ese caso. La auditoría
+     * conserva el mayor ID real utilizado y se excluyen explícitamente las
+     * altas PW E2E para que Playwright no consuma numeración del padrón.
+     *
+     * Si una instalación antigua no dispone de auditoría utilizable, usamos
+     * como fallback el AUTO_INCREMENT efectivo de la tabla y MAX+1.
      */
     private static function proximoIdSocio(PDO $db): int
     {
-        $maxNext = (int)$db->query('SELECT COALESCE(MAX(id_socio), 0) + 1 FROM socios')->fetchColumn();
-        $autoIncrement = 0;
+        $maxCurrent = (int)$db->query(
+            'SELECT COALESCE(MAX(id_socio), 0) FROM socios'
+        )->fetchColumn();
 
-        try {
-            $statement = $db->prepare(
-                'SELECT AUTO_INCREMENT
-                   FROM information_schema.TABLES
-                  WHERE TABLE_SCHEMA = DATABASE()
-                    AND TABLE_NAME = ?
-                  LIMIT 1'
-            );
-            $statement->execute(['socios']);
-            $autoIncrement = (int)($statement->fetchColumn() ?: 0);
-        } catch (Throwable $schemaError) {
-            error_log('[socios_proximo_id] ' . $schemaError->getMessage());
+        $maxHistoricalReal = self::maxIdSocioHistoricoReal($db);
+        if ($maxHistoricalReal !== null) {
+            return max(1, $maxCurrent, $maxHistoricalReal) + 1;
         }
 
-        return max(1, $maxNext, $autoIncrement);
+        // Compatibilidad con instalaciones sin tabla/campos de auditoría.
+        // SHOW CREATE TABLE evita depender de estadísticas cacheadas de
+        // information_schema y conserva números eliminados porque InnoDB no
+        // retrocede el AUTO_INCREMENT al hacer DELETE.
+        $autoIncrement = self::autoIncrementSociosReal($db);
+        return max(1, $maxCurrent + 1, $autoIncrement ?? 1);
+    }
+
+    /**
+     * Mayor número de socio que haya existido realmente según auditoría.
+     * Los registros de Playwright se reconocen por los marcadores exclusivos
+     * que usa la suite tanto en la variante actual como en la legacy.
+     */
+    private static function maxIdSocioHistoricoReal(PDO $db): ?int
+    {
+        try {
+            $statement = $db->query(
+                "SELECT COALESCE(MAX(id_registro), 0)
+"
+                . "FROM auditoria
+"
+                . "WHERE tabla = 'socios'
+"
+                . "  AND (datos_anteriores IS NULL OR (
+"
+                . "       UPPER(CAST(datos_anteriores AS CHAR)) NOT LIKE '%PW E2E SOCIO%'
+"
+                . "   AND UPPER(CAST(datos_anteriores AS CHAR)) NOT LIKE '%PW EEE SOCIO%'
+"
+                . "  ))
+"
+                . "  AND (datos_nuevos IS NULL OR (
+"
+                . "       UPPER(CAST(datos_nuevos AS CHAR)) NOT LIKE '%PW E2E SOCIO%'
+"
+                . "   AND UPPER(CAST(datos_nuevos AS CHAR)) NOT LIKE '%PW EEE SOCIO%'
+"
+                . "  ))"
+            );
+            return max(0, (int)$statement->fetchColumn());
+        } catch (Throwable $auditError) {
+            error_log('[socios_proximo_id][auditoria] ' . $auditError->getMessage());
+            return null;
+        }
+    }
+
+    private static function autoIncrementSociosReal(PDO $db): ?int
+    {
+        try {
+            $statement = $db->query('SHOW CREATE TABLE `socios`');
+            $row = $statement->fetch(PDO::FETCH_NUM);
+            $createSql = (string)($row[1] ?? '');
+            if ($createSql !== '') {
+                if (preg_match('/\bAUTO_INCREMENT=(\d+)\b/i', $createSql, $match)) {
+                    return (int)$match[1];
+                }
+                if (stripos($createSql, 'AUTO_INCREMENT') !== false) return 1;
+            }
+        } catch (Throwable $showCreateError) {
+            error_log('[socios_proximo_id][show_create] ' . $showCreateError->getMessage());
+        }
+
+        try {
+            $statement = $db->query("SHOW TABLE STATUS LIKE 'socios'");
+            $row = $statement->fetch(PDO::FETCH_ASSOC);
+            $value = $row['Auto_increment'] ?? null;
+            return $value === null ? null : (int)$value;
+        } catch (Throwable $statusError) {
+            error_log('[socios_proximo_id][table_status] ' . $statusError->getMessage());
+            return null;
+        }
     }
 
     private static function appendPositiveIdFilter(
@@ -314,6 +384,32 @@ trait SociosConsultas
         return $impact;
     }
 
+    /**
+     * La tabla se crea al ejecutar la primera eliminación definitiva.
+     * Mientras no exista, el sistema mantiene compatibilidad con instalaciones
+     * anteriores sin exigir una migración previa para consultar Socios.
+     */
+    private static function archivoEliminadosDisponible(PDO $db): bool
+    {
+        try {
+            $db->query('SELECT 1 FROM socios_eliminados LIMIT 0');
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private static function filtroSociosNoEliminados(PDO $db, string $alias = 's'): string
+    {
+        if (!self::archivoEliminadosDisponible($db)) return '1 = 1';
+        if (!preg_match('/^[A-Za-z0-9_]+$/D', $alias)) $alias = 's';
+        return "NOT EXISTS (
+                    SELECT 1
+                    FROM socios_eliminados se_arch
+                    WHERE se_arch.id_socio = {$alias}.id_socio
+                )";
+    }
+
     private static function catalogos(PDO $db): array
     {
         $categories = $db->query(
@@ -384,13 +480,15 @@ trait SociosConsultas
 
     private static function resumen(PDO $db): array
     {
+        $notDeleted = self::filtroSociosNoEliminados($db, 's');
         $row = $db->query(
-            'SELECT COUNT(*) AS total,
-                    COALESCE(SUM(vigente = 1), 0) AS vigentes,
-                    COALESCE(SUM(vigente = 0), 0) AS bajas,
-                    COALESCE(SUM(vigente = 1 AND fecha_ingreso >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS ingresos_recientes,
-                    COALESCE(SUM(vigente = 1 AND id_grupo_sanguineo IS NULL), 0) AS sin_grupo_sanguineo
-             FROM socios'
+            "SELECT COUNT(*) AS total,
+                    COALESCE(SUM(s.vigente = 1), 0) AS vigentes,
+                    COALESCE(SUM(s.vigente = 0), 0) AS bajas,
+                    COALESCE(SUM(s.vigente = 1 AND s.fecha_ingreso >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS ingresos_recientes,
+                    COALESCE(SUM(s.vigente = 1 AND s.id_grupo_sanguineo IS NULL), 0) AS sin_grupo_sanguineo
+             FROM socios s
+             WHERE {$notDeleted}"
         )->fetch() ?: [];
 
         return [
@@ -411,6 +509,7 @@ trait SociosConsultas
              FROM socios s
              LEFT JOIN grupo_sanguineo gs ON gs.id_grupo_sanguineo = s.id_grupo_sanguineo
              WHERE s.vigente = 1
+               AND " . self::filtroSociosNoEliminados($db, 's') . "
                AND s.fecha_nacimiento IS NOT NULL
                AND TIMESTAMPDIFF(YEAR, s.fecha_nacimiento, CURDATE()) BETWEEN 18 AND 23
                AND NOT EXISTS (
@@ -435,9 +534,10 @@ trait SociosConsultas
         return $rows;
     }
 
-    private static function baseDatasetSql(): string
+    private static function baseDatasetSql(PDO $db): string
     {
         $debtExpression = self::debtMonthsExpression();
+        $notDeleted = self::filtroSociosNoEliminados($db, 's');
         return "SELECT
                     s.id_socio, s.nombre, s.id_cobrador, s.id_grupo_sanguineo,
                     s.id_categoria, s.domicilio, s.numero, s.telefono_movil,
@@ -484,7 +584,8 @@ trait SociosConsultas
                                COALESCE(h2.fecha_evento, h2.creado_en) DESC,
                                h2.id_historial DESC
                       LIMIT 1
-                  )";
+                  )
+                WHERE {$notDeleted}";
     }
 
     private static function debtMonthsExpression(): string
@@ -526,7 +627,7 @@ trait SociosConsultas
 
     private static function detalle(PDO $db, int $id): ?array
     {
-        $dataset = self::baseDatasetSql();
+        $dataset = self::baseDatasetSql($db);
         $statement = $db->prepare("SELECT q.* FROM ({$dataset}) q WHERE q.id_socio = ? LIMIT 1");
         $statement->execute([$id]);
         $row = $statement->fetch();

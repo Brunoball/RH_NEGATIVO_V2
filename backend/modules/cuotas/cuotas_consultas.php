@@ -49,7 +49,7 @@ abstract class CuotasConsultas extends CuotasSoporte
         );
         if ($includeCatalogs === null) $includeCatalogs = true;
 
-        $where = ['1 = 1'];
+        $where = [self::filtroSociosOperativos($db, 's')];
         $params = [];
         if ($state === 'DEUDORES') {
             $where[] = 's.vigente = 1';
@@ -99,12 +99,11 @@ abstract class CuotasConsultas extends CuotasSoporte
                 ? mb_strtoupper($search, 'UTF-8')
                 : strtoupper($search);
             $rows = array_values(array_filter($rows, static function (array $row) use ($needle): bool {
+                // El filtro "Socio" busca identidad (nombre/DNI). El ID se
+                // aplica por `id_socio` con igualdad exacta antes de llegar acá.
                 $haystack = implode(' ', [
                     $row['nombre'] ?? '',
                     $row['dni'] ?? '',
-                    $row['categoria'] ?? '',
-                    $row['cobrador'] ?? '',
-                    $row['familia'] ?? '',
                 ]);
                 $haystack = function_exists('mb_strtoupper')
                     ? mb_strtoupper($haystack, 'UTF-8')
@@ -246,16 +245,18 @@ abstract class CuotasConsultas extends CuotasSoporte
         // los términos admitidos sean exactamente los mismos que en el listado.
         if ($search === '') {
             if ($partnerFilterId !== null) {
+                $operational = self::filtroSociosOperativos($db, 's');
                 $statement = $db->prepare(
-                    'SELECT id_socio, nombre, dni, id_categoria, id_cobrador, id_estado, fecha_ingreso, vigente '
-                    . 'FROM socios WHERE id_socio = ? ORDER BY id_socio ASC'
+                    'SELECT s.id_socio, s.nombre, s.dni, s.id_categoria, s.id_cobrador, s.id_estado, s.fecha_ingreso, s.vigente '
+                    . "FROM socios s WHERE s.id_socio = ? AND {$operational} ORDER BY s.id_socio ASC"
                 );
                 $statement->execute([$partnerFilterId]);
                 $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
             } else {
+                $operational = self::filtroSociosOperativos($db, 's');
                 $rows = $db->query(
-                    'SELECT id_socio, nombre, dni, id_categoria, id_cobrador, id_estado, fecha_ingreso, vigente '
-                    . 'FROM socios ORDER BY id_socio ASC'
+                    'SELECT s.id_socio, s.nombre, s.dni, s.id_categoria, s.id_cobrador, s.id_estado, s.fecha_ingreso, s.vigente '
+                    . "FROM socios s WHERE {$operational} ORDER BY s.id_socio ASC"
                 )->fetchAll(PDO::FETCH_ASSOC);
             }
         } else {
@@ -310,12 +311,11 @@ abstract class CuotasConsultas extends CuotasSoporte
                 ? mb_strtoupper($search, 'UTF-8')
                 : strtoupper($search);
             $rows = array_values(array_filter($rows, static function (array $row) use ($needle): bool {
+                // El filtro "Socio" busca identidad (nombre/DNI). El ID se
+                // aplica por `id_socio` con igualdad exacta antes de llegar acá.
                 $haystack = implode(' ', [
                     $row['nombre'] ?? '',
                     $row['dni'] ?? '',
-                    $row['categoria'] ?? '',
-                    $row['cobrador'] ?? '',
-                    $row['familia'] ?? '',
                 ]);
                 $haystack = function_exists('mb_strtoupper')
                     ? mb_strtoupper($haystack, 'UTF-8')
@@ -461,11 +461,17 @@ abstract class CuotasConsultas extends CuotasSoporte
         // actual se conserva aunque todavía no tenga pagos para poder iniciar
         // la cobranza, y el backend admite como máximo el año siguiente.
         $currentYear = (int)date('Y');
+        $paymentOperational = self::archivoSociosEliminadosDisponible($db)
+            ? ' AND NOT EXISTS (
+                    SELECT 1 FROM socios_eliminados se_arch
+                    WHERE se_arch.id_socio = pagos.id_socio
+                )'
+            : '';
         $yearRows = $db->query(
-            'SELECT DISTINCT anio_aplicado
+            "SELECT DISTINCT anio_aplicado
              FROM pagos
-             WHERE anio_aplicado BETWEEN 2000 AND YEAR(CURDATE()) + 1
-             ORDER BY anio_aplicado DESC'
+             WHERE anio_aplicado BETWEEN 2000 AND YEAR(CURDATE()) + 1{$paymentOperational}
+             ORDER BY anio_aplicado DESC"
         )->fetchAll(PDO::FETCH_ASSOC);
         $years = array_map('intval', array_column($yearRows, 'anio_aplicado'));
         if (!in_array($currentYear, $years, true)) $years[] = $currentYear;
@@ -487,11 +493,12 @@ abstract class CuotasConsultas extends CuotasSoporte
     {
         self::validarEsquema($db);
 
+        $operational = self::filtroSociosOperativos($db, 's');
         $partner = $db->prepare(
-            'SELECT id_socio, nombre, dni, vigente
-             FROM socios
-             WHERE id_socio = ?
-             LIMIT 1'
+            "SELECT s.id_socio, s.nombre, s.dni, s.vigente
+             FROM socios s
+             WHERE s.id_socio = ? AND {$operational}
+             LIMIT 1"
         );
         $partner->execute([$partnerId]);
         $partnerRow = $partner->fetch(PDO::FETCH_ASSOC);
@@ -645,6 +652,31 @@ abstract class CuotasConsultas extends CuotasSoporte
                 ] : null,
             ];
         }
+
+        // Contado Anual representa el año completo. Aunque el período 7 no
+        // tenga pagos propios, no debe ofrecerse si cualquiera de los seis
+        // períodos bimestrales no puede pagarse (por alta tardía, categoría,
+        // monto, pago/condonación previa u otra regla de disponibilidad).
+        $annual = &$result['7']['principal'];
+        if (isset($annual) && !($annual['pagado'] ?? false) && empty($annual['motivo_no_disponible'])) {
+            $fullYearAvailable = true;
+            for ($periodId = 1; $periodId <= 6; $periodId++) {
+                $periodPrincipal = $result[(string)$periodId]['principal'] ?? null;
+                if (!is_array($periodPrincipal) || !($periodPrincipal['puede_pagar'] ?? false)) {
+                    $fullYearAvailable = false;
+                    break;
+                }
+            }
+
+            if (!$fullYearAvailable) {
+                $annual['puede_pagar'] = false;
+                $annual['disponible'] = false;
+                $annual['motivo_no_disponible'] =
+                    'Contado Anual sólo está disponible cuando los seis períodos del año están disponibles para pagar.';
+            }
+        }
+        unset($annual);
+
         return $result;
     }
 
@@ -662,6 +694,7 @@ abstract class CuotasConsultas extends CuotasSoporte
 
     private static function consultarSocios(PDO $db, string $where, array $params, string $familyDate): array
     {
+        $operational = self::filtroSociosOperativos($db, 's');
         $sql =
             "SELECT s.id_socio, s.nombre, s.dni, s.id_categoria, s.id_cobrador, s.id_estado,
                     s.domicilio, s.numero, s.domicilio_cobro,
@@ -693,7 +726,8 @@ abstract class CuotasConsultas extends CuotasSoporte
                   AND (fs3.hasta IS NULL OR fs3.hasta >= ?)
                 GROUP BY fs3.id_familia
              ) fc ON fc.id_familia = f.id_familia
-             WHERE {$where}
+             WHERE ({$where})
+               AND {$operational}
              ORDER BY s.nombre ASC, s.id_socio ASC";
         $statement = $db->prepare($sql);
         $statement->execute(array_merge([$familyDate, $familyDate, $familyDate, $familyDate], $params));

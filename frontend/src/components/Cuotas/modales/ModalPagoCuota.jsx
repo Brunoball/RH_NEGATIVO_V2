@@ -134,6 +134,7 @@ export default function ModalPagoCuota({
   updatePaymentYear,
   paymentPeriodAmount,
   availableMonthIds,
+  annualPaymentAvailable,
   allAvailableMonthsSelected,
   toggleAllPaymentMonths,
   monthOptions,
@@ -714,11 +715,17 @@ export default function ModalPagoCuota({
                   const selected = selectedMonthIds.includes(monthId);
                   const paid = Boolean(period?.paid);
                   const unavailable = Boolean(period?.unavailable);
+                  const annualBlockedByIncompleteYear =
+                    monthId === "7" && !annualPaymentAvailable;
                   const blockedBySelection =
                     (annualSelected && monthId !== "7") ||
                     (bimonthlySelected && monthId === "7");
                   const disabled =
-                    contextLoading || paid || unavailable || blockedBySelection;
+                    contextLoading ||
+                    paid ||
+                    unavailable ||
+                    annualBlockedByIncompleteYear ||
+                    blockedBySelection;
                   const unavailableReason =
                     period?.context?.principal?.motivo_no_disponible || "";
                   const status = String(
@@ -734,7 +741,7 @@ export default function ModalPagoCuota({
                         ? "Cubierto por anual"
                         : paid
                           ? "Pagado"
-                          : unavailable
+                          : unavailable || annualBlockedByIncompleteYear
                             ? "No disponible"
                             : blockedBySelection
                               ? "Modalidad exclusiva"
@@ -752,9 +759,11 @@ export default function ModalPagoCuota({
                       aria-pressed={selected}
                       title={
                         unavailableReason ||
-                        (blockedBySelection
-                          ? "Desmarcá la modalidad seleccionada para cambiar."
-                          : undefined)
+                        (annualBlockedByIncompleteYear
+                          ? "Contado Anual requiere que los seis períodos del año estén disponibles para pagar."
+                          : blockedBySelection
+                            ? "Desmarcá la modalidad seleccionada para cambiar."
+                            : undefined)
                       }
                       aria-label={`${item.nombre} ${paymentForm.anio}: ${statusLabel.toLowerCase()}`}
                     >

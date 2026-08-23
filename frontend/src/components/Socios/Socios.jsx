@@ -953,7 +953,9 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange, mode }) 
             <select value={form.id_categoria} onChange={(event) => set("id_categoria", event.target.value)} required>
               <option value="">NO SELECCIONADO</option>
               {(catalogs.categorias || []).map((item) => (
-                <option key={item.id_categoria} value={item.id_categoria}>{item.nombre}{item.activo ? "" : " (INACTIVA)"}</option>
+                <option key={item.id_categoria} value={item.id_categoria}>
+                  {`${item.nombre} — ${formatMoney(item.monto_mensual)} / ${formatMoney(item.monto_anual)}${item.activo ? "" : " (INACTIVA)"}`}
+                </option>
               ))}
             </select>
           </FloatingField>
@@ -1113,8 +1115,10 @@ function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
 export default function Socios() {
   const writable = canWrite();
   const tableBodyRef = useRef(null);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchSocio, setSearchSocio] = useState("");
+  const [searchId, setSearchId] = useState("");
+  const [debouncedSearchSocio, setDebouncedSearchSocio] = useState("");
+  const [debouncedSearchId, setDebouncedSearchId] = useState("");
   const [status, setStatus] = useState(readStatus);
   const [category, setCategory] = useState("");
   const [advanced, setAdvanced] = useState(emptyAdvancedFilters);
@@ -1123,17 +1127,19 @@ export default function Socios() {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setDebouncedSearch(normalizeSearchQuery(search));
+      setDebouncedSearchSocio(normalizeSearchQuery(searchSocio));
+      setDebouncedSearchId(String(searchId || "").replace(/^0+(?=\d)/, ""));
       setPage(1);
     }, 280);
     return () => window.clearTimeout(timeout);
-  }, [search]);
+  }, [searchSocio, searchId]);
 
 
   const filters = useMemo(
     () => ({
       vigente: status,
-      buscar: debouncedSearch,
+      buscar: debouncedSearchSocio,
+      id_socio: debouncedSearchId,
       categoria: category,
       letra: advanced.letra,
       grupo_sanguineo: advanced.grupo_sanguineo,
@@ -1144,7 +1150,7 @@ export default function Socios() {
       ingreso_hasta: advanced.ingreso_hasta,
       pagina: page,
     }),
-    [status, debouncedSearch, category, advanced, page],
+    [status, debouncedSearchSocio, debouncedSearchId, category, advanced, page],
   );
 
   const {
@@ -1480,12 +1486,21 @@ export default function Socios() {
     },
     {
       type: "search",
-      key: "buscar",
-      label: "Socio / ID",
+      key: "buscar-socio",
+      label: "Socio",
       placeholder: "",
-      value: search,
-      onChange: setSearch,
+      value: searchSocio,
+      onChange: setSearchSocio,
       className: "socios-mainSearch",
+    },
+    {
+      type: "search",
+      key: "buscar-id",
+      label: "ID",
+      placeholder: "",
+      value: searchId,
+      onChange: (value) => setSearchId(String(value || "").replace(/\D/g, "").slice(0, 10)),
+      className: "socios-idSearch",
     },
     {
       type: "select",
@@ -1511,7 +1526,8 @@ export default function Socios() {
   const filterDescription = [
     status === "BAJA" ? "Bajas" : "Vigentes",
     category ? `Categoría ${catalogos.categorias?.find((item) => String(item.id_categoria) === String(category))?.nombre || category}` : null,
-    debouncedSearch ? `Búsqueda ${debouncedSearch}` : null,
+    debouncedSearchSocio ? `Socio ${debouncedSearchSocio}` : null,
+    debouncedSearchId ? `ID ${debouncedSearchId}` : null,
     countAdvanced(advanced) ? `${countAdvanced(advanced)} filtros avanzados` : null,
   ].filter(Boolean).join(" · ");
 
@@ -1666,12 +1682,12 @@ export default function Socios() {
 
       <CrudModal
         open={discardFormOpen}
-        title="¿Descartar cambios?"
+        title="¿Salir sin guardar?"
         subtitle="Tenés información del socio que todavía no fue guardada."
         onClose={() => setDiscardFormOpen(false)}
         onSubmit={confirmDiscardForm}
-        submitLabel="Descartar cambios"
-        cancelLabel="Seguir editando"
+        submitLabel="Sí, salir"
+        cancelLabel="Cancelar"
         danger
         closeOnBackdrop={false}
         modalClassName="socios-modal socios-modal--discard"
@@ -1681,8 +1697,8 @@ export default function Socios() {
             <FontAwesomeIcon icon={faTriangleExclamation} />
           </span>
           <div className="socios-formDiscard__copy">
-            <strong>Si salís ahora, los datos que completaste no se guardarán.</strong>
-            <span>Podés seguir editando el socio o descartar los cambios y cerrar el formulario.</span>
+            <strong>Si salís ahora, vas a perder todos los cambios sin guardar.</strong>
+            <span>Elegí Cancelar para volver al formulario y conservar lo que cargaste.</span>
           </div>
         </div>
       </CrudModal>
@@ -1703,6 +1719,9 @@ export default function Socios() {
         onTabChange={setInfoTab}
         tabIdPrefix="socios-info"
         modalClassName="socios-info-modal"
+        closeOnBackdrop={false}
+        closeOnEscape={true}
+        showCancel
       >
         {info && itemInfo ? (
           <>
@@ -1797,19 +1816,19 @@ export default function Socios() {
         operacion="eliminar"
         row={deleteModal}
         title="Eliminar socio definitivamente"
-        message="El socio desaparecerá del sistema. Se eliminarán también todos sus pagos de cuotas, pagos de inscripción, contactos, vínculos familiares, cierres de cumpleaños, historial de estados y registros de fusión relacionados."
-        warning="ADVERTENCIA: esta acción es irreversible. Si sólo querés que deje de figurar como activo, usá Dar de baja en lugar de eliminar."
+        message="El socio desaparecerá del padrón operativo y dejará de aparecer en Socios y Cuotas. Sus pagos, inscripciones, contactos, vínculos familiares e historial se conservarán como trazabilidad histórica."
+        warning="ADVERTENCIA: esta acción es irreversible desde la interfaz. Los movimientos económicos NO se borran y seguirán figurando en Contabilidad."
         details={deleteModal ? [
           { label: "Socio", value: deleteModal.nombre },
           { label: "DNI", value: deleteModal.dni || "SIN INFORMAR" },
           { label: "Estado actual", value: deleteModal.vigente ? (deleteModal.estado || "VIGENTE") : "BAJA" },
           ...(deleteModal.impacto_eliminacion ? [
             {
-              label: "Pagos que se eliminarán",
+              label: "Movimientos económicos preservados",
               value: Number(deleteModal.impacto_eliminacion.pagos || 0) + Number(deleteModal.impacto_eliminacion.pagos_inscripcion || 0),
             },
             {
-              label: "Otros registros relacionados",
+              label: "Otros registros históricos preservados",
               value: Math.max(
                 0,
                 Number(deleteModal.impacto_eliminacion.total_relaciones || 0)
@@ -1826,8 +1845,8 @@ export default function Socios() {
         }
         confirmLabel="Eliminar definitivamente"
         loadingLabel="Eliminando..."
-        loadingMessage="Eliminando socio y todos sus registros asociados…"
-        successMessage="Socio y registros relacionados eliminados definitivamente."
+        loadingMessage="Eliminando socio del padrón y preservando su trazabilidad…"
+        successMessage="Socio eliminado del padrón. Pagos e historial conservados."
         errorMessage="No se pudo eliminar definitivamente el socio."
       />
 

@@ -60,8 +60,8 @@ trait ContableSocios
         if ($expected - $fees !== $difference) {
             api_error('La conciliación interna de cobranza no coincide.', 'CONTABLE_DESCUADRE_COBRANZA', 500);
         }
-        if (self::centavos($detail['resumen_general']['importe'] ?? 0) !== $fees) {
-            api_error('El detalle de cobros no coincide con la recaudación de cuotas.', 'CONTABLE_DESCUADRE_DETALLE_COBROS', 500);
+        if (self::centavos($detail['resumen_general']['importe'] ?? 0) !== $totalIncome) {
+            api_error('El detalle de ingresos de socios no coincide con cuotas + inscripciones.', 'CONTABLE_DESCUADRE_DETALLE_COBROS', 500);
         }
         $partnerSummary = $partners['resumen'] ?? [];
         $classifiedPartners = (int)($partnerSummary['activos'] ?? 0)
@@ -95,6 +95,7 @@ trait ContableSocios
         array $filters
     ): array {
         $search = self::textoBusqueda($filters['buscar'] ?? '');
+        $partnerFilterId = self::idOpcional($filters['id_socio'] ?? null, 'socio');
         $categoryId = self::idOpcional($filters['categoria'] ?? null, 'categoría');
         $meanId = self::idOpcional($filters['medio'] ?? null, 'medio de pago');
         $page = filter_var($filters['pagina'] ?? 1, FILTER_VALIDATE_INT, [
@@ -106,29 +107,60 @@ trait ContableSocios
         $page = (int)$page;
         $perPage = 100;
 
-        // Caja / ingresos siempre se determina por fecha real de cobro. Para
-        // clasificar cada movimiento se usa, además, el padrón histórico de la
-        // propia fecha de pago; cambiar categoría/cobrador hoy no reclasifica
-        // cobros de años anteriores.
-        $where = ["p.estado = 'PAGADO'", 'p.fecha_pago >= ?', 'p.fecha_pago < ?'];
-        $params = [$start, $endExclusive];
-        if ($periodId === 7) $where[] = 'p.id_periodo = 7';
+        // Ingresos de socios se arma con las dos fuentes económicas reales:
+        // cuotas y pagos de inscripción. Ambos se ubican por fecha real de pago.
+        // El filtro CONTADO ANUAL conserva su semántica para cuotas (id_periodo=7),
+        // mientras que las inscripciones del año siguen siendo ingresos de socios
+        // y por eso se muestran por su propia fecha dentro del rango anual.
+        $paymentWhere = ["p.estado = 'PAGADO'", 'p.fecha_pago >= ?', 'p.fecha_pago < ?'];
+        $paymentParams = [$start, $endExclusive];
+        if ($periodId === 7) $paymentWhere[] = 'p.id_periodo = 7';
 
-        $statement = $db->prepare(
-            "SELECT p.id_pago, p.id_socio, p.id_periodo, p.anio_aplicado, p.fecha_pago,
-                    p.id_medio_pago, p.monto,
-                    s.nombre AS socio, s.dni,
+        $paymentStatement = $db->prepare(
+            "SELECT 'CUOTA' AS tipo_ingreso,
+                    p.id_pago AS id_movimiento, p.id_pago, NULL AS id_inscripcion,
+                    p.id_socio, p.id_periodo, p.anio_aplicado, p.fecha_pago,
+                    p.id_medio_pago, p.monto, p.creado_en,
+                    s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni,
                     COALESCE(NULLIF(mp.nombre,''), 'SIN MEDIO ESPECIFICADO') AS medio,
                     COALESCE(NULLIF(pe.nombre,''), '') AS periodo_nombre
              FROM pagos p
              INNER JOIN socios s ON s.id_socio = p.id_socio
+             LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
              LEFT JOIN periodo pe ON pe.id_periodo = p.id_periodo
-             WHERE " . implode(' AND ', $where) . "
-             ORDER BY p.fecha_pago DESC, p.creado_en DESC, p.id_pago DESC"
+             WHERE " . implode(' AND ', $paymentWhere)
         );
-        $statement->execute($params);
-        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+        $paymentStatement->execute($paymentParams);
+        $rows = $paymentStatement->fetchAll(PDO::FETCH_ASSOC);
+
+        $registrationStatement = $db->prepare(
+            "SELECT 'INSCRIPCION' AS tipo_ingreso,
+                    pi.id_inscripcion AS id_movimiento, NULL AS id_pago, pi.id_inscripcion,
+                    pi.id_socio, NULL AS id_periodo, YEAR(pi.fecha_pago) AS anio_aplicado,
+                    pi.fecha_pago, pi.id_medio_pago, pi.monto, pi.creado_en,
+                    s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni,
+                    COALESCE(NULLIF(mp.nombre,''), 'SIN MEDIO ESPECIFICADO') AS medio,
+                    'INSCRIPCIÓN' AS periodo_nombre
+             FROM pagos_inscripcion pi
+             INNER JOIN socios s ON s.id_socio = pi.id_socio
+             LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio
+             LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
+             WHERE pi.fecha_pago >= ? AND pi.fecha_pago < ?"
+        );
+        $registrationStatement->execute([$start, $endExclusive]);
+        $rows = array_merge($rows, $registrationStatement->fetchAll(PDO::FETCH_ASSOC));
+
+        // Una sola línea temporal: primero fecha efectiva del cobro, luego fecha
+        // de creación y finalmente ID. Así cuotas e inscripciones se intercalan
+        // correctamente y la paginación nunca separa artificialmente las fuentes.
+        usort($rows, static function (array $left, array $right): int {
+            $dateCompare = strcmp((string)$right['fecha_pago'], (string)$left['fecha_pago']);
+            if ($dateCompare !== 0) return $dateCompare;
+            $createdCompare = strcmp((string)($right['creado_en'] ?? ''), (string)($left['creado_en'] ?? ''));
+            if ($createdCompare !== 0) return $createdCompare;
+            return ((int)$right['id_movimiento']) <=> ((int)$left['id_movimiento']);
+        });
 
         $normalize = static function (mixed $value): string {
             $text = trim((string)$value);
@@ -145,55 +177,66 @@ trait ContableSocios
         $filtered = [];
         $filteredPartners = [];
         $filteredCents = 0;
+        $snapshotsByDate = [];
 
         foreach ($rows as $row) {
             $partnerId = (int)$row['id_socio'];
             $paymentDate = substr((string)$row['fecha_pago'], 0, 10);
-            $snapshot = self::snapshotSociosEnFecha($db, $paymentDate);
-            $historical = $snapshot[$partnerId] ?? [];
+            if (!isset($snapshotsByDate[$paymentDate])) {
+                $snapshotsByDate[$paymentDate] = self::snapshotSociosEnFecha($db, $paymentDate);
+            }
+            $historical = $snapshotsByDate[$paymentDate][$partnerId] ?? [];
             $historicalCategoryId = (int)($historical['id_categoria'] ?? 0);
             $historicalCategoryName = trim((string)($historical['categoria'] ?? '')) ?: 'SIN CATEGORÍA';
             $historicalCollector = trim((string)($historical['cobrador'] ?? '')) ?: 'SIN COBRADOR';
+            $isRegistration = (string)$row['tipo_ingreso'] === 'INSCRIPCION';
 
-            $appliedPeriod = (int)$row['id_periodo'];
-            $appliedYear = (int)$row['anio_aplicado'];
-            $referenceDate = sprintf(
-                '%04d-%02d-01',
-                $appliedYear,
-                $appliedPeriod === 7 ? 1 : (($appliedPeriod - 1) * 2 + 1)
-            );
-            $historicalCategoryAmount = $historicalCategoryId > 0
-                ? self::precioHistorico(
-                    $db,
-                    $historicalCategoryId,
-                    $appliedPeriod === 7 ? 'anual' : 'mensual',
-                    $referenceDate
-                )
-                : 0.0;
-
-            // Los pagos actuales guardan el monto definitivo. El fallback sólo
-            // existe para históricos migrados con monto NULL y usa la categoría
-            // histórica, nunca la categoría que el socio tenga hoy.
-            $amount = $row['monto'] === null
-                ? self::centavos($historicalCategoryAmount)
-                : self::centavos($row['monto']);
+            $historicalCategoryAmount = 0.0;
+            if (!$isRegistration) {
+                $appliedPeriod = (int)$row['id_periodo'];
+                $appliedYear = (int)$row['anio_aplicado'];
+                $referenceDate = sprintf(
+                    '%04d-%02d-01',
+                    $appliedYear,
+                    $appliedPeriod === 7 ? 1 : (($appliedPeriod - 1) * 2 + 1)
+                );
+                $historicalCategoryAmount = $historicalCategoryId > 0
+                    ? self::precioHistorico(
+                        $db,
+                        $historicalCategoryId,
+                        $appliedPeriod === 7 ? 'anual' : 'mensual',
+                        $referenceDate
+                    )
+                    : 0.0;
+                // Históricos migrados pueden tener monto NULL; sólo las cuotas
+                // necesitan el fallback al precio histórico de su categoría.
+                $amount = $row['monto'] === null
+                    ? self::centavos($historicalCategoryAmount)
+                    : self::centavos($row['monto']);
+                $periodLabel = self::etiquetaPeriodo($appliedPeriod, $appliedYear);
+            } else {
+                $appliedPeriod = null;
+                $appliedYear = (int)($row['anio_aplicado'] ?: substr($paymentDate, 0, 4));
+                $amount = self::centavos($row['monto']);
+                $periodLabel = 'INSCRIPCIÓN';
+            }
 
             $generalCount++;
             $generalPartners[$partnerId] = true;
             $generalCents += $amount;
 
+            // `id_socio` es una igualdad exacta y nunca se mezcla con la
+            // búsqueda textual. Así buscar ID 2990 no puede devolver al 242
+            // porque tenga 2990 en DNI, domicilio u otro texto.
+            if ($partnerFilterId !== null && $partnerId !== $partnerFilterId) continue;
             if ($categoryId !== null && $historicalCategoryId !== $categoryId) continue;
             if ($meanId !== null && (int)($row['id_medio_pago'] ?? 0) !== $meanId) continue;
 
             if ($searchNeedle !== '') {
+                // El campo "Socio" busca exclusivamente nombre/DNI.
                 $haystack = $normalize(implode(' ', [
                     $row['socio'] ?? '',
                     $row['dni'] ?? '',
-                    $historicalCategoryName,
-                    $historicalCollector,
-                    $row['medio'] ?? '',
-                    $row['periodo_nombre'] ?? '',
-                    $appliedYear,
                 ]));
                 if (!str_contains($haystack, $searchNeedle)) continue;
             }
@@ -201,23 +244,30 @@ trait ContableSocios
             $filteredPartners[$partnerId] = true;
             $filteredCents += $amount;
             $filtered[] = [
-                'clave' => 'PAGO-' . (int)$row['id_pago'],
-                'id_pago' => (int)$row['id_pago'],
+                'clave' => ($isRegistration ? 'INSCRIPCION-' : 'PAGO-') . (int)$row['id_movimiento'],
+                'tipo_ingreso' => $isRegistration ? 'INSCRIPCIÓN' : 'CUOTA',
+                'id_movimiento' => (int)$row['id_movimiento'],
+                'id_pago' => $row['id_pago'] === null ? null : (int)$row['id_pago'],
+                'id_inscripcion' => $row['id_inscripcion'] === null ? null : (int)$row['id_inscripcion'],
                 'id_socio' => $partnerId,
                 'socio' => (string)$row['socio'],
                 'dni' => $row['dni'] === null ? '' : (string)$row['dni'],
                 'categoria' => $historicalCategoryName,
-                'categoria_monto_historico' => number_format($historicalCategoryAmount, 2, '.', ''),
-                'categoria_etiqueta' => $historicalCategoryName . ' (' . number_format($historicalCategoryAmount, 0, ',', '.') . ')',
+                'categoria_monto_historico' => $isRegistration
+                    ? null
+                    : number_format($historicalCategoryAmount, 2, '.', ''),
+                'categoria_etiqueta' => $isRegistration
+                    ? $historicalCategoryName
+                    : $historicalCategoryName . ' (' . number_format($historicalCategoryAmount, 0, ',', '.') . ')',
                 'cobrador' => $historicalCollector,
                 'fecha' => (string)$row['fecha_pago'],
-                'periodo' => self::etiquetaPeriodo($appliedPeriod, $appliedYear),
+                'periodo' => $periodLabel,
                 'id_periodo' => $appliedPeriod,
                 'anio_aplicado' => $appliedYear,
                 'medio' => (string)$row['medio'],
                 'id_medio_pago' => $row['id_medio_pago'] === null ? null : (int)$row['id_medio_pago'],
                 'monto' => self::importeDesdeCentavos($amount),
-                'monto_estimado' => $row['monto'] === null,
+                'monto_estimado' => !$isRegistration && $row['monto'] === null,
             ];
         }
 
@@ -498,9 +548,10 @@ trait ContableSocios
 
         if (!isset($rawCache[$dbKey])) {
             $baseRows = $db->query(
-                'SELECT id_socio, id_categoria, id_cobrador, id_grupo_sanguineo,
-                        id_estado, fecha_ingreso, vigente
-                 FROM socios'
+                'SELECT s.id_socio, s.id_categoria, s.id_cobrador, s.id_grupo_sanguineo,
+                        s.id_estado, s.fecha_ingreso, s.vigente, se.fecha_eliminacion
+                 FROM socios s
+                 LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio'
             )->fetchAll(PDO::FETCH_ASSOC);
 
             $auditRows = $db->query(
@@ -619,6 +670,9 @@ trait ContableSocios
                 'id_grupo_sanguineo' => $base['id_grupo_sanguineo'] === null ? null : (int)$base['id_grupo_sanguineo'],
                 'id_estado' => $base['id_estado'] === null ? null : (int)$base['id_estado'],
                 'fecha_ingreso' => $base['fecha_ingreso'] === null ? null : (string)$base['fecha_ingreso'],
+                'fecha_eliminacion' => $base['fecha_eliminacion'] === null
+                    ? null
+                    : substr((string)$base['fecha_eliminacion'], 0, 10),
                 'vigente_fecha' => (int)$base['vigente'] === 1,
             ];
         }
@@ -677,6 +731,13 @@ trait ContableSocios
         }
 
         foreach ($snapshot as &$row) {
+            // Una eliminación definitiva saca al socio del padrón desde la fecha
+            // de eliminación, pero no reescribe informes de fechas anteriores.
+            $deletedOn = $row['fecha_eliminacion'] ?? null;
+            if ($deletedOn !== null && $deletedOn <= $date) {
+                $row['vigente_fecha'] = false;
+            }
+
             $row['estado'] = $catalogsAtDate['estado'][(int)($row['id_estado'] ?? 0)] ?? 'SIN ESTADO';
             $row['cobrador'] = $catalogsAtDate['cobrador'][(int)($row['id_cobrador'] ?? 0)] ?? 'SIN COBRADOR';
             $row['grupo'] = $catalogsAtDate['grupo_sanguineo'][(int)($row['id_grupo_sanguineo'] ?? 0)] ?? 'SIN GRUPO';
@@ -868,11 +929,12 @@ trait ContableSocios
         // Históricos migrados: pagos_inscripcion es la fuente canónica.
         $statement = $db->prepare(
             "SELECT pi.id_inscripcion, pi.id_socio, pi.monto, pi.fecha_pago, pi.id_medio_pago,
-                    s.nombre AS socio, s.dni, s.fecha_ingreso,
+                    s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni, s.fecha_ingreso,
                     COALESCE(NULLIF(e.nombre,''),'SIN ESTADO') AS estado,
                     COALESCE(NULLIF(mp.nombre,''),'SIN MEDIO ESPECIFICADO') AS medio
              FROM pagos_inscripcion pi
              INNER JOIN socios s ON s.id_socio = pi.id_socio
+             LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio
              LEFT JOIN estado e ON e.id_estado = s.id_estado
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
              WHERE COALESCE(s.fecha_ingreso, pi.fecha_pago) >= ?
@@ -902,16 +964,17 @@ trait ContableSocios
         // Altas creadas por el sistema nuevo sin un registro de inscripción.
         $statement = $db->prepare(
             "SELECT h.id_socio, MIN(DATE(h.fecha_evento)) AS fecha_alta,
-                    s.nombre AS socio, s.dni,
+                    s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni,
                     COALESCE(NULLIF(e.nombre,''),'SIN ESTADO') AS estado
              FROM socios_historial_estados h
              INNER JOIN socios s ON s.id_socio = h.id_socio
+             LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio
              LEFT JOIN estado e ON e.id_estado = s.id_estado
              LEFT JOIN pagos_inscripcion pi ON pi.id_socio = h.id_socio
              WHERE h.tipo_evento = 'ALTA' AND h.origen <> 'MIGRACION'
                AND DATE(h.fecha_evento) >= ? AND DATE(h.fecha_evento) <= ?
                AND pi.id_inscripcion IS NULL
-             GROUP BY h.id_socio, s.nombre, s.dni, e.nombre
+             GROUP BY h.id_socio, s.nombre, s.dni, se.dni, e.nombre
              ORDER BY fecha_alta, h.id_socio"
         );
         $statement->execute([$from, $to]);
@@ -1081,9 +1144,11 @@ trait ContableSocios
     private static function balanceDeudores(PDO $db, array $periods): array
     {
         $identityRows = $db->query(
-            "SELECT id_socio, nombre AS socio, dni, domicilio, numero, telefono_movil, telefono_fijo
-             FROM socios
-             ORDER BY id_socio"
+            "SELECT s.id_socio, s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni,
+                    s.domicilio, s.numero, s.telefono_movil, s.telefono_fijo
+             FROM socios s
+             LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio
+             ORDER BY s.id_socio"
         )->fetchAll(PDO::FETCH_ASSOC);
         $partnersById = [];
         foreach ($identityRows as $row) $partnersById[(int)$row['id_socio']] = $row;

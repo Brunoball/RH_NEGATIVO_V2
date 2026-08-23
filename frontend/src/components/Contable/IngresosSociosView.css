@@ -515,9 +515,10 @@
 
 .ct-income-grid--detail {
   grid-template-columns:
-    minmax(0, 1.5fr)
+    minmax(0, 1.45fr)
+    minmax(0, .72fr)
     minmax(0, 1fr)
-    minmax(0, 1fr)
+    minmax(0, .95fr)
     minmax(0, .88fr)
     minmax(0, 1fr)
     minmax(0, .82fr)
@@ -536,14 +537,16 @@
     minmax(0, 1fr);
 }
 
+.ct-income-grid--detail > :nth-child(2),
 .ct-income-grid--detail > :nth-child(4),
 .ct-income-grid--detail > :nth-child(5),
-.ct-income-grid--detail > :nth-child(6) {
+.ct-income-grid--detail > :nth-child(6),
+.ct-income-grid--detail > :nth-child(7) {
   justify-content: center;
   text-align: center;
 }
 
-.ct-income-grid--detail > :nth-child(7),
+.ct-income-grid--detail > :nth-child(8),
 .ct-income-grid--partners > :nth-child(3),
 .ct-income-grid--collection > :nth-child(n + 2) {
   justify-content: flex-end;

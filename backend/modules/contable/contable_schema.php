@@ -26,10 +26,14 @@ function ensure_contable_schema(PDO $db): void
                 i.concepto, i.importe, i.detalle, i.creado_en, i.actualizado_en,
                 e.id_egreso, e.fecha, e.id_medio_pago, e.proveedor, e.categoria,
                 e.concepto, e.numero_comprobante, e.importe, e.detalle,
-                e.archivo_path, e.creado_en, e.actualizado_en
+                e.archivo_path, e.creado_en, e.actualizado_en,
+                se.id_socio AS socio_eliminado_id, se.nombre AS socio_eliminado_nombre,
+                se.dni AS socio_eliminado_dni, se.fecha_eliminacion,
+                se.id_usuario AS socio_eliminado_usuario, se.datos_socio, se.impacto
              FROM contable_opciones o
              LEFT JOIN contable_ingresos i ON 1 = 0
              LEFT JOIN contable_egresos e ON 1 = 0
+             LEFT JOIN socios_eliminados se ON 1 = 0
              LIMIT 0'
         );
     };
@@ -104,6 +108,21 @@ function ensure_contable_schema(PDO $db): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS socios_eliminados (
+            id_socio INT NOT NULL,
+            nombre VARCHAR(100) NOT NULL,
+            dni VARCHAR(15) NULL,
+            fecha_eliminacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_usuario INT NULL,
+            datos_socio LONGTEXT NOT NULL,
+            impacto LONGTEXT NOT NULL,
+            PRIMARY KEY (id_socio),
+            KEY idx_socios_eliminados_fecha (fecha_eliminacion),
+            KEY idx_socios_eliminados_dni (dni)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
     try {
         $probe($db);
         $done[$connectionId] = true;
@@ -117,6 +136,7 @@ function ensure_contable_schema(PDO $db): void
         'contable_opciones' => ['id_opcion','tipo','nombre','activo','creado_en','actualizado_en'],
         'contable_ingresos' => ['id_ingreso','fecha','id_medio_pago','proveedor','categoria','concepto','importe','detalle','creado_en','actualizado_en'],
         'contable_egresos' => ['id_egreso','fecha','id_medio_pago','proveedor','categoria','concepto','numero_comprobante','importe','detalle','archivo_path','creado_en','actualizado_en'],
+        'socios_eliminados' => ['id_socio','nombre','dni','fecha_eliminacion','id_usuario','datos_socio','impacto'],
     ];
 
     foreach ($required as $table => $columns) {

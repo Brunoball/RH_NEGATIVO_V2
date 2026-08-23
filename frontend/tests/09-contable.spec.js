@@ -114,8 +114,9 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
     expect(Number(detail.paginacion.total)).toBe(Number(detail.resumen.registros));
     expect(Number(detail.resumen_general.registros)).toBeGreaterThanOrEqual(Number(detail.resumen.registros));
 
-    const firstPageIds = detail.items.map((item) => Number(item.id_pago));
-    expect(new Set(firstPageIds).size).toBe(firstPageIds.length);
+    const firstPageKeys = detail.items.map((item) => item.clave);
+    expect(new Set(firstPageKeys).size).toBe(firstPageKeys.length);
+    expect(detail.items.every((item) => ['CUOTA', 'INSCRIPCIÓN'].includes(item.tipo_ingreso))).toBe(true);
     for (let index = 1; index < detail.items.length; index += 1) {
       const previous = detail.items[index - 1];
       const current = detail.items[index];
@@ -127,8 +128,8 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
         params: { anio: year, periodo: period, pagina: 2 },
       });
       expect(Number(second.detalle.paginacion.pagina)).toBe(2);
-      const firstIds = new Set(detail.items.map((item) => item.id_pago));
-      expect(second.detalle.items.some((item) => firstIds.has(item.id_pago))).toBe(false);
+      const firstKeys = new Set(detail.items.map((item) => item.clave));
+      expect(second.detalle.items.some((item) => firstKeys.has(item.clave))).toBe(false);
     }
 
     if (detail.items[0]?.socio) {
@@ -138,7 +139,7 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
       expect(Number(searched.detalle.resumen.registros)).toBeLessThanOrEqual(Number(detail.resumen_general.registros));
       expectMoneyIdentity(
         searched.detalle.resumen_general.importe,
-        report.cobranza.resumen.cuotas_recaudadas,
+        report.cobranza.resumen.total_ingresado,
         'Buscar/paginar no debe romper la conciliación general de caja',
       );
     }
@@ -161,8 +162,8 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
     );
     expectMoneyIdentity(
       detail.resumen_general.importe,
-      collection.cuotas_recaudadas,
-      'El detalle completo debe sumar exactamente las cuotas recaudadas',
+      collection.total_ingresado,
+      'El detalle completo debe sumar exactamente cuotas + inscripciones',
     );
 
     const annual = await apiCall(request, 'contable_ingresos_socios', {
@@ -170,7 +171,7 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
     });
     expect(Number(annual.periodo.id_periodo)).toBe(7);
     expect(String(annual.periodo.etiqueta).toUpperCase()).toContain('CONTADO ANUAL');
-    expect(annual.detalle.items.every((item) => Number(item.id_periodo) === 7)).toBe(true);
+    expect(annual.detalle.items.every((item) => item.tipo_ingreso === 'INSCRIPCIÓN' || Number(item.id_periodo) === 7)).toBe(true);
 
     await expectApiError(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: period, pagina: 0 },
@@ -564,7 +565,7 @@ test.describe('Contabilidad · configuración y movimientos API', () => {
 });
 
 test.describe('Contabilidad · UI completa', () => {
-  test('Ingresos de socios cubre las tres pestañas, búsqueda, paginación, Contado Anual, Excel/PDF y Balance anual', async ({ page, request }) => {
+  test('Ingresos de socios muestra cuotas e inscripciones por fecha y cubre búsqueda, paginación, exportación y Balance anual', async ({ page, request }) => {
     const { year, period } = dateParts();
     const quotaCategory = await createQuotaCategory(request);
     const quotaSocio = await createQuotaSocio(request, 'CONTABLE EXPORT SOCIOS', quotaCategory.item.id_categoria);
@@ -582,11 +583,45 @@ test.describe('Contabilidad · UI completa', () => {
         year,
       }),
     });
+    const registrationMedium = (quota.catalogos.medios_pago || []).find((item) => {
+      const name = String(item.nombre || '').toUpperCase();
+      return item.activo !== false && (name.includes('EFECTIVO') || name.includes('TRANSFERENCIA'));
+    });
+    if (!registrationMedium) throw new Error('Contabilidad E2E requiere EFECTIVO o TRANSFERENCIA para registrar inscripción.');
+    const guaranteedRegistration = await apiCall(request, 'cuotas_registrar_inscripcion', {
+      method: 'POST',
+      data: {
+        id_socio: quotaSocio.item.id_socio,
+        fecha_pago: todayIso(),
+        monto: '12345',
+        id_medio_pago: registrationMedium.id_medio_pago,
+      },
+    });
 
     const apiReport = await apiCall(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: period, pagina: 1 },
     });
     expect(Number(apiReport.detalle.paginacion.total)).toBeGreaterThan(0);
+    const e2eIncomeRows = apiReport.detalle.items.filter(
+      (item) => Number(item.id_socio) === Number(quotaSocio.item.id_socio),
+    );
+    expect(e2eIncomeRows.some((item) => item.tipo_ingreso === 'CUOTA' && Number(item.id_pago) === Number(guaranteedPayment.items[0].id_pago))).toBe(true);
+    expect(e2eIncomeRows.some((item) => item.tipo_ingreso === 'INSCRIPCIÓN' && Number(item.id_inscripcion) === Number(guaranteedRegistration.item.id_inscripcion))).toBe(true);
+    expect(e2eIncomeRows.find((item) => item.tipo_ingreso === 'INSCRIPCIÓN')?.periodo).toBe('INSCRIPCIÓN');
+
+    const filteredRegistrationReport = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: year,
+        periodo: period,
+        pagina: 1,
+        buscar: quotaSocio.data.dni,
+        categoria: quotaCategory.item.id_categoria,
+        medio: registrationMedium.id_medio_pago,
+      },
+    });
+    expect(filteredRegistrationReport.detalle.items.some(
+      (item) => Number(item.id_inscripcion) === Number(guaranteedRegistration.item.id_inscripcion),
+    )).toBe(true);
 
     const filteredFeeReport = await apiCall(request, 'contable_ingresos_socios', {
       params: {
@@ -602,6 +637,23 @@ test.describe('Contabilidad · UI completa', () => {
       filteredFeeReport.detalle.items.some((item) => Number(item.id_socio) === Number(quotaSocio.item.id_socio)),
       'Los filtros categoría + medio + búsqueda deben conservar el cobro E2E correcto',
     ).toBe(true);
+    const exactIdReport = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: year,
+        periodo: period,
+        pagina: 1,
+        id_socio: quotaSocio.item.id_socio,
+      },
+    });
+    expect(exactIdReport.detalle.items.length).toBeGreaterThan(0);
+    expect(
+      exactIdReport.detalle.items.every((item) => Number(item.id_socio) === Number(quotaSocio.item.id_socio)),
+      'El filtro ID de Contabilidad debe ser igualdad exacta y no una coincidencia textual',
+    ).toBe(true);
+    const missingIdReport = await apiCall(request, 'contable_ingresos_socios', {
+      params: { anio: year, periodo: period, pagina: 1, id_socio: 2147483647 },
+    });
+    expect(missingIdReport.detalle.items).toHaveLength(0);
     const wrongFeeCategory = await apiCall(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: period, pagina: 1, buscar: quotaSocio.data.dni, categoria: 2147483647 },
     });
@@ -618,10 +670,42 @@ test.describe('Contabilidad · UI completa', () => {
 
     const segmented = page.getByRole('tablist', { name: 'Vista' });
     await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
-    await expect(page.getByRole('table', { name: 'Detalle de cobros recibidos' })).toBeVisible();
+    const incomeTable = page.getByRole('table', { name: 'Detalle de cobros recibidos' });
+    await expect(incomeTable).toBeVisible();
+    await expect(incomeTable.getByRole('columnheader', { name: 'Tipo', exact: true })).toBeVisible();
+
+    const e2eSearch = page.getByRole('textbox', { name: 'Socio', exact: true });
+    await Promise.all([
+      page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('buscar=')),
+      e2eSearch.fill(quotaSocio.data.dni),
+    ]);
+    await expect(incomeTable.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^CUOTA$/ }) })).toBeVisible();
+    await expect(incomeTable.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^INSCRIPCIÓN$/ }) })).toBeVisible();
+    await Promise.all([
+      page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && !response.url().includes('buscar=')),
+      e2eSearch.fill(''),
+    ]);
+
+    const e2eIdSearch = page.getByRole('textbox', { name: 'ID', exact: true });
+    await Promise.all([
+      page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes(`id_socio=${quotaSocio.item.id_socio}`)),
+      e2eIdSearch.fill(String(quotaSocio.item.id_socio)),
+    ]);
+    await expect(incomeTable.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^CUOTA$/ }) })).toBeVisible();
+    await expect(incomeTable.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^INSCRIPCIÓN$/ }) })).toBeVisible();
+    const unrelatedIncome = (apiReport.detalle.items || []).find(
+      (item) => Number(item.id_socio) !== Number(quotaSocio.item.id_socio) && item.socio,
+    );
+    if (unrelatedIncome) {
+      await expect(incomeTable.getByRole('row').filter({ hasText: unrelatedIncome.socio })).toHaveCount(0);
+    }
+    await Promise.all([
+      page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && !response.url().includes('id_socio=')),
+      e2eIdSearch.fill(''),
+    ]);
 
     if (apiReport.detalle.items[0]?.socio) {
-      const search = page.getByRole('textbox', { name: 'Buscar' });
+      const search = page.getByRole('textbox', { name: 'Socio', exact: true });
       await expect(search).toBeVisible();
       await Promise.all([
         page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('buscar=')),

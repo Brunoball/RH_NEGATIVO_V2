@@ -244,15 +244,15 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
           {
             key: "payments",
             icon: faPeopleGroup,
-            label: "Pagos registrados",
-            detail: "Cobros recibidos del período",
+            label: "Ingresos registrados",
+            detail: "Cuotas e inscripciones cobradas",
             value: Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR"),
           },
           {
             key: "amount",
             icon: faCalculator,
             label: "Monto cobrado",
-            detail: `${Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR")} pagos`,
+            detail: `${Number(section?.resumen?.registros || totalRecords).toLocaleString("es-AR")} ingresos`,
             tone: "success",
             value: money(section?.resumen?.importe),
           },
@@ -264,6 +264,7 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
         gridClassName="ct-income-grid ct-income-grid--detail"
         columns={[
           "Apellido y nombre",
+          { label: "Tipo", align: "center" },
           "Categoría",
           { label: "Cobrador", align: "center" },
           "Fecha de pago",
@@ -274,15 +275,15 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
         ariaLabel="Detalle de cobros recibidos"
         empty={!loading && !items.length}
         loading={loading}
-        loadingLabel="Cargando cobros de socios..."
+        loadingLabel="Cargando ingresos de socios..."
         skeletonActionColumn={false}
         skeletonRows={4}
       >
         {!loading && !items.length ? (
           <div className="module-empty">
             <FontAwesomeIcon icon={faPeopleGroup} />
-            <strong>Sin cobros para mostrar</strong>
-            <span>No hay cobros que coincidan con la búsqueda.</span>
+            <strong>Sin ingresos para mostrar</strong>
+            <span>No hay cuotas ni inscripciones que coincidan con la búsqueda.</span>
           </div>
         ) : null}
         {items.map((item) => (
@@ -294,6 +295,9 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
             <div className="mov-gridCell entity-main-cell">
               <strong>{item.socio}</strong>
               <small>DNI: {item.dni || "—"}</small>
+            </div>
+            <div className="mov-gridCell is-center">
+              <span className="mov-categoryChip">{item.tipo_ingreso || "CUOTA"}</span>
             </div>
             <div className="mov-gridCell"><span className="mov-categoryChip">{item.categoria_etiqueta || "Sin categoría"}</span></div>
             <div className="mov-gridCell is-center">
@@ -314,7 +318,7 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
         firstRecord={firstRecord}
         lastRecord={lastRecord}
         loading={loading}
-        noun="pagos"
+        noun="ingresos"
         onPageChange={(nextPage) => onPageChange?.(nextPage)}
         totalPages={totalPages}
         totalRecords={totalRecords}
@@ -1143,6 +1147,7 @@ export default function IngresosSociosView({
   data,
   loading,
   detailSearch = "",
+  detailIdSearch = "",
   onDetailPageChange,
   onFeedback,
 }) {
@@ -1157,6 +1162,7 @@ export default function IngresosSociosView({
       anio: period.anio,
       periodo: period.id_periodo,
       buscar: detailSearch,
+      id_socio: detailIdSearch,
       pagina: 1,
     });
     const all = [...(first?.detalle?.items || [])];
@@ -1166,12 +1172,13 @@ export default function IngresosSociosView({
         anio: period.anio,
         periodo: period.id_periodo,
         buscar: detailSearch,
+        id_socio: detailIdSearch,
         pagina: current,
       });
       all.push(...(response?.detalle?.items || []));
     }
     return all;
-  }, [detailSearch, period?.anio, period?.id_periodo]);
+  }, [detailSearch, detailIdSearch, period?.anio, period?.id_periodo]);
 
   const exportConfig = useMemo(() => {
     const items = data?.detalle?.items || [];
@@ -1180,7 +1187,7 @@ export default function IngresosSociosView({
       fileTitle: `Ingresos de socios · ${period?.etiqueta || ""}`,
       fileName: `ingresos_socios_${period?.anio || ""}_${period?.id_periodo || ""}`,
       columns: [
-        { label: "Socio", key: "socio" }, { label: "DNI", key: "dni" }, { label: "Categoría", key: "categoria_etiqueta" },
+        { label: "Socio", key: "socio" }, { label: "DNI", key: "dni" }, { label: "Tipo", key: "tipo_ingreso" }, { label: "Categoría", key: "categoria_etiqueta" },
         { label: "Cobrador", key: "cobrador" }, { label: "Fecha de pago", key: "fecha" }, { label: "Período pago", key: "periodo" }, { label: "Medio", key: "medio" }, { label: "Monto", key: "monto" },
       ],
       records: items,

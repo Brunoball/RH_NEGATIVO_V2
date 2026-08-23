@@ -117,10 +117,10 @@ test.describe('Socios', () => {
       await page.getByRole('button', { name: 'Nuevo socio' }).click();
       let dialog = page.getByRole('dialog', { name: 'Nuevo socio' });
       await expect(dialog).toBeVisible();
-      const firstIdBox = dialog.getByLabel('Número de socio');
-      await expect(firstIdBox).toContainText('N.º de socio');
-      await expect(firstIdBox).toContainText('Se asignará al crear el socio');
-      const firstShownId = Number(String(await firstIdBox.locator('strong').textContent()).trim());
+      const firstIdField = dialog.getByLabel('ID', { exact: true });
+      await expect(firstIdField).toHaveAttribute('readonly', '');
+      await expect(firstIdField).toHaveAttribute('title', 'ID reservado para el nuevo socio');
+      const firstShownId = Number(await firstIdField.inputValue());
       expect(firstShownId).toBeGreaterThan(0);
 
       // Los campos required usan validación nativa del navegador.
@@ -154,6 +154,18 @@ test.describe('Socios', () => {
       expect(await validationCollector.evaluate((element) => element.checkValidity())).toBe(false);
       await validationCollector.selectOption(String(activeCollector.id_cobrador));
 
+      // Alta: si se informa DNI, debe tener exactamente 8 números. La misma
+      // regla que se aplica al editar debe impedir crear un socio inválido.
+      // El DNI vive en la pestaña Datos personales; después de validar Gestión
+      // volvemos a esa pestaña para interactuar con un control realmente visible.
+      await dialog.getByRole('tab', { name: 'Datos personales' }).click();
+      const validationDni = dialog.getByLabel('DNI');
+      await validationDni.fill('1234567');
+      await dialog.getByRole('button', { name: 'Crear socio' }).click();
+      expect(await validationDni.evaluate((element) => element.checkValidity())).toBe(false);
+      await expect(dialog).toBeVisible();
+      await validationDni.fill('');
+
       // Cerrar con cambios no puede descartar silenciosamente el formulario.
       await dialog.getByRole('button', { name: 'Cancelar' }).click();
       let discardDialog = page.getByRole('dialog', { name: '¿Salir sin guardar?' });
@@ -174,9 +186,10 @@ test.describe('Socios', () => {
       // Reabre para probar el alta desde los defaults reales del formulario.
       await page.getByRole('button', { name: 'Nuevo socio' }).click();
       dialog = page.getByRole('dialog', { name: 'Nuevo socio' });
-      const createIdBox = dialog.getByLabel('Número de socio');
-      await expect(createIdBox).toContainText('Se asignará al crear el socio');
-      const shownCreateId = Number(String(await createIdBox.locator('strong').textContent()).trim());
+      const createIdField = dialog.getByLabel('ID', { exact: true });
+      await expect(createIdField).toHaveAttribute('readonly', '');
+      await expect(createIdField).toHaveAttribute('title', 'ID reservado para el nuevo socio');
+      const shownCreateId = Number(await createIdField.inputValue());
       expect(shownCreateId).toBeGreaterThan(0);
       await fillSocioForm(dialog, data, catalogs, { birthday: true });
       await dialog.getByRole('button', { name: 'Crear socio' }).click();
@@ -190,7 +203,7 @@ test.describe('Socios', () => {
       createdId = created.id_socio;
       expect(Number(createdId)).toBe(shownCreateId);
 
-      const search = page.getByLabel('Socio / ID', { exact: true });
+      const search = page.getByLabel('Socio', { exact: true });
       await search.fill(data.dni);
       let row = rowByText(page, data.nombre);
       // La grilla de Socios no muestra el DNI como columna: el DNI es un
@@ -200,6 +213,16 @@ test.describe('Socios', () => {
       await expect(search).toHaveValue(data.dni);
       await expect(row).toBeVisible();
       await expect(page.getByRole('row').filter({ hasText: data.nombre })).toHaveCount(1);
+
+      // El ID tiene un campo independiente y exacto. Buscar por ID no se
+      // interpreta como DNI/domicilio/teléfono ni comparte estado con Socio.
+      const idSearch = page.getByLabel('ID', { exact: true });
+      await search.fill('');
+      await idSearch.fill(String(createdId));
+      await expect(rowByText(page, data.nombre)).toBeVisible();
+      await expect(page.locator('.socios-table .global-divTable__row')).toHaveCount(1);
+      await idSearch.fill('');
+      await search.fill(data.dni);
 
       // Filtro principal por categoría, sin modificar ninguna categoría real.
       await page.getByLabel('Categoría').selectOption(String(created.id_categoria));
@@ -287,15 +310,20 @@ test.describe('Socios', () => {
       await info.getByRole('tab', { name: 'Historial' }).click();
       await expect(info).toContainText(/ALTA|MOVIMIENTO/);
       await info.getByRole('tab', { name: 'General' }).click();
-      await page.keyboard.press('Escape');
+      // El fondo no cierra la ficha; Cancelar sí. Escape ya se valida arriba.
+      await page.locator('.entity-modal-overlay').click({ position: { x: 5, y: 5 } });
+      await expect(info).toBeVisible();
+      await info.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await expect(info).toBeHidden();
 
       // Edición completa conservando el prefijo E2E.
       row = rowByText(page, data.nombre);
       await row.getByTitle('Editar socio').click();
       dialog = page.getByRole('dialog', { name: 'Editar socio' });
-      const editIdBox = dialog.getByLabel('Número de socio');
-      await expect(editIdBox).toContainText('ID actual del socio');
-      await expect(editIdBox.locator('strong')).toHaveText(String(createdId));
+      const editIdField = dialog.getByLabel('ID', { exact: true });
+      await expect(editIdField).toHaveAttribute('readonly', '');
+      await expect(editIdField).toHaveAttribute('title', 'ID actual del socio');
+      await expect(editIdField).toHaveValue(String(createdId));
       const editedPerson = splitFullName(data.nombreEditado);
       await dialog.getByLabel('Nombre *', { exact: true }).fill(editedPerson.nombre);
       await dialog.getByLabel('Apellido *', { exact: true }).fill(editedPerson.apellido);
@@ -359,6 +387,16 @@ test.describe('Socios', () => {
       await expectApiError(request, 'socios_guardar', {
         method: 'POST',
         data: {
+          nombre: 'PW EEE DNI INVALIDO',
+          dni: '1234567',
+          id_categoria: created.id_categoria,
+          id_cobrador: created.id_cobrador,
+          fecha_ingreso: todayIso(),
+        },
+      }, { status: 422, code: 'VALIDATION_ERROR' });
+      await expectApiError(request, 'socios_guardar', {
+        method: 'POST',
+        data: {
           nombre: 'PW EEE SOCIO DUPLICADO',
           dni: data.dni,
           id_categoria: created.id_categoria,
@@ -366,17 +404,17 @@ test.describe('Socios', () => {
           fecha_ingreso: todayIso(),
         },
       }, { status: 409, code: 'DNI_DUPLICADO' });
-      // Eliminación definitiva actual: la UI advierte que también borra pagos y
-      // registros relacionados. Se cancela una vez y luego se confirma.
+      // Eliminación definitiva: el socio sale del padrón operativo, pero la UI
+      // deja explícito que pagos e historial quedan preservados para Contabilidad.
       await row.getByTitle('Eliminar socio definitivamente').click();
       let deleteDialog = page.getByRole('dialog', { name: 'Eliminar socio definitivamente' });
-      await expect(deleteDialog).toContainText('todos sus pagos de cuotas');
+      await expect(deleteDialog).toContainText('movimientos económicos NO se borran');
       await expect(deleteDialog).toContainText('acción es irreversible');
       await deleteDialog.getByRole('button', { name: 'Cancelar' }).click();
       await row.getByTitle('Eliminar socio definitivamente').click();
       deleteDialog = page.getByRole('dialog', { name: 'Eliminar socio definitivamente' });
       await deleteDialog.getByRole('button', { name: 'Eliminar definitivamente', exact: true }).click();
-      await expectFeedback(page, 'Socio y registros relacionados eliminados definitivamente.');
+      await expectFeedback(page, /Socio eliminado del padrón\..*(pagos|inscripciones).*(historial|trazabilidad)/i);
       await expectApiError(request, 'socios_obtener', { params: { id: createdId } }, {
         status: 404, code: 'SOCIO_NO_ENCONTRADO',
       });
@@ -387,7 +425,7 @@ test.describe('Socios', () => {
     const data = socioData('EXPORT');
     const created = await createSocio(request, data);
     await page.goto('/socios/personas');
-      await page.getByLabel('Socio / ID', { exact: true }).fill(data.dni);
+      await page.getByLabel('Socio', { exact: true }).fill(data.dni);
       await expect(rowByText(page, data.nombre)).toBeVisible();
 
       await exportFromGlobalModal(page, {

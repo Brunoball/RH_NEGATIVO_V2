@@ -37,6 +37,12 @@
   margin-left: 0;
 }
 
+.socios-headFilters .socios-idSearch {
+  flex: 0 0 105px;
+  width: 105px;
+  max-width: 105px;
+}
+
 
 .socios-categoryFilter {
   flex: 0 0 120px;
@@ -1216,6 +1222,7 @@
   }
 
   .socios-headFilters .socios-mainSearch,
+  .socios-headFilters .socios-idSearch,
   .socios-categoryFilter {
     width: 100%;
     max-width: none;

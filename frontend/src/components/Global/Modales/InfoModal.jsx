@@ -18,6 +18,9 @@ export default function InfoModal({
   loadingText = "Consultando los datos del registro.",
   modalClassName = "",
   closeOnBackdrop = true,
+  closeOnEscape = true,
+  showCancel = false,
+  cancelLabel = "Cancelar",
   children,
 }) {
   return (
@@ -27,10 +30,12 @@ export default function InfoModal({
       subtitle={subtitle}
       onClose={onClose}
       hideSubmit
-      hideCancel
+      hideCancel={!showCancel}
+      cancelLabel={cancelLabel}
       wide
       modalClassName={`entity-info-modal ${modalClassName}`.trim()}
       closeOnBackdrop={closeOnBackdrop}
+      closeOnEscape={closeOnEscape}
     >
       <div className="entity-info-layout">
         {tabs.length ? (

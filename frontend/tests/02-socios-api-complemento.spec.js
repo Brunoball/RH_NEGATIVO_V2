@@ -16,7 +16,20 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     // esa carrera válida para que el test no sea frágil en producción.
     for (let attempt = 0; attempt < 3 && !created; attempt += 1) {
       preview = await apiCall(request, 'socios_proximo_id');
-      expect(Number(preview.id_socio)).toBeGreaterThan(0);
+      const previewId = Number(preview.id_socio);
+      expect(previewId).toBeGreaterThan(0);
+
+      // Un número anterior al sugerido nunca debe poder reutilizarse sólo
+      // porque el socio correspondiente haya sido eliminado físicamente. El
+      // backend conserva la marca histórica real y rechaza IDs viejos.
+      if (previewId > 1) {
+        await expect(
+          createSocio(request, socioData('ID HISTORICO NO REUTILIZABLE'), {
+            id_socio_nuevo: previewId - 1,
+          }),
+        ).rejects.toMatchObject({ status: 409, code: 'ID_SOCIO_DESACTUALIZADO' });
+      }
+
       try {
         created = await createSocio(request, data, { id_socio_nuevo: Number(preview.id_socio) });
       } catch (error) {
@@ -86,6 +99,18 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     history = await apiCall(request, 'socios_historial', { params: { id: created.id_socio } });
     const rows = history.historial_estados || [];
     expect(rows.length).toBeGreaterThanOrEqual(2);
+
+    // Una única operación de reactivación debe producir exactamente un evento.
+    // Esto protege instalaciones heredadas donde un trigger sobre socios.vigente
+    // ya crea REACTIVACION y antes el backend insertaba una segunda fila.
+    const reactivations = rows.filter((row) => row.tipo_evento === 'REACTIVACION');
+    expect(reactivations).toHaveLength(1);
+    expect(reactivations[0]).toMatchObject({
+      vigente_anterior: false,
+      vigente_nuevo: true,
+      motivo: 'PW E2E REACTIVACION API',
+    });
+    expect(String(reactivations[0].fecha_evento || '')).toContain(todayIso());
   });
 
   test('listar y obtener rechazan filtros/IDs inválidos sin tocar datos', async ({ request }) => {
@@ -146,11 +171,12 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     });
   });
 
-  test('eliminación definitiva protege socios con pagos y sólo permite borrar cuando no queda historia económica', async ({ request }) => {
+  test('eliminación definitiva saca al socio del padrón y preserva pagos/inscripción en Contabilidad', async ({ request }) => {
     const category = await createQuotaCategory(request);
-    const socio = await createQuotaSocio(request, 'DELETE PROTEGIDO', category.item.id_categoria);
+    const socio = await createQuotaSocio(request, 'DELETE CON TRAZABILIDAD', category.item.id_categoria);
     const catalogs = await quotaCatalogs(request);
     const periodId = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
+    const currentPeriodId = Math.ceil(Number(todayIso().slice(5, 7)) / 2);
 
     const paid = await apiCall(request, 'cuotas_registrar_pago', {
       method: 'POST',
@@ -162,25 +188,98 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     });
     expect(paid.items).toHaveLength(1);
 
-    await expectApiError(request, 'socios_eliminar_definitivo', {
-      method: 'POST', data: { id: socio.item.id_socio },
-    }, { status: 409, code: 'SOCIO_CON_HISTORIAL_NO_ELIMINABLE' });
-
-    const paidList = await apiCall(request, 'cuotas_listar', {
-      params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
+    const registrationMedium = (catalogs.catalogos.medios_pago || []).find((item) => {
+      const name = String(item.nombre || '').toUpperCase();
+      return item.activo !== false && (name.includes('EFECTIVO') || name.includes('TRANSFERENCIA'));
     });
-    expect((paidList.items || []).some((item) => Number(item.id_socio) === Number(socio.item.id_socio))).toBe(true);
+    if (!registrationMedium) throw new Error('Cuotas E2E requiere EFECTIVO o TRANSFERENCIA para inscripción.');
 
-    await apiCall(request, 'cuotas_eliminar_pago', {
-      method: 'POST', data: { id_pago: paid.items[0].id_pago },
+    const registration = await apiCall(request, 'cuotas_registrar_inscripcion', {
+      method: 'POST',
+      data: {
+        id_socio: socio.item.id_socio,
+        fecha_pago: todayIso(),
+        monto: '12345',
+        id_medio_pago: registrationMedium.id_medio_pago,
+      },
     });
+    expect(Number(registration.item.id_socio)).toBe(Number(socio.item.id_socio));
+
+    const before = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: currentYear(),
+        periodo: currentPeriodId,
+        pagina: 1,
+        buscar: socio.data.dni,
+      },
+    });
+    const beforeRows = before.detalle.items.filter(
+      (item) => Number(item.id_socio) === Number(socio.item.id_socio),
+    );
+    expect(beforeRows.some((item) => item.tipo_ingreso === 'CUOTA')).toBe(true);
+    expect(beforeRows.some((item) => item.tipo_ingreso === 'INSCRIPCIÓN')).toBe(true);
+
     const deleted = await apiCall(request, 'socios_eliminar_definitivo', {
       method: 'POST', data: { id: socio.item.id_socio },
     });
     expect(deleted.id_socio).toBe(socio.item.id_socio);
+    expect(Number(deleted.preservados.pagos)).toBe(1);
+    expect(Number(deleted.preservados.pagos_inscripcion)).toBe(1);
+
+    // Para Socios el registro ya no existe.
     await expectApiError(request, 'socios_obtener', { params: { id: socio.item.id_socio } }, {
       status: 404, code: 'SOCIO_NO_ENCONTRADO',
     });
+    const sociosList = await apiCall(request, 'socios_listar', {
+      params: { vigente: '', buscar: socio.data.dni, pagina: 1 },
+    });
+    expect((sociosList.items || []).some((item) => Number(item.id_socio) === Number(socio.item.id_socio))).toBe(false);
+
+    // Tampoco puede reaparecer ni reactivarse desde módulos operativos.
+    await expectApiError(request, 'socios_reactivar', {
+      method: 'POST',
+      data: { id: socio.item.id_socio, fecha_reactivacion: todayIso() },
+    }, { status: 404, code: 'SOCIO_NO_ENCONTRADO' });
+
+    const paidList = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
+    });
+    expect((paidList.items || []).some((item) => Number(item.id_socio) === Number(socio.item.id_socio))).toBe(false);
+
+    // Contabilidad conserva ambos movimientos y también el DNI original,
+    // aunque socios.dni se libere para permitir una carga correcta posterior.
+    const after = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: currentYear(),
+        periodo: currentPeriodId,
+        pagina: 1,
+        buscar: socio.data.dni,
+      },
+    });
+    const afterRows = after.detalle.items.filter(
+      (item) => Number(item.id_socio) === Number(socio.item.id_socio),
+    );
+    expect(afterRows.some((item) => item.tipo_ingreso === 'CUOTA' && Number(item.id_pago) === Number(paid.items[0].id_pago))).toBe(true);
+    expect(afterRows.some((item) => item.tipo_ingreso === 'INSCRIPCIÓN' && Number(item.id_inscripcion) === Number(registration.item.id_inscripcion))).toBe(true);
+    expect(afterRows.every((item) => String(item.dni) === String(socio.data.dni))).toBe(true);
+
+    // Una vez eliminado del padrón, esos movimientos pasan a ser historia contable:
+    // ni Cuotas ni un cliente API directo pueden modificarlos o borrarlos.
+    await expectApiError(request, 'cuotas_eliminar_pago', {
+      method: 'POST', data: { id_pago: paid.items[0].id_pago },
+    }, { status: 409, code: 'MOVIMIENTO_HISTORICO_PROTEGIDO' });
+    await expectApiError(request, 'cuotas_eliminar_inscripcion', {
+      method: 'POST', data: { id_inscripcion: registration.item.id_inscripcion },
+    }, { status: 409, code: 'MOVIMIENTO_HISTORICO_PROTEGIDO' });
+
+    // El DNI queda realmente liberado: un socio corregido puede darse de alta.
+    const replacement = await createSocio(
+      request,
+      { ...socio.data, nombre: `${socio.data.nombre} REINGRESO` },
+      { id_categoria: category.item.id_categoria, fecha_ingreso: todayIso() },
+    );
+    expect(replacement.dni).toBe(socio.data.dni);
+    expect(Number(replacement.id_socio)).not.toBe(Number(socio.item.id_socio));
   });
 
 });

@@ -573,7 +573,8 @@ export default function ContableModule({ view = "summary" }) {
   const isFeeIncomeTab = incomeTab === "partners";
   const [feeDetailTab, setFeeDetailTab] = useState("detail");
   const [feePeriod, setFeePeriod] = useState(String(Math.ceil(CURRENT_MONTH / 2)));
-  const [feeDetailSearch, setFeeDetailSearch] = useState("");
+  const [feeDetailSearchSocio, setFeeDetailSearchSocio] = useState("");
+  const [feeDetailSearchId, setFeeDetailSearchId] = useState("");
   const [feeDetailPage, setFeeDetailPage] = useState(1);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -620,7 +621,8 @@ export default function ContableModule({ view = "summary" }) {
     setCategory("");
     setMean("");
     setSearch("");
-    setFeeDetailSearch("");
+    setFeeDetailSearchSocio("");
+    setFeeDetailSearchId("");
     setFeeDetailTab("detail");
     setFeeDetailPage(1);
     setPage(1);
@@ -636,7 +638,7 @@ export default function ContableModule({ view = "summary" }) {
 
   useEffect(() => {
     setFeeDetailPage(1);
-  }, [year, feePeriod, feeDetailSearch]);
+  }, [year, feePeriod, feeDetailSearchSocio, feeDetailSearchId]);
 
   const loadData = useCallback(async () => {
     const currentRequest = ++requestId.current;
@@ -659,7 +661,8 @@ export default function ContableModule({ view = "summary" }) {
           response = await contableApi.ingresosSocios({
             anio: year,
             periodo: feePeriod,
-            buscar: feeDetailSearch,
+            buscar: feeDetailSearchSocio,
+            id_socio: feeDetailSearchId,
             pagina: feeDetailPage,
           });
         } else if (view === "income") {
@@ -689,7 +692,8 @@ export default function ContableModule({ view = "summary" }) {
     year,
     month,
     feePeriod,
-    feeDetailSearch,
+    feeDetailSearchSocio,
+    feeDetailSearchId,
     feeDetailPage,
     search,
     category,
@@ -702,13 +706,15 @@ export default function ContableModule({ view = "summary" }) {
   }, [loadData]);
 
   useEffect(() => {
-    const activeSearch = view === "income" && isFeeIncomeTab ? feeDetailSearch : search;
+    const activeSearch = view === "income" && isFeeIncomeTab
+      ? `${feeDetailSearchSocio}${feeDetailSearchId}`
+      : search;
     const timer = window.setTimeout(loadData, activeSearch ? 250 : 0);
     return () => {
       window.clearTimeout(timer);
       requestId.current += 1;
     };
-  }, [loadData, search, feeDetailSearch, view, isFeeIncomeTab]);
+  }, [loadData, search, feeDetailSearchSocio, feeDetailSearchId, view, isFeeIncomeTab]);
 
   useEffect(() => {
     if (loading || pendingTableScrollRef.current == null) return undefined;
@@ -1220,12 +1226,21 @@ export default function ContableModule({ view = "summary" }) {
                     ? [
                         {
                           key: "buscar-ingresos-socios",
-                          label: "Buscar",
+                          label: "Socio",
                           type: "search",
                           className: "contable-filter--partner-search",
                           placeholder: "",
-                          value: feeDetailSearch,
-                          onChange: setFeeDetailSearch,
+                          value: feeDetailSearchSocio,
+                          onChange: setFeeDetailSearchSocio,
+                        },
+                        {
+                          key: "buscar-id-ingresos-socios",
+                          label: "ID",
+                          type: "search",
+                          className: "contable-filter--partner-id",
+                          placeholder: "",
+                          value: feeDetailSearchId,
+                          onChange: (value) => setFeeDetailSearchId(String(value || "").replace(/\D/g, "").slice(0, 10)),
                         },
                       ]
                     : []),
@@ -1376,7 +1391,8 @@ export default function ContableModule({ view = "summary" }) {
             data={data}
             loading={loading}
             activeTab={feeDetailTab}
-            detailSearch={feeDetailSearch}
+            detailSearch={feeDetailSearchSocio}
+            detailIdSearch={feeDetailSearchId}
             onDetailPageChange={setFeeDetailPage}
             onFeedback={setFeedback}
           />

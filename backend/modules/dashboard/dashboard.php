@@ -18,9 +18,16 @@ final class Dashboard
         $year = (int)$today->format('Y');
         $month = (int)$today->format('n');
         $modern = self::columnExists($db, 'socios', 'vigente');
-        $activeWhere = $modern ? 'vigente = 1' : "tipo_socio = 'PERSONA' AND estado = 'ACTIVO'";
-        $activeSocioWhere = $modern ? 's.vigente = 1' : "s.tipo_socio = 'PERSONA' AND s.estado = 'ACTIVO'";
-        $inactiveWhere = $modern ? 'vigente = 0' : "tipo_socio = 'PERSONA' AND estado = 'INACTIVO'";
+        $hasDeletedArchive = self::tableExists($db, 'socios_eliminados');
+        $notDeleted = $hasDeletedArchive
+            ? ' AND NOT EXISTS (SELECT 1 FROM socios_eliminados se_arch WHERE se_arch.id_socio = socios.id_socio)'
+            : '';
+        $notDeletedAlias = $hasDeletedArchive
+            ? ' AND NOT EXISTS (SELECT 1 FROM socios_eliminados se_arch WHERE se_arch.id_socio = s.id_socio)'
+            : '';
+        $activeWhere = ($modern ? 'vigente = 1' : "tipo_socio = 'PERSONA' AND estado = 'ACTIVO'") . $notDeleted;
+        $activeSocioWhere = ($modern ? 's.vigente = 1' : "s.tipo_socio = 'PERSONA' AND s.estado = 'ACTIVO'") . $notDeletedAlias;
+        $inactiveWhere = ($modern ? 'vigente = 0' : "tipo_socio = 'PERSONA' AND estado = 'INACTIVO'") . $notDeleted;
         $dateColumn = self::columnExists($db, 'socios', 'fecha_ingreso') ? 'fecha_ingreso' : 'fecha_alta';
 
         $active = self::safeCount($db, "SELECT COUNT(*) FROM socios WHERE {$activeWhere}");

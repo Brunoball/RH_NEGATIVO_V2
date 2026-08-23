@@ -163,6 +163,20 @@ const isUnavailablePrincipal = (principal) =>
   principal.puede_pagar === "0" ||
   principal.disponible === false;
 
+const isAnnualPaymentAvailable = (periodMap, options = DEFAULT_MONTHS) => {
+  const bimonthlyIds = options
+    .map((item) => String(item.id_mes ?? item.id_periodo ?? ""))
+    .filter((id) => Number(id) >= 1 && Number(id) <= 6);
+
+  return (
+    bimonthlyIds.length === 6 &&
+    bimonthlyIds.every((monthId) => {
+      const period = periodMap[String(monthId)];
+      return Boolean(period) && !period.paid && !period.unavailable;
+    })
+  );
+};
+
 const familyTargetsForMonths = (periodMap, monthIds) =>
   monthIds.reduce((targets, monthId) => {
     const context = periodMap[String(monthId)]?.context;
@@ -487,7 +501,7 @@ function CuotasAdvancedFilters({
         aria-expanded={open}
       >
         <FontAwesomeIcon icon={faFilter} />
-        <span>Aplicar Filtros</span>
+        <span>Filtros</span>
         {activeCount ? <strong>{activeCount}</strong> : null}
         <FontAwesomeIcon icon={faChevronDown} className="cuotas-filterTrigger__arrow" />
       </button>
@@ -720,8 +734,10 @@ export default function Cuotas() {
   const [estadoPersona, setEstadoPersona] = useState("");
   const [cobrador, setCobrador] = useState("");
   const [medioPago, setMedioPago] = useState("");
-  const [buscar, setBuscar] = useState("");
-  const [debouncedBuscar, setDebouncedBuscar] = useState("");
+  const [buscarSocio, setBuscarSocio] = useState("");
+  const [buscarId, setBuscarId] = useState("");
+  const [debouncedBuscarSocio, setDebouncedBuscarSocio] = useState("");
+  const [debouncedBuscarId, setDebouncedBuscarId] = useState("");
   const [anio, setAnio] = useState(String(currentYear));
   const [mes, setMes] = useState(String(currentMonth));
   const [pagina, setPagina] = useState(1);
@@ -752,18 +768,15 @@ export default function Cuotas() {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setDebouncedBuscar(buscar.trim());
+      setDebouncedBuscarSocio(buscarSocio.trim());
+      setDebouncedBuscarId(String(buscarId || "").replace(/^0+(?=\d)/, ""));
       setPagina(1);
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [buscar]);
+  }, [buscarSocio, buscarId]);
 
-  const busquedaNormalizada = debouncedBuscar.trim();
-  const busquedaEsId = /^\d+$/.test(busquedaNormalizada);
-  const filtroBuscar = busquedaEsId ? "" : busquedaNormalizada;
-  const filtroIdSocio = busquedaEsId
-    ? busquedaNormalizada.replace(/^0+(?=\d)/, "")
-    : "";
+  const filtroBuscar = debouncedBuscarSocio.trim();
+  const filtroIdSocio = debouncedBuscarId.trim();
 
   const filtros = useMemo(
     () => ({
@@ -913,7 +926,8 @@ export default function Cuotas() {
     estadoPersona,
     cobrador,
     medioPago,
-    debouncedBuscar,
+    debouncedBuscarSocio,
+    debouncedBuscarId,
     anio,
     mes,
   ]);
@@ -1102,11 +1116,8 @@ export default function Cuotas() {
           )?.nombre || medioPago
         }`
       : null,
-    busquedaNormalizada
-      ? busquedaEsId
-        ? `ID socio: ${filtroIdSocio}`
-        : `Búsqueda: ${busquedaNormalizada}`
-      : null,
+    filtroBuscar ? `Socio: ${filtroBuscar}` : null,
+    filtroIdSocio ? `ID socio: ${filtroIdSocio}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -1123,6 +1134,10 @@ export default function Cuotas() {
       const period = paymentPeriods[monthId];
       return monthId !== "7" && period && !period.paid && !period.unavailable;
     });
+  const annualPaymentAvailable = isAnnualPaymentAvailable(
+    paymentPeriods,
+    monthOptions,
+  );
   const allAvailableMonthsSelected =
     availableMonthIds.length > 0 &&
     availableMonthIds.every((monthId) => selectedMonthIds.includes(monthId));
@@ -1240,13 +1255,15 @@ export default function Cuotas() {
       const periodMap = Object.fromEntries(
         periods.map((period) => [period.monthId, period]),
       );
+      const annualAvailable = isAnnualPaymentAvailable(periodMap, monthOptions);
       const validSelection = selectedMonths
         .map(String)
         .filter(
           (monthId) =>
             periodMap[monthId] &&
             !periodMap[monthId].paid &&
-            !periodMap[monthId].unavailable,
+            !periodMap[monthId].unavailable &&
+            (monthId !== "7" || annualAvailable),
         )
         .sort((left, right) => Number(left) - Number(right));
       const resolvedActiveMonth = validSelection.includes(String(activeMonth))
@@ -1601,7 +1618,12 @@ export default function Cuotas() {
       .map(String)
       .filter((monthId) => {
         const period = paymentPeriods[monthId];
-        return period && !period.paid && !period.unavailable;
+        return (
+          period &&
+          !period.paid &&
+          !period.unavailable &&
+          (monthId !== "7" || annualPaymentAvailable)
+        );
       })
       .sort((left, right) => Number(left) - Number(right));
     const normalizedMonths = eligibleMonths.includes("7")
@@ -1637,7 +1659,12 @@ export default function Cuotas() {
   const togglePaymentMonth = (monthId) => {
     const normalizedMonth = String(monthId);
     const period = paymentPeriods[normalizedMonth];
-    if (!period || period.paid || period.unavailable) return;
+    if (
+      !period ||
+      period.paid ||
+      period.unavailable ||
+      (normalizedMonth === "7" && !annualPaymentAvailable)
+    ) return;
 
     const selected = selectedMonthIds.includes(normalizedMonth);
     const nextMonths = selected
@@ -1964,6 +1991,14 @@ export default function Cuotas() {
         setFeedback({
           type: "error",
           message: "Seleccioná al menos un mes para registrar el pago.",
+        });
+        return;
+      }
+      if (selectedMonthIds.includes("7") && !annualPaymentAvailable) {
+        setFeedback({
+          type: "error",
+          message:
+            "Contado Anual sólo está disponible cuando los seis períodos del año están disponibles para pagar.",
         });
         return;
       }
@@ -2399,13 +2434,22 @@ export default function Cuotas() {
       ],
     },
     {
-      key: "buscar",
+      key: "buscar-socio",
       type: "search",
-      label: "Socio / ID",
+      label: "Socio",
       placeholder: "",
-      value: buscar,
-      onChange: setBuscar,
+      value: buscarSocio,
+      onChange: setBuscarSocio,
       className: "cuotas-search-filter",
+    },
+    {
+      key: "buscar-id",
+      type: "search",
+      label: "ID",
+      placeholder: "",
+      value: buscarId,
+      onChange: (value) => setBuscarId(String(value || "").replace(/\D/g, "").slice(0, 10)),
+      className: "cuotas-id-filter",
     },
     {
       key: "anio",
@@ -2842,6 +2886,7 @@ export default function Cuotas() {
         updatePaymentYear={updatePaymentYear}
         paymentPeriodAmount={paymentPeriodAmount}
         availableMonthIds={availableMonthIds}
+        annualPaymentAvailable={annualPaymentAvailable}
         allAvailableMonthsSelected={allAvailableMonthsSelected}
         toggleAllPaymentMonths={toggleAllPaymentMonths}
         monthOptions={monthOptions}

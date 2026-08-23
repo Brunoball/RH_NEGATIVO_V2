@@ -36,11 +36,12 @@ async function quotaCatalogs(request, year = currentYear()) {
   return { data, catalogos, periods, bimonthly, annual, medium };
 }
 
-async function createQuotaSocio(request, label, categoryId) {
+async function createQuotaSocio(request, label, categoryId, options = {}) {
   const data = cuotaSocioData(label);
   const item = await createSocio(request, data, {
     id_categoria: categoryId,
     fecha_ingreso: `${currentYear()}-01-01`,
+    ...options,
   });
   return { data, item };
 }

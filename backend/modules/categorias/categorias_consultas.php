@@ -5,6 +5,7 @@ trait CategoriasConsultas
 {
     private static function listarDatos(PDO $db, array $filters): array
     {
+        $socioOperativo = self::filtroSocioOperativoCategoria($db, 's');
         $status = trim((string)($filters['estado'] ?? 'activo'));
         if (!in_array($status, ['', 'activo', 'inactivo'], true)) {
             api_error('El estado solicitado no es válido.', 'FILTRO_INVALIDO');
@@ -36,7 +37,7 @@ trait CategoriasConsultas
                     COALESCE(MAX(ph.fecha_cambio), c.creado_en) AS updated_at,
                     COUNT(DISTINCT CASE WHEN s.vigente = 1 THEN s.id_socio END) AS cantidad_socios
              FROM categoria c
-             LEFT JOIN socios s ON s.id_categoria = c.id_categoria
+             LEFT JOIN socios s ON s.id_categoria = c.id_categoria AND {$socioOperativo}
              LEFT JOIN precios_historicos ph ON ph.id_categoria = c.id_categoria
              {$sqlWhere}
              GROUP BY c.id_categoria, c.nombre, c.monto_mensual, c.monto_anual,
@@ -108,6 +109,7 @@ trait CategoriasConsultas
 
     private static function detalle(PDO $db, int $id): ?array
     {
+        $socioOperativo = self::filtroSocioOperativoCategoria($db, 's');
         $statement = $db->prepare(
             "SELECT c.id_categoria,
                     c.nombre,
@@ -118,7 +120,7 @@ trait CategoriasConsultas
                     COALESCE(MAX(ph.fecha_cambio), c.creado_en) AS updated_at,
                     COUNT(DISTINCT CASE WHEN s.vigente = 1 THEN s.id_socio END) AS cantidad_socios
              FROM categoria c
-             LEFT JOIN socios s ON s.id_categoria = c.id_categoria
+             LEFT JOIN socios s ON s.id_categoria = c.id_categoria AND {$socioOperativo}
              LEFT JOIN precios_historicos ph ON ph.id_categoria = c.id_categoria
              WHERE c.id_categoria = ?
              GROUP BY c.id_categoria, c.nombre, c.monto_mensual, c.monto_anual,
@@ -129,6 +131,17 @@ trait CategoriasConsultas
         if (!$category) return null;
         self::castCategoria($category);
         return $category;
+    }
+
+    private static function filtroSocioOperativoCategoria(PDO $db, string $alias = 's'): string
+    {
+        try {
+            $db->query('SELECT 1 FROM socios_eliminados LIMIT 0');
+        } catch (Throwable) {
+            return '1 = 1';
+        }
+        if (!preg_match('/^[A-Za-z0-9_]+$/D', $alias)) $alias = 's';
+        return "NOT EXISTS (SELECT 1 FROM socios_eliminados se_arch WHERE se_arch.id_socio = {$alias}.id_socio)";
     }
 
     private static function castCategoria(array &$category): void

@@ -61,6 +61,7 @@ export default function CrudModal({
   footerStart = null,
   modalClassName = "",
   closeOnBackdrop = true,
+  closeOnEscape = true,
   // Los formularios controlados deben normalizar el texto dentro de su
   // onChange. Mutar el valor del DOM durante input puede dejar el estado React
   // desactualizado y hacer que el contenido vuelva atrás en el próximo render.
@@ -96,7 +97,7 @@ export default function CrudModal({
       event.stopPropagation();
       event.stopImmediatePropagation?.();
 
-      if (!savingRef.current) onCloseRef.current?.();
+      if (closeOnEscape && !savingRef.current) onCloseRef.current?.();
     };
 
     document.body.style.overflow = "hidden";
@@ -106,7 +107,7 @@ export default function CrudModal({
       document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [open]);
+  }, [open, closeOnEscape]);
 
   if (!open) return null;
   return createPortal(

@@ -197,7 +197,7 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     }
 
     await page.goto('/socios/personas');
-    const search = page.getByLabel('Socio / ID', { exact: true });
+    const search = page.getByLabel('Socio', { exact: true });
     await search.fill(data.dni);
     await expect(rowByText(page, data.nombre)).toBeVisible();
 
@@ -294,7 +294,7 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     });
 
     await page.goto('/socios/personas');
-    const search = page.getByLabel('Socio / ID', { exact: true });
+    const search = page.getByLabel('Socio', { exact: true });
     await search.fill(data.dni);
     await expect(rowByText(page, data.nombre)).toBeVisible();
 
@@ -686,7 +686,7 @@ test.describe('Blindaje adicional · Cuotas', () => {
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
     await page.getByLabel('Mes', { exact: true }).selectOption(periodId);
-    await page.getByRole('textbox', { name: 'Socio / ID', exact: true }).fill(String(a.item.id_socio));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(a.item.id_socio));
     const row = rowByText(page, a.data.nombre);
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: `Registrar pago de ${a.data.nombre}` }).click();
@@ -915,15 +915,16 @@ test.describe('Blindaje adicional · Configuración', () => {
       method: 'POST', data: { id: socio.id_socio },
     });
 
-    // Medio y estado pueden quedar sin referencias actuales. En cambio categoría,
-    // cobrador y grupo deben seguir protegidos porque la auditoría conserva la
-    // clasificación histórica del socio/pago aunque el registro E2E ya no exista.
+    // El medio deja de tener movimientos actuales porque el pago E2E fue eliminado.
+    // Categoría, cobrador, estado y grupo siguen protegidos: la eliminación del socio
+    // lo saca del padrón operativo, pero conserva un tombstone + historial para que
+    // la trazabilidad contable no pierda las etiquetas usadas originalmente.
     await deleteConfigItem(request, 'medios_pago', configItemId(medium, defs.medios_pago));
-    await deleteConfigItem(request, 'estado', configItemId(state, defs.estado));
 
     for (const [list, item, def] of [
       ['categoria', category, defs.categoria],
       ['cobrador', collector, defs.cobrador],
+      ['estado', state, defs.estado],
       ['grupo_sanguineo', blood, defs.grupo_sanguineo],
     ]) {
       await expectApiError(request, 'configuracion_lista_eliminar_definitivo', {

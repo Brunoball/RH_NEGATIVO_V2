@@ -3,10 +3,32 @@ declare(strict_types=1);
 
 trait FamiliasConsultas
 {
+    private static function familiasArchivoSociosEliminadosDisponible(PDO $db): bool
+    {
+        try {
+            $db->query('SELECT 1 FROM socios_eliminados LIMIT 0');
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private static function familiasFiltroSociosOperativos(PDO $db, string $alias = 's'): string
+    {
+        if (!self::familiasArchivoSociosEliminadosDisponible($db)) return '1 = 1';
+        if (!preg_match('/^[A-Za-z0-9_]+$/D', $alias)) $alias = 's';
+        return "NOT EXISTS (SELECT 1 FROM socios_eliminados se_arch WHERE se_arch.id_socio = {$alias}.id_socio)";
+    }
+
     private static function listarDatos(PDO $db, array $filters): array
     {
         $where = [];
         $params = [];
+        $archiveAvailable = self::familiasArchivoSociosEliminadosDisponible($db);
+        $historicalDniJoin = $archiveAvailable
+            ? 'LEFT JOIN socios_eliminados seb ON seb.id_socio = sb.id_socio'
+            : '';
+        $historicalDniExpr = $archiveAvailable ? 'COALESCE(sb.dni, seb.dni)' : 'sb.dni';
 
         $status = strtolower(trim((string)($filters['estado'] ?? 'activo')));
         if (!in_array($status, ['', 'activo', 'inactivo'], true)) {
@@ -23,8 +45,9 @@ trait FamiliasConsultas
                     SELECT 1
                     FROM familias_socios fsb
                     INNER JOIN socios sb ON sb.id_socio = fsb.id_socio
+                    {$historicalDniJoin}
                     WHERE fsb.id_familia = f.id_familia
-                      AND CONCAT_WS(' ', sb.nombre, sb.dni) LIKE {param}
+                      AND CONCAT_WS(' ', sb.nombre, {$historicalDniExpr}) LIKE {param}
                 )",
             ],
             150,
@@ -130,6 +153,7 @@ trait FamiliasConsultas
                     LIMIT 1
                )
              LEFT JOIN familias f ON f.id_familia = fs.id_familia
+             WHERE " . self::familiasFiltroSociosOperativos($db, 's') . "
              ORDER BY s.vigente DESC, s.nombre ASC, s.id_socio ASC"
         )->fetchAll();
 
@@ -218,6 +242,7 @@ trait FamiliasConsultas
              WHERE fs.id_familia IN ({$placeholders})
                AND fs.activo = 1
                AND fs.hasta IS NULL
+               AND " . self::familiasFiltroSociosOperativos($db, 's') . "
              ORDER BY s.nombre ASC, s.id_socio ASC"
         );
         $active->execute($ids);
@@ -228,6 +253,11 @@ trait FamiliasConsultas
         }
 
         if ($includeHistory) {
+            $archiveAvailable = self::familiasArchivoSociosEliminadosDisponible($db);
+            $historyDniExpr = $archiveAvailable ? 'COALESCE(s.dni, se_arch.dni)' : 's.dni';
+            $historyArchiveJoin = $archiveAvailable
+                ? 'LEFT JOIN socios_eliminados se_arch ON se_arch.id_socio = s.id_socio'
+                : '';
             $history = $db->prepare(
                 "SELECT fs.id_familia_socio,
                         fs.id_familia,
@@ -238,12 +268,13 @@ trait FamiliasConsultas
                         fs.creado_en,
                         fs.actualizado_en,
                         s.nombre,
-                        s.dni,
+                        {$historyDniExpr} AS dni,
                         s.vigente,
                         s.id_categoria,
                         c.nombre AS categoria
                  FROM familias_socios fs
                  INNER JOIN socios s ON s.id_socio = fs.id_socio
+                 {$historyArchiveJoin}
                  LEFT JOIN categoria c ON c.id_categoria = s.id_categoria
                  WHERE fs.id_familia IN ({$placeholders})
                  ORDER BY COALESCE(fs.desde, DATE(fs.creado_en)) DESC,

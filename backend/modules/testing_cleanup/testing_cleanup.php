@@ -115,6 +115,7 @@ final class TestingCleanup
             'socios_cumpleanios_cierres' => 0,
             'socios_fusiones' => 0,
             'socios_historial_estados' => 0,
+            'socios_eliminados' => 0,
             'socios' => 0,
             'precios_historicos' => 0,
             'categorias' => 0,
@@ -329,6 +330,14 @@ final class TestingCleanup
                 'id_socio',
                 $testSocios
             );
+            if (self::tableExists($db, 'socios_eliminados')) {
+                $counts['socios_eliminados'] += self::deleteByIds(
+                    $db,
+                    'socios_eliminados',
+                    'id_socio',
+                    $testSocios
+                );
+            }
             $counts['socios'] += self::deleteByIds($db, 'socios', 'id_socio', $testSocios);
             $counts['familias'] += self::deleteByIds($db, 'familias', 'id_familia', $testFamilies);
 
@@ -462,10 +471,10 @@ final class TestingCleanup
 
             // DELETE no retrocede AUTO_INCREMENT. Como la suite crea y también
             // elimina registros (algunos incluso antes del teardown), si no
-            // corregimos los contadores el testing consume números reales del
-            // sistema. Fuera de la transacción dejamos TODAS las tablas con
-            // AUTO_INCREMENT exactamente en MAX(id) + 1, sin renumerar ni
-            // modificar ninguna fila existente.
+            // corregimos los contadores el testing consume números técnicos.
+            // Fuera de la transacción restauramos cada AUTO_INCREMENT sin
+            // renumerar filas. En socios se preserva además el mayor número
+            // REAL histórico para no reutilizar números de socios eliminados.
             $autoIncrement = self::resetAutoIncrementCounters($db);
             $counts['contable_archivos'] += self::deleteContableFiles($contableFiles);
         } catch (Throwable $error) {
@@ -504,7 +513,8 @@ final class TestingCleanup
      *
      * Importante:
      * - NO renumera filas.
-     * - NO reutiliza huecos internos: siempre usa MAX(pk) + 1.
+     * - NO reutiliza huecos internos. Para IDs técnicos usa MAX(pk) + 1;
+     *   para socios conserva además el mayor número REAL histórico auditado.
      * - Descubre las tablas de forma dinámica para cubrir también tablas
      *   creadas por módulos (por ejemplo Contabilidad).
      * - Verifica después de cada ALTER que el contador coincida con el máximo
@@ -622,10 +632,62 @@ final class TestingCleanup
     {
         self::assertIdentifier($table);
         self::assertIdentifier($column);
+
+        // id_socio no es un ID técnico cualquiera: es el número de socio.
+        // Nunca debe reutilizarse un número real que ya existió aunque ese socio
+        // haya sido eliminado definitivamente. La auditoría conserva esa marca
+        // histórica y los IDs PW E2E se excluyen para que Playwright no consuma
+        // numeración real del padrón.
+        if ($table === 'socios' && $column === 'id_socio') {
+            return self::nextSocioBusinessId($db);
+        }
+
         $value = (int)$db->query(
             "SELECT COALESCE(MAX(`{$column}`), 0) + 1 FROM `{$table}`"
         )->fetchColumn();
         return max(1, $value);
+    }
+
+    private static function nextSocioBusinessId(PDO $db): int
+    {
+        $maxCurrent = (int)$db->query(
+            'SELECT COALESCE(MAX(id_socio), 0) FROM socios'
+        )->fetchColumn();
+
+        try {
+            $statement = $db->query(
+                "SELECT COALESCE(MAX(id_registro), 0)
+"
+                . "FROM auditoria
+"
+                . "WHERE tabla = 'socios'
+"
+                . "  AND (datos_anteriores IS NULL OR (
+"
+                . "       UPPER(CAST(datos_anteriores AS CHAR)) NOT LIKE '%PW E2E SOCIO%'
+"
+                . "   AND UPPER(CAST(datos_anteriores AS CHAR)) NOT LIKE '%PW EEE SOCIO%'
+"
+                . "  ))
+"
+                . "  AND (datos_nuevos IS NULL OR (
+"
+                . "       UPPER(CAST(datos_nuevos AS CHAR)) NOT LIKE '%PW E2E SOCIO%'
+"
+                . "   AND UPPER(CAST(datos_nuevos AS CHAR)) NOT LIKE '%PW EEE SOCIO%'
+"
+                . "  ))"
+            );
+            $maxHistoricalReal = max(0, (int)$statement->fetchColumn());
+            return max(1, $maxCurrent, $maxHistoricalReal) + 1;
+        } catch (Throwable $auditError) {
+            error_log('[e2e_cleanup][socios_historico] ' . $auditError->getMessage());
+        }
+
+        // Fallback para instalaciones antiguas sin auditoría utilizable: no
+        // hacemos retroceder socios por debajo del AUTO_INCREMENT efectivo.
+        $autoIncrement = self::tableAutoIncrement($db, 'socios');
+        return max(1, $maxCurrent + 1, $autoIncrement ?? 1);
     }
 
     /**

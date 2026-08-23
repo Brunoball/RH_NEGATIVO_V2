@@ -207,7 +207,24 @@ function configuracion_cantidad_usos_actuales(PDO $db, array $definition, int $i
         $table = (string)$relation['tabla'];
         $column = (string)$relation['columna'];
         if (!configuracion_tabla_columna_existe($db, $table, $column)) continue;
-        $statement = $db->prepare("SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = ?");
+        if ($table === 'socios'
+            && configuracion_tabla_columna_existe($db, 'socios_eliminados', 'id_socio')) {
+            $statement = $db->prepare(
+                "SELECT COUNT(*)
+"
+                . "FROM `socios` s
+"
+                . "WHERE s.`{$column}` = ?
+"
+                . "  AND NOT EXISTS (
+"
+                . "      SELECT 1 FROM socios_eliminados se WHERE se.id_socio = s.id_socio
+"
+                . "  )"
+            );
+        } else {
+            $statement = $db->prepare("SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = ?");
+        }
         $statement->execute([$id]);
         $total += (int)$statement->fetchColumn();
     }

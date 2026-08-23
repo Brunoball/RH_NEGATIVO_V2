@@ -54,9 +54,9 @@ const RAW_DIALOG_SURFACE_MANIFEST = {
 };
 
 const UI_COVERAGE_EVIDENCE = {
-  socios_numero_y_salida_segura: {
+  socios_id_y_salida_segura: {
     spec: '02-socios.spec.js',
-    tokens: ['Número de socio', 'Se asignará al crear el socio', 'ID actual del socio', '¿Salir sin guardar?', 'Sí, salir'],
+    tokens: ["getByLabel('ID'", 'ID reservado para el nuevo socio', 'ID actual del socio', '¿Salir sin guardar?', 'Sí, salir'],
   },
   socios_id_motivo_paginacion: {
     spec: '10-cobertura-ui-total.spec.js',
@@ -126,12 +126,24 @@ const UI_COVERAGE_EVIDENCE = {
     spec: '11-blindaje-final.spec.js',
     tokens: ['Cargar todos ejecuta la rama >100', 'Quedan 1 registros más', 'PW E2E CARGAR TODOS 101'],
   },
+  eliminacion_socio_trazabilidad_transversal: {
+    spec: '12-eliminacion-trazabilidad.spec.js',
+    tokens: [
+      'Familias cierra el vínculo operativo pero conserva integrante, DNI y búsqueda histórica',
+      'Dashboard y Configuración dejan de contar al eliminado como socio actual',
+      'Resumen y Balance conservan cuotas, inscripción e identidad histórica',
+      'Balance histórico de deudores conserva el DNI archivado',
+      'Ingresos de socios permite buscar y exportar los movimientos preservados',
+      'cantidad_usos_protegidos',
+      "format, extension] of [['Excel', '.xlsx'], ['PDF', '.pdf']]",
+    ],
+  },
 };
 
 const FUNCTIONAL_FILTER_EVIDENCE = {
   socios_principales: {
     spec: '02-socios.spec.js',
-    tokens: ["getByLabel('Socio / ID'", "getByLabel('Categoría')", "name: 'Vigentes'", "name: 'Bajas'"],
+    tokens: ["getByLabel('Socio'", "getByLabel('ID'", "getByLabel('Categoría')", "name: 'Vigentes'", "name: 'Bajas'"],
   },
   socios_avanzados: {
     spec: '08-blindaje-modulos.spec.js',
@@ -147,7 +159,7 @@ const FUNCTIONAL_FILTER_EVIDENCE = {
   },
   cuotas: {
     spec: '05-cuotas.spec.js',
-    tokens: ['Seleccionar todo lo filtrado', 'Mostrar Todos', "'Estado'", "'Cobrador'", "'Medio de pago'", "name: 'Socio / ID'"],
+    tokens: ['Seleccionar todo lo filtrado', 'Mostrar Todos', "'Estado'", "'Cobrador'", "'Medio de pago'", "name: 'Socio'", "name: 'ID'"],
   },
   configuracion: {
     spec: '06-configuracion.spec.js',
@@ -159,7 +171,7 @@ const FUNCTIONAL_FILTER_EVIDENCE = {
   },
   contable: {
     spec: '09-contable.spec.js',
-    tokens: ["getByLabel('Categoría'", "getByLabel('Medio de pago'", "getByLabel('Mes'", 'contable_ingresos_socios', 'contable_balance', 'balanceSearch'],
+    tokens: ["getByLabel('Categoría'", "getByLabel('Medio de pago'", "getByLabel('Mes'", "name: 'Socio'", "name: 'ID'", 'contable_ingresos_socios', 'contable_balance', 'balanceSearch'],
   },
 };
 

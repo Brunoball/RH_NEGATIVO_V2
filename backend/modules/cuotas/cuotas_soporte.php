@@ -12,6 +12,35 @@ abstract class CuotasSoporte
         ensure_cuotas_schema($db);
     }
 
+    protected static function archivoSociosEliminadosDisponible(PDO $db): bool
+    {
+        try {
+            $db->query('SELECT 1 FROM socios_eliminados LIMIT 0');
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    protected static function filtroSociosOperativos(PDO $db, string $alias = 's'): string
+    {
+        if (!self::archivoSociosEliminadosDisponible($db)) return '1 = 1';
+        if (!preg_match('/^[A-Za-z0-9_]+$/D', $alias)) $alias = 's';
+        return "NOT EXISTS (
+                    SELECT 1
+                    FROM socios_eliminados se_arch
+                    WHERE se_arch.id_socio = {$alias}.id_socio
+                )";
+    }
+
+    protected static function socioEliminado(PDO $db, int $partnerId): bool
+    {
+        if (!self::archivoSociosEliminadosDisponible($db)) return false;
+        $statement = $db->prepare('SELECT 1 FROM socios_eliminados WHERE id_socio = ? LIMIT 1');
+        $statement->execute([$partnerId]);
+        return (bool)$statement->fetchColumn();
+    }
+
     protected static function validarAnio(mixed $value): int
     {
         $year = filter_var($value, FILTER_VALIDATE_INT, [
