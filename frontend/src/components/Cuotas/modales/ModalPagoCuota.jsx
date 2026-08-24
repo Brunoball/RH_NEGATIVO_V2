@@ -5,6 +5,7 @@ import {
   faChevronDown,
   faIdCard,
   faMoneyBillWave,
+  faPlus,
   faTrashCan,
   faUsers,
 } from "@fortawesome/free-solid-svg-icons";
@@ -97,9 +98,13 @@ function PaymentYearChip({
               }}
               title={`Habilitar ${nextYear} para registrar un pago`}
             >
-              <FontAwesomeIcon icon={faCalendarDays} />
-              <span>Agregar año</span>
-              <small>{nextYear}</small>
+              <span className="cuotas-add-year__icon" aria-hidden="true">
+                <FontAwesomeIcon icon={faPlus} />
+              </span>
+              <span className="cuotas-add-year__copy">
+                <strong>Agregar año</strong>
+                <small>Habilitar {nextYear}</small>
+              </span>
             </button>
           ) : null}
         </div>
@@ -835,7 +840,7 @@ export default function ModalPagoCuota({
                         <span>Importe por período</span>
                         <small>
                           {paymentForm.aplicar_familia && family
-                            ? "Monto del socio; al cambiarlo se cobra individual."
+                            ? "El monto personalizado se aplica a cada integrante pendiente y mantiene activo el pago familiar."
                             : "Actual o histórico según el período."}
                         </small>
                       </div>

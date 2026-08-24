@@ -905,17 +905,22 @@
   color: #fff;
 }
 
+@media (max-width: 1599px) {
+  .cuotas-page
+    > .module-card
+    > .module-card__head
+    > .module-card__actions
+    > .cuotas-barcode-action {
+    display: none !important;
+  }
+}
+
 @media (max-width: 1499px) {
   .cuotas-page > .module-card > .module-card__head > .module-card__actions {
     display: flex !important;
     flex: 0 0 auto;
   }
 
-  .cuotas-page
-    > .module-card
-    > .module-card__head
-    > .module-card__actions
-    > .cuotas-barcode-action,
   .cuotas-page
     > .module-card
     > .module-card__head
@@ -1993,11 +1998,16 @@ html[data-theme="oscuro"] .cuotas-family-expand-btn:hover {
 }
 
 
-/* En escritorio sólo Imprimir y Exportar permanecen en el pie. Código de
-   barras y Seleccionar conservan su ubicación superior hasta 1499px. */
+/* Seleccionar vuelve arriba desde 1500px. Código de barras permanece debajo
+   de la tabla hasta 1599px y recién sube al encabezado desde 1600px. */
 @media (min-width: 1500px) {
-  .cuotas-lower-actions .cuotas-barcode-lower-action,
   .cuotas-lower-actions .cuotas-multiple-action {
+    display: none;
+  }
+}
+
+@media (min-width: 1600px) {
+  .cuotas-lower-actions .cuotas-barcode-lower-action {
     display: none;
   }
 }
