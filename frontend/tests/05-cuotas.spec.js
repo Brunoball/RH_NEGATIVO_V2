@@ -1368,6 +1368,25 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     for (const item of paid.items) {
       expect(Number(item.porcentaje_descuento_familiar)).toBeCloseTo(expectedDiscount, 2);
       expect(Number(item.monto)).toBeCloseTo(expectedAmount, 2);
+    }
+
+    const contable = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: currentYear(),
+        periodo: periodId,
+        pagina: 1,
+        id_socio: members[0].item.id_socio,
+      },
+    });
+    const contablePayment = contable.detalle.items.find(
+      (item) => Number(item.id_pago) === Number(paid.items[0].id_pago),
+    );
+    expect(contablePayment?.tipo_ajuste_monto).toBe('DESCUENTO_FAMILIAR');
+    expect(contablePayment?.etiqueta_monto).toBe(
+      `Descuento familiar ${String(expectedDiscount).replace(/\.0+$/, '')}%`,
+    );
+
+    for (const item of paid.items) {
       await deletePayment(request, item.id_pago);
     }
   });
@@ -1735,6 +1754,119 @@ test.describe('Cuotas · UI', () => {
       expect(Number(paid.items[0].monto)).toBeCloseTo(expected, 2);
       await deletePayment(request, paid.items[0].id_pago);
     }
+  });
+
+  test('regresión UI: monto personalizado conserva el pago familiar y se aplica a todos los integrantes', async ({ page, request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const customAmount = 7777.77;
+    const category = await createQuotaCategory(request);
+    const first = await createQuotaSocio(
+      request,
+      'UI FAMILIA MONTO PERSONALIZADO A',
+      category.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+    const second = await createQuotaSocio(
+      request,
+      'UI FAMILIA MONTO PERSONALIZADO B',
+      category.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const period = catalogs.bimonthly.find(
+      (item) => Number(item.id_periodo ?? item.id_mes) === Number(periodId),
+    );
+    const periodName = String(period?.nombre || `PERÍODO ${periodId}`);
+    const family = cuotaFamilyData();
+
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: first.item.id_socio, desde: today },
+          { id_socio: second.item.id_socio, desde: today },
+        ],
+      },
+    });
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(first.item.id_socio));
+    const row = rowByText(page, first.data.nombre);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: `Registrar pago de ${first.data.nombre}` }).click();
+
+    const dialog = page.getByRole('dialog').filter({ hasText: first.data.nombre }).last();
+    await dialog.getByRole('tab', { name: /Familia/ }).click();
+    const familyToggle = dialog.getByRole('checkbox', {
+      name: 'Aplicar pago a todo el grupo familiar',
+    });
+    await expect(familyToggle).toBeChecked();
+
+    await dialog.getByRole('tab', { name: /Importe por período/ }).click();
+    const customToggle = dialog.getByRole('checkbox', { name: 'Monto personalizado' });
+    for (let attempt = 0; attempt < 4 && !(await customToggle.isChecked()); attempt += 1) {
+      await customToggle.click();
+      if (!(await customToggle.isChecked())) await page.waitForTimeout(150);
+    }
+    await expect(customToggle).toBeChecked();
+    const customInput = dialog.getByLabel(`Monto personalizado para ${periodName}`);
+    await customInput.fill(String(customAmount));
+
+    await dialog.getByRole('tab', { name: /Familia/ }).click();
+    await expect(familyToggle).toBeChecked();
+    await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
+    await dialog.getByLabel('Medio de pago *').selectOption(String(catalogs.medium.id_medio_pago));
+    await dialog.getByRole('button', { name: /Registrar pago familiar/ }).click();
+
+    const receipt = page.getByRole('dialog', { name: 'Registro de pagos' });
+    await expect(receipt).toContainText(first.data.nombre);
+    await expect(receipt).toContainText(second.data.nombre);
+    await receipt.locator('.payment-receipt-actions__close').click();
+
+    const customPaymentIds = [];
+    for (const member of [first, second]) {
+      const paid = await apiCall(request, 'cuotas_listar', {
+        params: {
+          estado: 'PAGADOS',
+          anio: currentYear(),
+          mes: periodId,
+          id_socio: member.item.id_socio,
+        },
+      });
+      expect(paid.items).toHaveLength(1);
+      expect(Number(paid.items[0].monto)).toBeCloseTo(customAmount, 2);
+      customPaymentIds.push(paid.items[0].id_pago);
+    }
+
+    const contable = await apiCall(request, 'contable_ingresos_socios', {
+      params: {
+        anio: currentYear(),
+        periodo: periodId,
+        pagina: 1,
+        id_socio: first.item.id_socio,
+      },
+    });
+    const contablePayment = contable.detalle.items.find(
+      (item) => Number(item.id_pago) === Number(customPaymentIds[0]),
+    );
+    expect(contablePayment?.tipo_ajuste_monto).toBe('MONTO_PERSONALIZADO');
+    expect(contablePayment?.etiqueta_monto).toBe('Monto personalizado');
+
+    await page.goto('/contable/ingresos');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Período', { exact: true }).selectOption(String(periodId));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(first.item.id_socio));
+    const contableRow = page.getByRole('table', { name: 'Detalle de cobros recibidos' })
+      .getByRole('row')
+      .filter({ hasText: first.data.nombre });
+    await expect(contableRow).toContainText('Monto personalizado');
+
+    for (const paymentId of customPaymentIds) await deletePayment(request, paymentId);
   });
 
   test('regresión UI: pago familiar omite integrantes ya pagados y registra solamente los pendientes', async ({ page, request }) => {

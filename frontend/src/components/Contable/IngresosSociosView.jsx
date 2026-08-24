@@ -62,6 +62,14 @@ function collectorTone(value) {
   return `is-tone-${Math.abs(hash) % 6}`;
 }
 
+function amountAdjustmentTone(value) {
+  const type = String(value || "").toUpperCase();
+  if (type === "DESCUENTO_FAMILIAR") return "is-family";
+  if (type === "DESCUENTO_PERSONALIZADO") return "is-custom-discount";
+  if (type === "MONTO_PERSONALIZADO") return "is-custom";
+  return "is-neutral";
+}
+
 function BalanceStatusLegend() {
   return (
     <div className="ct-balance-statusLegend" aria-label="Referencia de estados de socios">
@@ -308,7 +316,33 @@ function IncomeDetail({ actions, section, onPageChange, loading }) {
             <div className="mov-gridCell is-center">{dateText(item.fecha)}</div>
             <div className="mov-gridCell is-center">{item.periodo || "—"}</div>
             <div className="mov-gridCell is-center">{item.medio || "—"}</div>
-            <div className="mov-gridCell is-right is-strong ct-income-money">{money(item.monto)}</div>
+            <div
+              className={`mov-gridCell is-right is-strong ct-income-money${
+                item.etiqueta_monto ? " has-adjustment" : ""
+              }`}
+              title={
+                item.etiqueta_monto && item.monto_referencia
+                  ? item.tipo_ajuste_monto === "DESCUENTO_FAMILIAR"
+                    ? `${item.etiqueta_monto}. Monto de categoría: ${money(
+                        item.categoria_monto_historico,
+                      )}`
+                    : `${item.etiqueta_monto}. Importe automático: ${money(
+                        item.monto_referencia,
+                      )}`
+                  : undefined
+              }
+            >
+              <strong>{money(item.monto)}</strong>
+              {item.etiqueta_monto ? (
+                <small
+                  className={`ct-income-amountTag ${amountAdjustmentTone(
+                    item.tipo_ajuste_monto,
+                  )}`}
+                >
+                  {item.etiqueta_monto}
+                </small>
+              ) : null}
+            </div>
           </div>
         ))}
       </GlobalDivTable>
@@ -1188,7 +1222,7 @@ export default function IngresosSociosView({
       fileName: `ingresos_socios_${period?.anio || ""}_${period?.id_periodo || ""}`,
       columns: [
         { label: "Socio", key: "socio" }, { label: "DNI", key: "dni" }, { label: "Tipo", key: "tipo_ingreso" }, { label: "Categoría", key: "categoria_etiqueta" },
-        { label: "Cobrador", key: "cobrador" }, { label: "Fecha de pago", key: "fecha" }, { label: "Período pago", key: "periodo" }, { label: "Medio", key: "medio" }, { label: "Monto", key: "monto" },
+        { label: "Cobrador", key: "cobrador" }, { label: "Fecha de pago", key: "fecha" }, { label: "Período pago", key: "periodo" }, { label: "Medio", key: "medio" }, { label: "Monto", key: "monto" }, { label: "Detalle del monto", key: "etiqueta_monto" },
       ],
       records: items,
     };

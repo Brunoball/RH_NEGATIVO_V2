@@ -581,6 +581,7 @@ test.describe('Contabilidad · UI completa', () => {
         periodId: Number(periodItem.id_periodo ?? periodItem.id_mes),
         mediumId: quota.medium.id_medio_pago,
         year,
+        amount: '4000.00',
       }),
     });
     const registrationMedium = (quota.catalogos.medios_pago || []).find((item) => {
@@ -608,6 +609,12 @@ test.describe('Contabilidad · UI completa', () => {
     expect(e2eIncomeRows.some((item) => item.tipo_ingreso === 'CUOTA' && Number(item.id_pago) === Number(guaranteedPayment.items[0].id_pago))).toBe(true);
     expect(e2eIncomeRows.some((item) => item.tipo_ingreso === 'INSCRIPCIÓN' && Number(item.id_inscripcion) === Number(guaranteedRegistration.item.id_inscripcion))).toBe(true);
     expect(e2eIncomeRows.find((item) => item.tipo_ingreso === 'INSCRIPCIÓN')?.periodo).toBe('INSCRIPCIÓN');
+    const customFeeRow = e2eIncomeRows.find(
+      (item) => Number(item.id_pago) === Number(guaranteedPayment.items[0].id_pago),
+    );
+    expect(customFeeRow?.tipo_ajuste_monto).toBe('DESCUENTO_PERSONALIZADO');
+    expect(customFeeRow?.etiqueta_monto).toBe('Descuento personalizado');
+    expect(cents(customFeeRow?.monto_referencia)).toBe(cents(quotaCategory.mensual));
 
     const filteredRegistrationReport = await apiCall(request, 'contable_ingresos_socios', {
       params: {
@@ -679,7 +686,11 @@ test.describe('Contabilidad · UI completa', () => {
       page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && response.url().includes('buscar=')),
       e2eSearch.fill(quotaSocio.data.dni),
     ]);
-    await expect(incomeTable.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^CUOTA$/ }) })).toBeVisible();
+    const customQuotaRow = incomeTable.getByRole('row')
+      .filter({ hasText: quotaSocio.data.nombre })
+      .filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^CUOTA$/ }) });
+    await expect(customQuotaRow).toBeVisible();
+    await expect(customQuotaRow).toContainText('Descuento personalizado');
     await expect(incomeTable.getByRole('row').filter({ hasText: quotaSocio.data.nombre }).filter({ has: page.locator('.mov-gridCell:nth-child(2) .mov-categoryChip').filter({ hasText: /^INSCRIPCIÓN$/ }) })).toBeVisible();
     await Promise.all([
       page.waitForResponse((response) => response.url().includes('action=contable_ingresos_socios') && !response.url().includes('buscar=')),

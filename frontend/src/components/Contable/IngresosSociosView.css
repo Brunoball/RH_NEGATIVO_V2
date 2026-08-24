@@ -565,6 +565,60 @@
   font-variant-numeric: tabular-nums;
 }
 
+.ct-income-money {
+  white-space: nowrap;
+}
+
+.ct-income-money.has-adjustment {
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+
+.ct-income-money > strong {
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ct-income-amountTag {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ct-income-amountTag.is-family {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.ct-income-amountTag.is-custom-discount {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.ct-income-amountTag.is-custom {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
 .ct-income-period-row .mov-gridCell {
   min-height: 50px;
   background: color-mix(in srgb, var(--balto-bg) 68%, #fff);

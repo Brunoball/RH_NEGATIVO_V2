@@ -35,6 +35,22 @@ trait ContableSocios
         return in_array($state, ['ACTIVO', 'PASIVO'], true) ? $state : 'SIN ESTADO';
     }
 
+    /**
+     * Misma fecha de referencia familiar que usa Cuotas: si el cobro se hizo
+     * dentro del período aplicado se toma la fecha real; para pagos atrasados o
+     * adelantados se conserva el inicio del período.
+     */
+    private static function fechaReferenciaFamiliarPago(
+        int $year,
+        int $periodId,
+        string $paymentDate
+    ): string {
+        [$periodStart, $periodEndExclusive] = self::rangoPeriodo($year, $periodId);
+        return $paymentDate >= $periodStart && $paymentDate < $periodEndExclusive
+            ? $paymentDate
+            : $periodStart;
+    }
+
     protected static function ingresosSociosDatos(PDO $db, array $filters): array
     {
         $year = self::filtroAnio($filters['anio'] ?? null);
@@ -132,7 +148,71 @@ trait ContableSocios
              WHERE " . implode(' AND ', $paymentWhere)
         );
         $paymentStatement->execute($paymentParams);
-        $rows = $paymentStatement->fetchAll(PDO::FETCH_ASSOC);
+        $paymentRows = $paymentStatement->fetchAll(PDO::FETCH_ASSOC);
+
+        // El alta de cada cuota conserva en Auditoría el precio base, el
+        // descuento familiar y el importe exactos del momento del cobro. Leemos
+        // esos snapshots en lotes para explicar el monto sin recalcularlo con
+        // configuraciones actuales y sin agregar una consulta por fila.
+        $paymentAuditById = [];
+        $paymentIds = array_values(array_unique(array_map(
+            'intval',
+            array_column($paymentRows, 'id_pago')
+        )));
+        foreach (array_chunk(array_filter($paymentIds), 500) as $paymentIdChunk) {
+            $placeholders = implode(',', array_fill(0, count($paymentIdChunk), '?'));
+            $auditStatement = $db->prepare(
+                "SELECT id_registro, datos_nuevos, id_auditoria
+                 FROM auditoria
+                 WHERE tabla = 'pagos'
+                   AND accion IN ('INSERT', 'PAGAR')
+                   AND id_registro IN ({$placeholders})
+                 ORDER BY id_auditoria DESC"
+            );
+            $auditStatement->execute($paymentIdChunk);
+            foreach ($auditStatement->fetchAll(PDO::FETCH_ASSOC) as $auditRow) {
+                $paymentId = (int)$auditRow['id_registro'];
+                if (!array_key_exists($paymentId, $paymentAuditById)) {
+                    $paymentAuditById[$paymentId] = (string)($auditRow['datos_nuevos'] ?? '');
+                }
+            }
+        }
+        foreach ($paymentRows as &$paymentRow) {
+            $paymentRow['datos_pago_auditoria'] = $paymentAuditById[(int)$paymentRow['id_pago']] ?? null;
+        }
+        unset($paymentRow);
+
+        // Las versiones anteriores no guardaban el snapshot económico dentro
+        // de Auditoría. Para esos pagos reconstruimos el descuento familiar en
+        // lote y con la fecha histórica correcta. Esto permite explicar también
+        // importes ya existentes sin hacer una consulta por cada fila.
+        $fallbackPartnerIdsByReference = [];
+        foreach ($paymentRows as $paymentRow) {
+            $paymentAudit = json_decode((string)($paymentRow['datos_pago_auditoria'] ?? ''), true);
+            $hasPaymentSnapshot = is_array($paymentAudit)
+                && isset($paymentAudit['monto_base'])
+                && is_numeric($paymentAudit['monto_base']);
+            if ($hasPaymentSnapshot) continue;
+
+            $paymentDate = substr((string)$paymentRow['fecha_pago'], 0, 10);
+            $familyReference = self::fechaReferenciaFamiliarPago(
+                (int)$paymentRow['anio_aplicado'],
+                (int)$paymentRow['id_periodo'],
+                $paymentDate
+            );
+            $fallbackPartnerIdsByReference[$familyReference][] = (int)$paymentRow['id_socio'];
+        }
+
+        $fallbackDiscountsByReference = [];
+        foreach ($fallbackPartnerIdsByReference as $familyReference => $partnerIds) {
+            $fallbackDiscountsByReference[$familyReference] = self::porcentajesDescuentoSocios(
+                $db,
+                $partnerIds,
+                $familyReference,
+                true
+            );
+        }
+        $rows = $paymentRows;
 
         $registrationStatement = $db->prepare(
             "SELECT 'INSCRIPCION' AS tipo_ingreso,
@@ -192,27 +272,115 @@ trait ContableSocios
             $isRegistration = (string)$row['tipo_ingreso'] === 'INSCRIPCION';
 
             $historicalCategoryAmount = 0.0;
+            $familyDiscount = 0.0;
+            $referenceAmount = null;
+            $customAmount = false;
+            $amountAdjustmentType = null;
+            $amountLabel = null;
             if (!$isRegistration) {
                 $appliedPeriod = (int)$row['id_periodo'];
                 $appliedYear = (int)$row['anio_aplicado'];
-                $referenceDate = sprintf(
+                $periodStart = sprintf(
                     '%04d-%02d-01',
                     $appliedYear,
                     $appliedPeriod === 7 ? 1 : (($appliedPeriod - 1) * 2 + 1)
                 );
-                $historicalCategoryAmount = $historicalCategoryId > 0
-                    ? self::precioHistorico(
-                        $db,
-                        $historicalCategoryId,
-                        $appliedPeriod === 7 ? 'anual' : 'mensual',
-                        $referenceDate
-                    )
-                    : 0.0;
+                $periodEnd = $appliedPeriod === 7
+                    ? sprintf('%04d-12-31', $appliedYear)
+                    : (new DateTimeImmutable(sprintf('%04d-%02d-01', $appliedYear, $appliedPeriod * 2)))
+                        ->modify('last day of this month')
+                        ->format('Y-m-d');
+                $joinDate = $historical['fecha_ingreso_efectiva'] ?? $historical['fecha_ingreso'] ?? null;
+                $priceReference = is_string($joinDate)
+                    && $joinDate > $periodStart
+                    && $joinDate <= $periodEnd
+                        ? $joinDate
+                        : $periodStart;
+
+                $paymentAudit = json_decode((string)($row['datos_pago_auditoria'] ?? ''), true);
+                $hasPaymentSnapshot = is_array($paymentAudit)
+                    && isset($paymentAudit['monto_base'])
+                    && is_numeric($paymentAudit['monto_base']);
+                $familyReference = self::fechaReferenciaFamiliarPago(
+                    $appliedYear,
+                    $appliedPeriod,
+                    $paymentDate
+                );
+
+                $historicalCategoryAmount = $hasPaymentSnapshot
+                    ? (float)$paymentAudit['monto_base']
+                    : ($historicalCategoryId > 0
+                        ? self::precioHistorico(
+                            $db,
+                            $historicalCategoryId,
+                            $appliedPeriod === 7 ? 'anual' : 'mensual',
+                            $priceReference
+                        )
+                        : 0.0);
                 // Históricos migrados pueden tener monto NULL; sólo las cuotas
                 // necesitan el fallback al precio histórico de su categoría.
                 $amount = $row['monto'] === null
                     ? self::centavos($historicalCategoryAmount)
                     : self::centavos($row['monto']);
+
+                if ($hasPaymentSnapshot) {
+                    $familyDiscount = max(0.0, min(
+                        100.0,
+                        (float)($paymentAudit['porcentaje_descuento_familiar'] ?? 0)
+                    ));
+                    $referenceAmount = isset($paymentAudit['monto_esperado'])
+                        && is_numeric($paymentAudit['monto_esperado'])
+                            ? (float)$paymentAudit['monto_esperado']
+                            : round($historicalCategoryAmount * (1 - $familyDiscount / 100), 2);
+                    $referenceCents = self::centavos($referenceAmount);
+                    $customAmount = array_key_exists('monto_personalizado', $paymentAudit)
+                        ? (bool)$paymentAudit['monto_personalizado']
+                        : $row['monto'] !== null && abs($amount - $referenceCents) >= 1;
+
+                    if ($customAmount) {
+                        if ($amount < self::centavos($historicalCategoryAmount)) {
+                            $amountAdjustmentType = 'DESCUENTO_PERSONALIZADO';
+                            $amountLabel = 'Descuento personalizado';
+                        } else {
+                            $amountAdjustmentType = 'MONTO_PERSONALIZADO';
+                            $amountLabel = 'Monto personalizado';
+                        }
+                    } elseif ($familyDiscount > 0 && abs($amount - $referenceCents) < 1) {
+                        $discountLabel = rtrim(rtrim(number_format($familyDiscount, 2, '.', ''), '0'), '.');
+                        $amountAdjustmentType = 'DESCUENTO_FAMILIAR';
+                        $amountLabel = 'Descuento familiar ' . $discountLabel . '%';
+                    }
+                } else {
+                    $familyDiscount = max(0.0, min(
+                        100.0,
+                        (float)($fallbackDiscountsByReference[$familyReference][$partnerId] ?? 0)
+                    ));
+                    // Si una migración no conserva ni categoría histórica ni
+                    // snapshot, no inventamos una explicación financiera.
+                    if ($historicalCategoryAmount > 0) {
+                        $referenceAmount = round(
+                            $historicalCategoryAmount * (1 - $familyDiscount / 100),
+                            2
+                        );
+                        $referenceCents = self::centavos($referenceAmount);
+                        $customAmount = $row['monto'] !== null
+                            && abs($amount - $referenceCents) >= 1;
+
+                        if ($customAmount) {
+                            if ($amount < self::centavos($historicalCategoryAmount)) {
+                                $amountAdjustmentType = 'DESCUENTO_PERSONALIZADO';
+                                $amountLabel = 'Descuento personalizado';
+                            } else {
+                                $amountAdjustmentType = 'MONTO_PERSONALIZADO';
+                                $amountLabel = 'Monto personalizado';
+                            }
+                        } elseif ($familyDiscount > 0 && abs($amount - $referenceCents) < 1) {
+                            $discountLabel = rtrim(rtrim(number_format($familyDiscount, 2, '.', ''), '0'), '.');
+                            $amountAdjustmentType = 'DESCUENTO_FAMILIAR';
+                            $amountLabel = 'Descuento familiar ' . $discountLabel . '%';
+                        }
+                    }
+                }
                 $periodLabel = self::etiquetaPeriodo($appliedPeriod, $appliedYear);
             } else {
                 $appliedPeriod = null;
@@ -268,6 +436,15 @@ trait ContableSocios
                 'id_medio_pago' => $row['id_medio_pago'] === null ? null : (int)$row['id_medio_pago'],
                 'monto' => self::importeDesdeCentavos($amount),
                 'monto_estimado' => !$isRegistration && $row['monto'] === null,
+                'monto_referencia' => $referenceAmount === null
+                    ? null
+                    : number_format($referenceAmount, 2, '.', ''),
+                'porcentaje_descuento_familiar' => $isRegistration
+                    ? null
+                    : number_format($familyDiscount, 2, '.', ''),
+                'monto_personalizado' => $customAmount,
+                'tipo_ajuste_monto' => $amountAdjustmentType,
+                'etiqueta_monto' => $amountLabel,
             ];
         }
 

@@ -391,10 +391,35 @@ abstract class CuotasRegistros extends CuotasConsultas
                     ? null
                     : decimal_amount($rawQuotedAmount, 'monto esperado', 0.01, 9999999999.99);
             }
+            $customFamilyAmount = null;
+            $hasCustomFamilyAmount = $familyBatch && in_array(
+                $item['monto_personalizado'] ?? false,
+                [true, 1, '1'],
+                true
+            );
+            if ($hasCustomFamilyAmount) {
+                $rawCustomAmount = $item['monto'] ?? null;
+                if ($rawCustomAmount === null || $rawCustomAmount === '') {
+                    api_error(
+                        'Ingresá un monto personalizado válido para el pago familiar.',
+                        'MONTO_INVALIDO'
+                    );
+                }
+                $customFamilyAmount = decimal_amount(
+                    $rawCustomAmount,
+                    'monto personalizado',
+                    0.01,
+                    9999999999.99
+                );
+            }
             // En un pago familiar el cliente sólo propone destinos. El importe
-            // se vuelve a calcular en el backend con la composición, categoría,
-            // precio y descuento vigentes dentro de la transacción.
-            $amount = ($familyBatch || $familyId !== null) ? null : ($item['monto'] ?? null);
+            // base se vuelve a calcular en el backend con la composición,
+            // categoría, precio y descuento vigentes dentro de la transacción.
+            // Si el usuario eligió un monto personalizado de forma explícita,
+            // se conserva como importe final sin omitir la validación de cotización.
+            $amount = $familyBatch
+                ? $customFamilyAmount
+                : ($familyId !== null ? null : ($item['monto'] ?? null));
             $amount = $amount === null || $amount === ''
                 ? null
                 : decimal_amount($amount, 'monto', 0.01, 9999999999.99);
@@ -739,6 +764,9 @@ abstract class CuotasRegistros extends CuotasConsultas
                         ? (float)$target['monto']
                         : $calculatedAmount);
                 if (!$condoned && $amount <= 0) api_error('El monto debe ser mayor a cero.', 'MONTO_INVALIDO');
+                $customAmount = !$condoned
+                    && $target['monto'] !== null
+                    && abs($amount - $calculatedAmount) >= 0.005;
 
                 $insert->execute([
                     $partnerId,
@@ -773,6 +801,8 @@ abstract class CuotasRegistros extends CuotasConsultas
                     'estado' => $state,
                     'monto_base' => number_format($base, 2, '.', ''),
                     'porcentaje_descuento_familiar' => number_format($discount, 2, '.', ''),
+                    'monto_esperado' => number_format($calculatedAmount, 2, '.', ''),
+                    'monto_personalizado' => $customAmount,
                     'monto' => number_format($amount, 2, '.', ''),
                     'id_medio_pago' => $condoned ? null : (int)$medium['id_medio_pago'],
                     'medio_pago' => $condoned ? null : (string)$medium['nombre'],
