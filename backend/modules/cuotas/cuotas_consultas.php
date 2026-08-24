@@ -738,15 +738,24 @@ abstract class CuotasConsultas extends CuotasSoporte
                 INNER JOIN familias f2 ON f2.id_familia = fs2.id_familia
                 WHERE fs2.id_socio = s.id_socio
                   AND (fs2.desde IS NULL OR fs2.desde <= ?)
-                  AND (fs2.hasta IS NULL OR fs2.hasta >= ?)
+                  AND ((fs2.activo = 1 AND fs2.hasta IS NULL) OR fs2.hasta > ?)
+                  AND (
+                       f2.activo = 1
+                       OR (fs2.activo = 0 AND fs2.hasta IS NOT NULL)
+                  )
              )
              LEFT JOIN familias f ON f.id_familia = fs.id_familia
              LEFT JOIN (
                 SELECT fs3.id_familia, COUNT(DISTINCT fs3.id_socio) AS cantidad_integrantes
                 FROM familias_socios fs3
+                INNER JOIN familias f3 ON f3.id_familia = fs3.id_familia
                 INNER JOIN socios s3 ON s3.id_socio = fs3.id_socio
                 WHERE (fs3.desde IS NULL OR fs3.desde <= ?)
-                  AND (fs3.hasta IS NULL OR fs3.hasta >= ?)
+                  AND ((fs3.activo = 1 AND fs3.hasta IS NULL) OR fs3.hasta > ?)
+                  AND (
+                       f3.activo = 1
+                       OR (fs3.activo = 0 AND fs3.hasta IS NOT NULL)
+                  )
                 GROUP BY fs3.id_familia
              ) fc ON fc.id_familia = f.id_familia
              WHERE ({$where})

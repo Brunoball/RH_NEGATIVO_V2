@@ -570,6 +570,20 @@ test.describe('Socios', () => {
       await search.fill(family.nombreEditado);
       row = rowByText(page, family.nombreEditado);
 
+      // La eliminación definitiva sólo se habilita después de la baja. La
+      // reactivación anterior no restaura integrantes, pero la familia sigue
+      // siendo un registro activo hasta volver a darla de baja.
+      await expect(row.getByTitle('Eliminar definitivamente la familia')).toHaveCount(0);
+      await row.getByTitle('Dar de baja').click();
+      stateDialog = page.getByRole('dialog', { name: 'Dar de baja la familia' });
+      await stateDialog.getByLabel('Motivo de baja *').fill('PW E2E BAJA PREVIA A ELIMINAR');
+      await stateDialog.getByRole('button', { name: 'Dar de baja', exact: true }).click();
+      await expectFeedback(page, 'Familia dada de baja correctamente.');
+
+      await page.getByRole('tab', { name: 'Bajas' }).click();
+      await search.fill(family.nombreEditado);
+      row = rowByText(page, family.nombreEditado);
+
       await expectApiError(request, 'familias_eliminar_definitivo', {
         method: 'POST', data: { id: familyId, confirmacion: 'NO' },
       }, { status: 422, code: 'CONFIRMACION_ELIMINACION_INVALIDA' });
@@ -579,16 +593,17 @@ test.describe('Socios', () => {
       await expect(deleteDialog).toContainText('SE CONSERVAN');
       await deleteDialog.getByRole('button', { name: 'Cancelar' }).click();
 
-      // Una familia que tuvo integrantes forma parte de la historia del socio.
-      // La UI debe permitir pedir la acción, pero el backend debe impedir el borrado.
+      // Una familia inactiva y sin integrantes actuales puede eliminarse. Se
+      // borran sus vínculos históricos, pero nunca los socios ni sus pagos.
       await row.getByTitle('Eliminar definitivamente la familia').click();
       deleteDialog = page.getByRole('dialog', { name: 'Eliminar definitivamente la familia' });
       await deleteDialog.getByRole('button', { name: 'Eliminar definitivamente' }).click();
-      await expectFeedback(page, 'No se puede eliminar definitivamente una familia que tuvo integrantes.');
-      await expect(rowByText(page, family.nombreEditado)).toBeVisible();
+      await expectFeedback(page, 'La familia fue eliminada definitivamente. Sus socios quedaron sin familia.');
+      await expect(rowByText(page, family.nombreEditado)).toHaveCount(0);
 
-      const stillFamily = await apiCall(request, 'familias_obtener', { params: { id: familyId } });
-      expect(stillFamily.item.id_familia).toBe(familyId);
+      await expectApiError(request, 'familias_obtener', {
+        params: { id: familyId },
+      }, { status: 404, code: 'FAMILIA_NO_ENCONTRADA' });
 
       // Garantía de seguridad funcional: los socios test siguen existiendo.
       const stillFirst = await apiCall(request, 'socios_obtener', { params: { id: first.id_socio } });

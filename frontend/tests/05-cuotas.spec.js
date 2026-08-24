@@ -27,6 +27,36 @@ function currentBimonthlyPeriodId() {
   return Math.max(1, Math.min(6, Math.ceil(month / 2)));
 }
 
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function expectedDiscountedAmount(base, percentage) {
+  return roundMoney(Number(base) * (1 - Number(percentage) / 100));
+}
+
+async function familySizeWithoutActiveDiscount(request, date = todayIso()) {
+  const response = await apiCall(request, 'descuentos_familiares_listar', {
+    params: { estado: 'todos' },
+  });
+  const rules = Array.isArray(response.items) ? response.items : [];
+  const activeRules = rules.filter((rule) =>
+    Boolean(rule.activo)
+    && String(rule.vigencia_desde) <= date
+    && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= date),
+  );
+  const coveredByDiscount = (count) => activeRules.some((rule) => {
+    const from = Number(rule.cantidad_integrantes_desde);
+    const to = rule.cantidad_integrantes_hasta == null
+      ? Infinity
+      : Number(rule.cantidad_integrantes_hasta);
+    return count >= from && count <= to && Number(rule.porcentaje_descuento) > 0;
+  });
+
+  return Array.from({ length: 49 }, (_, index) => index + 2)
+    .find((count) => !coveredByDiscount(count)) ?? null;
+}
+
 async function openQuotaAdvancedFilters(page) {
   const trigger = page.getByRole('button', { name: /^Filtros(?:\s+\d+)?$/ });
   if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
@@ -421,24 +451,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       },
     });
 
-    const rulesResponse = await apiCall(request, 'descuentos_familiares_listar', {
-      params: { estado: 'todos' },
-    });
-    const rules = Array.isArray(rulesResponse.items) ? rulesResponse.items : [];
-    const activeRules = rules.filter((rule) =>
-      Boolean(rule.activo)
-      && String(rule.vigencia_desde) <= today
-      && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= today),
-    );
-    const coveredByDiscount = (count) => activeRules.some((rule) => {
-      const from = Number(rule.cantidad_integrantes_desde);
-      const to = rule.cantidad_integrantes_hasta == null
-        ? Infinity
-        : Number(rule.cantidad_integrantes_hasta);
-      return count >= from && count <= to && Number(rule.porcentaje_descuento) > 0;
-    });
-    const memberCount = Array.from({ length: 49 }, (_, index) => index + 2)
-      .find((count) => !coveredByDiscount(count));
+    const memberCount = await familySizeWithoutActiveDiscount(request, today);
     test.skip(
       memberCount == null,
       'La configuración actual aplica descuento a todos los grupos de 2 a 50 integrantes; no existe un caso real sin descuento para este test.',
@@ -454,7 +467,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       ));
     }
     const family = cuotaFamilyData();
-    await apiCall(request, 'familias_guardar', {
+    const savedFamily = await apiCall(request, 'familias_guardar', {
       method: 'POST',
       data: {
         nombre: family.nombre,
@@ -472,8 +485,25 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       },
     });
     expect(debt.items).toHaveLength(1);
+    expect(Number(debt.items[0].id_familia)).toBe(Number(savedFamily.item.id_familia));
+    expect(debt.items[0].familia).toBe(family.nombre);
+    expect(Number(debt.items[0].cantidad_integrantes)).toBe(memberCount);
+    expect(Number(debt.items[0].porcentaje_descuento_familiar)).toBe(0);
     expect(Number(debt.items[0].monto_base)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
-    expect(Number(debt.items[0].monto_sugerido)).toBeGreaterThan(0);
+    expect(Number(debt.items[0].monto_sugerido)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
+
+    const allContexts = await apiCall(request, 'cuotas_contextos_pago', {
+      params: {
+        id_socio: members[0].item.id_socio,
+        anio: currentYear(),
+        fecha_pago: today,
+      },
+    });
+    const periodContext = allContexts.periodos?.[String(periodId)];
+    expect(periodContext?.familia).not.toBeNull();
+    expect(Number(periodContext.familia.id_familia)).toBe(Number(savedFamily.item.id_familia));
+    expect(periodContext.familia.integrantes).toHaveLength(memberCount);
+    expect(Number(periodContext.familia.porcentaje_descuento)).toBe(0);
 
     const catalogs = await quotaCatalogs(request);
     const context = await apiCall(request, 'cuotas_contexto_pago', {
@@ -491,6 +521,12 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     // seguir existiendo en el modal/contexto y cada socio conserva el importe
     // de su propia categoría, sin convertirlo en A DEFINIR.
     expect(Number(context.familia.porcentaje_descuento)).toBe(0);
+    expect(Number(context.principal.porcentaje_descuento_familiar)).toBe(0);
+    expect(Number(context.principal.monto_sugerido)).toBeCloseTo(Number(context.principal.monto_base), 2);
+    for (const member of context.familia.integrantes) {
+      expect(Number(member.porcentaje_descuento_familiar)).toBe(0);
+      expect(Number(member.monto_sugerido)).toBeCloseTo(Number(member.monto_base), 2);
+    }
 
     const firstMember = context.familia.integrantes.find(
       (item) => Number(item.id_socio) === Number(members[0].item.id_socio),
@@ -518,7 +554,324 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     const paidSecond = paid.items.find((item) => Number(item.id_socio) === Number(members[1].item.id_socio));
     expect(Number(paidFirst.monto)).toBeCloseTo(Number(firstCategoryData.mensual), 2);
     expect(Number(paidSecond.monto)).toBeCloseTo(Number(secondCategoryData.mensual), 2);
-    for (const item of paid.items) await deletePayment(request, item.id_pago);
+    for (const item of paid.items) {
+      expect(Number(item.id_familia)).toBe(Number(savedFamily.item.id_familia));
+      expect(item.familia).toBe(family.nombre);
+      expect(Number(item.porcentaje_descuento_familiar)).toBe(0);
+      expect(Number(item.monto)).toBeCloseTo(Number(item.monto_base), 2);
+      await deletePayment(request, item.id_pago);
+    }
+  });
+
+  test('regresión: desvincular o dar de baja una familia quita inmediatamente los integrantes viejos de Cuotas', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const category = await createQuotaCategory(request);
+    const first = await createQuotaSocio(
+      request,
+      'FAMILIA BAJA PRIMERO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-01-01` },
+    );
+    const second = await createQuotaSocio(
+      request,
+      'FAMILIA BAJA SEGUNDO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-01-01` },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const oldFamily = cuotaFamilyData();
+    const saved = await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: oldFamily.nombre,
+        observaciones: oldFamily.descripcion,
+        integrantes: [
+          { id_socio: first.item.id_socio, desde: today },
+          { id_socio: second.item.id_socio, desde: today },
+        ],
+      },
+    });
+
+    const before = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: second.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(before.familia?.integrantes).toHaveLength(2);
+
+    // Quitar un integrante hoy debe ser efectivo hoy mismo. `hasta` es el
+    // primer día fuera del grupo, no un día adicional de pertenencia.
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        id_familia: saved.item.id_familia,
+        nombre: oldFamily.nombre,
+        observaciones: oldFamily.descripcion,
+        fecha_desvinculacion: today,
+        integrantes: [{ id_socio: first.item.id_socio, desde: today }],
+      },
+    });
+
+    const removedDebt = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        mes: periodId,
+        id_socio: second.item.id_socio,
+      },
+    });
+    expect(removedDebt.items).toHaveLength(1);
+    expect(removedDebt.items[0].id_familia).toBeNull();
+    expect(removedDebt.items[0].familia).toBeNull();
+    expect(Number(removedDebt.items[0].cantidad_integrantes)).toBe(0);
+    expect(Number(removedDebt.items[0].porcentaje_descuento_familiar)).toBe(0);
+
+    const removedContext = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: second.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(removedContext.familia).toBeNull();
+
+    // Dar de baja la familia completa debe quitar también al integrante que
+    // quedaba, tanto del listado como de todos los contextos del modal.
+    await apiCall(request, 'familias_eliminar', {
+      method: 'POST',
+      data: {
+        id: saved.item.id_familia,
+        fecha_baja: today,
+        motivo_baja: 'PW E2E FAMILIA DISUELTA',
+      },
+    });
+
+    const familyDetail = await apiCall(request, 'familias_obtener', {
+      params: { id: saved.item.id_familia },
+    });
+    expect(familyDetail.item.activo).toBe(false);
+    expect(familyDetail.item.integrantes).toHaveLength(0);
+
+    const remainingDebt = await apiCall(request, 'cuotas_listar', {
+      params: {
+        estado: 'DEUDORES',
+        anio: currentYear(),
+        mes: periodId,
+        id_socio: first.item.id_socio,
+      },
+    });
+    expect(remainingDebt.items).toHaveLength(1);
+    expect(remainingDebt.items[0].id_familia).toBeNull();
+    expect(remainingDebt.items[0].familia).toBeNull();
+    expect(Number(remainingDebt.items[0].cantidad_integrantes)).toBe(0);
+    expect(Number(remainingDebt.items[0].porcentaje_descuento_familiar)).toBe(0);
+    expect(Number(remainingDebt.items[0].monto_sugerido)).toBeCloseTo(
+      Number(remainingDebt.items[0].monto_base),
+      2,
+    );
+
+    const contextsAfterBaja = await apiCall(request, 'cuotas_contextos_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        fecha_pago: today,
+      },
+    });
+    for (const context of Object.values(contextsAfterBaja.periodos || {})) {
+      expect(context.familia).toBeNull();
+    }
+
+    // También se blinda el endpoint legacy: un cliente viejo que envíe
+    // aplicar_familia=true no puede volver a cobrar a integrantes cerrados.
+    const legacyPayment = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: first.item.id_socio,
+        periodId,
+        mediumId: catalogs.medium.id_medio_pago,
+        date: today,
+        extra: { aplicar_familia: true },
+      }),
+    });
+    expect(legacyPayment.items).toHaveLength(1);
+    expect(Number(legacyPayment.items[0].id_socio)).toBe(Number(first.item.id_socio));
+    expect(legacyPayment.items[0].id_familia).toBeNull();
+    expect(legacyPayment.items[0].familia).toBeNull();
+    await deletePayment(request, legacyPayment.items[0].id_pago);
+
+    // Los dos socios pueden formar otra familia el mismo día y Cuotas debe
+    // mostrar únicamente el grupo nuevo, nunca los integrantes del anterior.
+    const newFamily = cuotaFamilyData();
+    const replacement = await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: newFamily.nombre,
+        observaciones: newFamily.descripcion,
+        integrantes: [
+          { id_socio: first.item.id_socio, desde: today },
+          { id_socio: second.item.id_socio, desde: today },
+        ],
+      },
+    });
+    const replacementContext = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(Number(replacementContext.familia?.id_familia)).toBe(
+      Number(replacement.item.id_familia),
+    );
+    expect(replacementContext.familia?.nombre).toBe(newFamily.nombre);
+    expect(replacementContext.familia?.integrantes).toHaveLength(2);
+    expect(replacementContext.familia?.nombre).not.toBe(oldFamily.nombre);
+  });
+
+  test('regresión: la baja familiar corta el presente sin borrar la composición de períodos anteriores', async ({ request }) => {
+    const currentPeriod = currentBimonthlyPeriodId();
+    test.skip(currentPeriod === 1, 'Todavía no existe un bimestre anterior en el año actual.');
+
+    const today = todayIso();
+    const previousPeriod = currentPeriod - 1;
+    const category = await createQuotaCategory(request);
+    const first = await createQuotaSocio(
+      request,
+      'FAMILIA HISTORICA PRIMERO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-01-01` },
+    );
+    const second = await createQuotaSocio(
+      request,
+      'FAMILIA HISTORICA SEGUNDO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-01-01` },
+    );
+    const family = cuotaFamilyData();
+    const saved = await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: first.item.id_socio, desde: `${currentYear()}-01-01` },
+          { id_socio: second.item.id_socio, desde: `${currentYear()}-01-01` },
+        ],
+      },
+    });
+
+    await apiCall(request, 'familias_eliminar', {
+      method: 'POST',
+      data: {
+        id: saved.item.id_familia,
+        fecha_baja: today,
+        motivo_baja: 'PW E2E CORTE HISTORICO',
+      },
+    });
+
+    const previous = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        mes: previousPeriod,
+        fecha_pago: today,
+      },
+    });
+    expect(Number(previous.familia?.id_familia)).toBe(Number(saved.item.id_familia));
+    expect(previous.familia?.integrantes).toHaveLength(2);
+
+    const current = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        mes: currentPeriod,
+        fecha_pago: today,
+      },
+    });
+    expect(current.familia).toBeNull();
+  });
+
+  test('regresión: un modal familiar viejo no puede cobrar integrantes después de una baja', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const category = await createQuotaCategory(request);
+    const first = await createQuotaSocio(
+      request,
+      'PAGO FAMILIAR OBSOLETO PRIMERO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-01-01` },
+    );
+    const second = await createQuotaSocio(
+      request,
+      'PAGO FAMILIAR OBSOLETO SEGUNDO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${currentYear()}-01-01` },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const family = cuotaFamilyData();
+    const saved = await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: first.item.id_socio, desde: today },
+          { id_socio: second.item.id_socio, desde: today },
+        ],
+      },
+    });
+    const staleContext = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    expect(staleContext.familia?.integrantes).toHaveLength(2);
+
+    await apiCall(request, 'familias_eliminar', {
+      method: 'POST',
+      data: {
+        id: saved.item.id_familia,
+        fecha_baja: today,
+        motivo_baja: 'PW E2E MODAL OBSOLETO',
+      },
+    });
+
+    await expectApiError(request, 'cuotas_registrar_pagos', {
+      method: 'POST',
+      data: {
+        modo_pago: 'FAMILIAR',
+        fecha_pago: today,
+        id_medio_pago: catalogs.medium.id_medio_pago,
+        pagos: staleContext.familia.integrantes.map((member) => ({
+          id_socio: member.id_socio,
+          anio: currentYear(),
+          mes: periodId,
+          id_familia: saved.item.id_familia,
+          monto: member.monto_sugerido,
+        })),
+      },
+    }, { status: 409, code: 'PAGO_FAMILIAR_DESACTUALIZADO' });
+
+    for (const socio of [first, second]) {
+      const paid = await apiCall(request, 'cuotas_listar', {
+        params: {
+          estado: 'PAGADOS',
+          anio: currentYear(),
+          mes: periodId,
+          id_socio: socio.item.id_socio,
+        },
+      });
+      expect(paid.items).toHaveLength(0);
+    }
   });
 
 
@@ -587,7 +940,9 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     });
     expect(before.familia).not.toBeNull();
     expect(Number(before.familia.porcentaje_descuento)).toBeCloseTo(10, 2);
-    expect(Number(before.principal.monto_sugerido)).toBeCloseTo(Number(before.principal.monto_base) * 0.9, 2);
+    expect(Number(before.principal.monto_sugerido)).toBe(
+      expectedDiscountedAmount(before.principal.monto_base, 10),
+    );
 
     // Esta acción deja activo=0 y vigencia_hasta=today. Ese era exactamente
     // el bug: Cuotas miraba sólo las fechas y seguía aplicando 10%.
@@ -595,6 +950,19 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       method: 'POST',
       data: { id: discount.item.id_descuento_familiar },
     });
+
+    const currentRules = await apiCall(request, 'descuentos_familiares_listar', {
+      params: { estado: 'vigente' },
+    });
+    expect((currentRules.items || []).some(
+      (item) => Number(item.id_descuento_familiar) === Number(discount.item.id_descuento_familiar),
+    )).toBe(false);
+    const historicalRules = await apiCall(request, 'descuentos_familiares_listar', {
+      params: { estado: 'historial' },
+    });
+    expect((historicalRules.items || []).some(
+      (item) => Number(item.id_descuento_familiar) === Number(discount.item.id_descuento_familiar),
+    )).toBe(true);
 
     const after = await apiCall(request, 'cuotas_contexto_pago', {
       params: {
@@ -610,6 +978,10 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     expect(Number(after.familia.porcentaje_descuento)).toBe(0);
     expect(Number(after.principal.porcentaje_descuento_familiar)).toBe(0);
     expect(Number(after.principal.monto_sugerido)).toBeCloseTo(Number(after.principal.monto_base), 2);
+    for (const member of after.familia.integrantes) {
+      expect(Number(member.porcentaje_descuento_familiar)).toBe(0);
+      expect(Number(member.monto_sugerido)).toBeCloseTo(Number(member.monto_base), 2);
+    }
 
     const debt = await apiCall(request, 'cuotas_listar', {
       params: {
@@ -681,7 +1053,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
 
   test('descuento familiar vigente se aplica al contexto y al pago de todos los integrantes', async ({ request }) => {
     const today = todayIso();
-    const referenceDate = `${currentYear()}-01-01`;
+    const referenceDate = today;
     const rulesResponse = await apiCall(request, 'descuentos_familiares_listar', { params: { estado: 'todos' } });
     const rules = Array.isArray(rulesResponse.items) ? rulesResponse.items : [];
 
@@ -693,9 +1065,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     const activeAtReference = (rule) => Boolean(rule.activo)
       && String(rule.vigencia_desde) <= referenceDate
       && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= referenceDate);
-    // El backend conserva el historial completo de reglas y no permite
-    // superponer una regla nueva con ninguna vigencia histórica, aunque la
-    // fila ya figure en el historial. El fixture debe respetar esa misma regla.
+    // El fixture busca un rango sin otra regla que pueda regir hoy.
     const overlapsReferenceToToday = (rule) => String(rule.vigencia_desde) <= today
       && (!rule.vigencia_hasta || String(rule.vigencia_hasta) >= referenceDate);
 
@@ -710,8 +1080,9 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       }
     }
 
-    // Si no existe una regla histórica utilizable, creamos una sólo en un rango
-    // que no solape reglas reales durante el año. Así el test es determinista.
+    // Si no existe una regla vigente utilizable, creamos una sólo en un rango
+    // que no solape reglas reales hoy. Así el test es determinista y no intenta
+    // reescribir descuentos de períodos ya cerrados.
     if (memberCount == null) {
       memberCount = Array.from({ length: 49 }, (_, index) => index + 2).find(
         (count) => !rules.some((rule) => overlapsReferenceToToday(rule) && covers(rule, count)),
@@ -749,7 +1120,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     });
 
     const catalogs = await quotaCatalogs(request);
-    const periodId = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
+    const periodId = currentBimonthlyPeriodId();
     const context = await apiCall(request, 'cuotas_contexto_pago', {
       params: { id_socio: members[0].item.id_socio, anio: currentYear(), mes: periodId, fecha_pago: today },
     });
@@ -1028,6 +1399,207 @@ test.describe('Cuotas · UI', () => {
     await expect(annualChoice).toBeVisible();
     await expect(annualChoice).toBeDisabled();
     await expect(annualChoice).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('regresión UI: familia sin descuento sigue visible, muestra integrantes y cobra la categoría propia de cada socio', async ({ page, request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const memberCount = await familySizeWithoutActiveDiscount(request, today);
+    test.skip(
+      memberCount == null,
+      'La configuración actual aplica descuento a todos los grupos de 2 a 50 integrantes; no existe un caso real sin descuento para esta regresión UI.',
+    );
+
+    const firstCategoryData = cuotaCategoryData();
+    firstCategoryData.mensual = '4321.25';
+    firstCategoryData.anual = '25000.00';
+    const secondCategoryData = cuotaCategoryData();
+    secondCategoryData.mensual = '8765.50';
+    secondCategoryData.anual = '51000.00';
+
+    const firstCategory = await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: firstCategoryData.nombre,
+        monto_mensual: firstCategoryData.mensual,
+        monto_anual: firstCategoryData.anual,
+        vigente_desde: today,
+      },
+    });
+    const secondCategory = await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: secondCategoryData.nombre,
+        monto_mensual: secondCategoryData.mensual,
+        monto_anual: secondCategoryData.anual,
+        vigente_desde: today,
+      },
+    });
+
+    const members = [];
+    for (let index = 0; index < memberCount; index += 1) {
+      members.push(await createQuotaSocio(
+        request,
+        `UI SIN DESC ${index + 1}`,
+        index === 0 ? firstCategory.item.id_categoria : secondCategory.item.id_categoria,
+        { fecha_ingreso: today },
+      ));
+    }
+    const family = cuotaFamilyData();
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: members.map((member) => ({ id_socio: member.item.id_socio, desde: today })),
+      },
+    });
+    const catalogs = await quotaCatalogs(request);
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(members[0].item.id_socio));
+    const row = rowByText(page, members[0].data.nombre);
+    await expect(row).toBeVisible();
+    await expect(row).not.toContainText(/A DEFINIR/i);
+    await row.getByRole('button', { name: `Registrar pago de ${members[0].data.nombre}` }).click();
+
+    const dialog = page.getByRole('dialog').filter({ hasText: members[0].data.nombre }).last();
+    await dialog.getByRole('tab', { name: /Familia/ }).click();
+    const familyCard = dialog.getByLabel('Grupo familiar del socio');
+    await expect(familyCard).toBeVisible();
+    await expect(familyCard).toContainText(family.nombre);
+    await expect(familyCard).toContainText(`${memberCount} integrantes`);
+    await expect(familyCard).toContainText('Descuento vigente 0.00%');
+
+    const familyToggle = dialog.getByRole('checkbox', { name: 'Aplicar pago a todo el grupo familiar' });
+    await expect(familyToggle).toBeChecked();
+    await dialog.getByRole('button', { name: 'Ver integrantes', exact: true }).click();
+
+    const firstMemberRow = familyCard.locator('article').filter({ hasText: members[0].data.nombre });
+    const secondMemberRow = familyCard.locator('article').filter({ hasText: members[1].data.nombre });
+    await expect(firstMemberRow).toContainText(firstCategoryData.nombre);
+    await expect(secondMemberRow).toContainText(secondCategoryData.nombre);
+    await expect(firstMemberRow).toContainText(/4[.]?321,25/);
+    await expect(secondMemberRow).toContainText(/8[.]?765,50/);
+
+    await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
+    await dialog.getByLabel('Medio de pago *').selectOption(String(catalogs.medium.id_medio_pago));
+    await dialog.getByRole('button', { name: /Registrar pago familiar/ }).click();
+
+    const receipt = page.getByRole('dialog', { name: 'Registro de pagos' });
+    await expect(receipt).toContainText(members[0].data.nombre);
+    await expect(receipt).toContainText(members[1].data.nombre);
+    await receipt.locator('.payment-receipt-actions__close').click();
+
+    for (let index = 0; index < members.length; index += 1) {
+      const member = members[index];
+      const paid = await apiCall(request, 'cuotas_listar', {
+        params: {
+          estado: 'PAGADOS',
+          anio: currentYear(),
+          mes: periodId,
+          id_socio: member.item.id_socio,
+        },
+      });
+      expect(paid.items).toHaveLength(1);
+      expect(Number(paid.items[0].porcentaje_descuento_familiar)).toBe(0);
+      const expected = index === 0 ? Number(firstCategoryData.mensual) : Number(secondCategoryData.mensual);
+      expect(Number(paid.items[0].monto)).toBeCloseTo(expected, 2);
+      await deletePayment(request, paid.items[0].id_pago);
+    }
+  });
+
+  test('regresión UI: pago familiar omite integrantes ya pagados y registra solamente los pendientes', async ({ page, request }) => {
+    const category = await createQuotaCategory(request);
+    const a = await createQuotaSocio(request, 'UI FAMILIA PENDIENTE', category.item.id_categoria);
+    const b = await createQuotaSocio(request, 'UI FAMILIA YA PAGO', category.item.id_categoria);
+    const catalogs = await quotaCatalogs(request);
+    const family = cuotaFamilyData();
+    const periodId = Number(catalogs.bimonthly.find(
+      (item) => Number(item.id_periodo ?? item.id_mes) === currentBimonthlyPeriodId(),
+    )?.id_periodo ?? currentBimonthlyPeriodId());
+
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: a.item.id_socio, desde: `${currentYear()}-01-01` },
+          { id_socio: b.item.id_socio, desde: `${currentYear()}-01-01` },
+        ],
+      },
+    });
+
+    const bContext = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: b.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: todayIso(),
+      },
+    });
+    const paidBefore = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: b.item.id_socio,
+        periodId,
+        mediumId: catalogs.medium.id_medio_pago,
+        amount: Number(bContext.principal.monto_sugerido),
+      }),
+    });
+    expect(paidBefore.items).toHaveLength(1);
+    const bPaymentId = paidBefore.items[0].id_pago;
+
+    await page.goto('/cuotas');
+    await page.getByLabel('Año').selectOption(String(currentYear()));
+    await page.getByLabel('Mes', { exact: true }).selectOption(String(periodId));
+    await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(a.item.id_socio));
+    const row = rowByText(page, a.data.nombre);
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: `Registrar pago de ${a.data.nombre}` }).click();
+
+    const dialog = page.getByRole('dialog').filter({ hasText: a.data.nombre }).last();
+    await dialog.getByRole('tab', { name: /Familia/ }).click();
+    await expect(dialog.getByLabel('Grupo familiar del socio')).toContainText(family.nombre);
+    await expect(dialog.getByText('Hay cuotas ya pagadas en la selección.')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Ver integrantes', exact: true }).click();
+    const paidMember = dialog.locator('article').filter({ hasText: b.data.nombre });
+    await expect(paidMember).toContainText('PAGADO');
+    await expect(paidMember).toContainText(/Pagó/i);
+
+    const familyToggle = dialog.getByRole('checkbox', { name: 'Aplicar pago a todo el grupo familiar' });
+    // Si el otro integrante ya pagó, no quedan destinos familiares adicionales
+    // pendientes. El front conserva correctamente el pago individual como opción
+    // por defecto; el usuario puede activar explícitamente el modo familiar y el
+    // backend debe omitir al integrante ya abonado sin generar un duplicado.
+    await expect(familyToggle).toBeEnabled();
+    await expect(familyToggle).not.toBeChecked();
+    await familyToggle.check();
+    await expect(familyToggle).toBeChecked();
+    await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
+    await dialog.getByLabel('Medio de pago *').selectOption(String(catalogs.medium.id_medio_pago));
+    await dialog.getByRole('button', { name: /Registrar pago familiar \(1 cuota\)/ }).click();
+
+    const receipt = page.getByRole('dialog', { name: 'Registro de pagos' });
+    await expect(receipt).toContainText(a.data.nombre);
+    await expect(receipt).not.toContainText(b.data.nombre);
+    await receipt.locator('.payment-receipt-actions__close').click();
+
+    const aPaid = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, id_socio: a.item.id_socio },
+    });
+    expect(aPaid.items).toHaveLength(1);
+    const bPaid = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, id_socio: b.item.id_socio },
+    });
+    expect(bPaid.items).toHaveLength(1);
+    expect(Number(bPaid.items[0].id_pago)).toBe(Number(bPaymentId));
+
+    await deletePayment(request, aPaid.items[0].id_pago);
+    await deletePayment(request, bPaymentId);
   });
 
   test('flujo visible completo: pagar, comprobante, listar pagado, eliminar, condonar y eliminar condonación', async ({ page, request }) => {

@@ -368,12 +368,28 @@ abstract class CuotasSoporte
         $statement = $db->prepare(
             'SELECT cantidad_integrantes_desde, cantidad_integrantes_hasta, porcentaje_descuento
              FROM descuentos_familiares
-             WHERE activo = 1
-               AND vigencia_desde <= ?
+             WHERE vigencia_desde <= ?
                AND (vigencia_hasta IS NULL OR vigencia_hasta >= ?)
+               AND (
+                    activo = 1
+                    OR (
+                        activo = 0
+                        AND (
+                            ? < DATE(actualizado_en)
+                            OR (
+                                vigencia_desde <= DATE(actualizado_en)
+                                AND vigencia_hasta > DATE(actualizado_en)
+                            )
+                        )
+                    )
+               )
              ORDER BY cantidad_integrantes_desde DESC, id_descuento_familiar DESC'
         );
-        $statement->execute([$date, $date]);
+        // `actualizado_en` fija el instante lógico del archivo: una regla deja
+        // de regir ese mismo día y continúa aplicándose antes de esa fecha. La
+        // segunda rama conserva versiones cerradas con vigencia futura sin que
+        // una regla futura archivada antes de comenzar pueda reaparecer luego.
+        $statement->execute([$date, $date, $date]);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -396,13 +412,21 @@ abstract class CuotasSoporte
 
     protected static function familiaDeSocio(PDO $db, int $partnerId, string $date): ?array
     {
+        // La baja de una familia o integrante es efectiva en la fecha `hasta`.
+        // Por eso el intervalo es [desde, hasta): usar >= revivía durante un
+        // día al vínculo que Socios ya había cerrado. El flag activo también
+        // evita que datos legacy con `hasta` nulo reabran familias dadas de baja.
         $statement = $db->prepare(
             'SELECT f.id_familia, f.nombre_familia
              FROM familias_socios fs
              INNER JOIN familias f ON f.id_familia = fs.id_familia
              WHERE fs.id_socio = ?
                AND (fs.desde IS NULL OR fs.desde <= ?)
-               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+               AND ((fs.activo = 1 AND fs.hasta IS NULL) OR fs.hasta > ?)
+               AND (
+                    f.activo = 1
+                    OR (fs.activo = 0 AND fs.hasta IS NOT NULL)
+               )
              ORDER BY fs.id_familia_socio DESC LIMIT 1'
         );
         $statement->execute([$partnerId, $date, $date]);
@@ -415,10 +439,16 @@ abstract class CuotasSoporte
         $statement = $db->prepare(
             'SELECT s.id_socio
              FROM familias_socios fs
+             INNER JOIN familias f
+                ON f.id_familia = fs.id_familia
              INNER JOIN socios s ON s.id_socio = fs.id_socio
              WHERE fs.id_familia = ?
                AND (fs.desde IS NULL OR fs.desde <= ?)
-               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+               AND ((fs.activo = 1 AND fs.hasta IS NULL) OR fs.hasta > ?)
+               AND (
+                    f.activo = 1
+                    OR (fs.activo = 0 AND fs.hasta IS NOT NULL)
+               )
              ORDER BY s.nombre ASC, s.id_socio ASC'
         );
         $statement->execute([$familyId, $date, $date]);
@@ -444,10 +474,15 @@ abstract class CuotasSoporte
         $statement = $db->prepare(
             "SELECT fs.id_socio, fs.id_familia, fs.id_familia_socio, f.nombre_familia
              FROM familias_socios fs
-             INNER JOIN familias f ON f.id_familia = fs.id_familia
+             INNER JOIN familias f
+                ON f.id_familia = fs.id_familia
              WHERE fs.id_socio IN ({$placeholders})
                AND (fs.desde IS NULL OR fs.desde <= ?)
-               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+               AND ((fs.activo = 1 AND fs.hasta IS NULL) OR fs.hasta > ?)
+               AND (
+                    f.activo = 1
+                    OR (fs.activo = 0 AND fs.hasta IS NOT NULL)
+               )
              ORDER BY fs.id_socio, fs.id_familia_socio DESC"
         );
         $statement->execute([...$partnerIds, $date, $date]);
@@ -471,9 +506,15 @@ abstract class CuotasSoporte
         $countStatement = $db->prepare(
             "SELECT fs.id_familia, COUNT(DISTINCT fs.id_socio) AS cantidad
              FROM familias_socios fs
+             INNER JOIN familias f
+                ON f.id_familia = fs.id_familia
              WHERE fs.id_familia IN ({$familyPlaceholders})
                AND (fs.desde IS NULL OR fs.desde <= ?)
-               AND (fs.hasta IS NULL OR fs.hasta >= ?)
+               AND ((fs.activo = 1 AND fs.hasta IS NULL) OR fs.hasta > ?)
+               AND (
+                    f.activo = 1
+                    OR (fs.activo = 0 AND fs.hasta IS NOT NULL)
+               )
              GROUP BY fs.id_familia"
         );
         $countStatement->execute([...$familyIds, $date, $date]);

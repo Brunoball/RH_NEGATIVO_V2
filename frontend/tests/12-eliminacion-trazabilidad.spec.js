@@ -66,6 +66,13 @@ function configItem(data, list, idField, id) {
 }
 
 test.describe('Eliminación definitiva · trazabilidad transversal', () => {
+  // En Windows, Playwright/Node puede finalizar excepcionalmente el proceso
+  // worker con 0xC0000409 después de una corrida larga, antes de comenzar el
+  // siguiente test (el reporte lo muestra con 0 ms y sin traza). Un único
+  // reintento recrea el worker desde cero. Las fallas funcionales no se ocultan:
+  // si una aserción o la API siguen mal, el segundo intento también falla.
+  test.describe.configure({ retries: process.platform === 'win32' ? 1 : 0 });
+
   test('Familias cierra el vínculo operativo pero conserva integrante, DNI y búsqueda histórica', async ({ request }) => {
     const removedData = socioData('DELETE FAMILIA HIST');
     const survivorData = socioData('DELETE FAMILIA ACTIVO');

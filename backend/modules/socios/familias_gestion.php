@@ -4,6 +4,7 @@ declare(strict_types=1);
 trait FamiliasGestion
 {
     abstract private static function familyDetail(PDO $db, int $id, bool $includeHistory = false): ?array;
+    abstract private static function familiasFiltroSociosOperativos(PDO $db, string $alias = 's'): string;
 
     private static function guardarDatos(array $auth, array $body): array
     {
@@ -362,6 +363,13 @@ trait FamiliasGestion
                 $lock->execute([$id]);
                 $locked = $lock->fetch();
                 if (!$locked) api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+                if ((bool)$locked['activo']) {
+                    api_error(
+                        'Dale de baja a la familia antes de eliminarla definitivamente.',
+                        'FAMILIA_ACTIVA_NO_ELIMINABLE',
+                        409
+                    );
+                }
 
                 $before = self::familyDetail($db, $id, true) ?? $locked;
                 $links = $db->prepare(
@@ -377,19 +385,21 @@ trait FamiliasGestion
                     'vinculos_eliminados' => (int)($impactRow['vinculos_totales'] ?? 0),
                 ];
 
-                if ($impact['vinculos_eliminados'] > 0) {
-                    api_error(
-                        'No se puede eliminar definitivamente una familia que tuvo integrantes. Dale de baja para conservar la historia de descuentos y pertenencia.',
-                        'FAMILIA_CON_HISTORIAL_NO_ELIMINABLE',
-                        409,
-                        ['vinculos_historicos' => $impact['vinculos_eliminados']]
-                    );
+                // La baja ya cerró todos los vínculos operativos. La eliminación
+                // definitiva borra también sus pertenencias históricas, pero no
+                // elimina socios, pagos ni datos personales. `before` conserva
+                // el detalle completo dentro de Auditoría.
+                $deleteLinks = $db->prepare('DELETE FROM familias_socios WHERE id_familia = ?');
+                $deleteLinks->execute([$id]);
+                if ($deleteLinks->rowCount() !== $impact['vinculos_eliminados']) {
+                    throw new RuntimeException('No se pudieron eliminar todos los vínculos de la familia.');
                 }
 
-                // Sólo una familia creada por error y nunca utilizada puede
-                // eliminarse físicamente.
-                $db->prepare('DELETE FROM familias_socios WHERE id_familia = ?')->execute([$id]);
-                $db->prepare('DELETE FROM familias WHERE id_familia = ?')->execute([$id]);
+                $deleteFamily = $db->prepare('DELETE FROM familias WHERE id_familia = ?');
+                $deleteFamily->execute([$id]);
+                if ($deleteFamily->rowCount() !== 1) {
+                    throw new RuntimeException('No se pudo eliminar definitivamente la familia.');
+                }
 
                 self::auditarFamilia(
                     $db,
@@ -417,6 +427,8 @@ trait FamiliasGestion
     /**
      * Impide que un socio tenga dos pertenencias familiares superpuestas en el
      * tiempo. El control usa todo el historial, no sólo los vínculos activos.
+     * Los intervalos son semiabiertos [desde, hasta), de modo que una baja y
+     * una nueva incorporación pueden ser efectivas el mismo día.
      */
     private static function validarIntervaloFamiliaSocio(
         PDO $db,
@@ -431,8 +443,8 @@ trait FamiliasGestion
              INNER JOIN familias f ON f.id_familia = fs.id_familia
              WHERE fs.id_socio = ?
                AND fs.id_familia_socio <> ?
-               AND (fs.hasta IS NULL OR fs.hasta >= ?)
-               AND (? IS NULL OR fs.desde IS NULL OR fs.desde <= ?)
+               AND (fs.hasta IS NULL OR fs.hasta > ?)
+               AND (? IS NULL OR fs.desde IS NULL OR fs.desde < ?)
              ORDER BY fs.id_familia_socio DESC
              LIMIT 1
              FOR UPDATE'

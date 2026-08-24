@@ -102,9 +102,36 @@ const UI_COVERAGE_EVIDENCE = {
     spec: '02-socios.spec.js',
     tokens: ['Quitar a ${firstData.nombre}', 'reversible', 'firstOptionAgain'],
   },
+  familias_eliminacion_definitiva_inactiva: {
+    spec: '02-socios.spec.js',
+    tokens: [
+      'BAJA PREVIA A ELIMINAR',
+      'La familia fue eliminada definitivamente. Sus socios quedaron sin familia.',
+      'FAMILIA_NO_ENCONTRADA',
+    ],
+  },
   cuotas_chips_y_limpieza: {
     spec: '05-cuotas.spec.js',
     tokens: ['Limpiar búsqueda', 'Eliminar filtro Estado:', 'Eliminar filtro Cobrador:', 'Eliminar filtro Medio:'],
+  },
+  cuotas_familias_regresiones: {
+    spec: '05-cuotas.spec.js',
+    tokens: [
+      'familia creada dentro del bimestre sigue visible sin descuento y cobra la categoría de cada integrante',
+      'desvincular o dar de baja una familia quita inmediatamente los integrantes viejos de Cuotas',
+      'la baja familiar corta el presente sin borrar la composición de períodos anteriores',
+      'un modal familiar viejo no puede cobrar integrantes después de una baja',
+      'un descuento enviado al historial deja de descontar inmediatamente aunque su vigencia_hasta sea hoy',
+      'PAGO_FAMILIAR_DESACTUALIZADO',
+      'regresión UI: familia sin descuento sigue visible, muestra integrantes y cobra la categoría propia de cada socio',
+      'Descuento vigente 0.00%',
+      'cuotas_contextos_pago',
+      'porcentaje_descuento_familiar',
+      'expectedDiscountedAmount',
+      'regresión UI: pago familiar omite integrantes ya pagados y registra solamente los pendientes',
+      'Hay cuotas ya pagadas en la selección.',
+      'Registrar pago familiar \\(1 cuota\\)',
+    ],
   },
   socios_chips_y_estado_info: {
     spec: '08-blindaje-modulos.spec.js',
@@ -421,6 +448,7 @@ test.describe('Release gate · cobertura funcional total', () => {
         'SOCIO_DELETE_RELACION_BLOQUEANTE',
         'SOCIO_DELETE_DB_ERROR',
         'SOCIO_DELETE_ERROR',
+        'FAMILIA_ACTIVA_NO_ELIMINABLE',
       ],
       categorias: ['ESQUEMA_DESCUENTOS_DESACTUALIZADO'],
       cuotas: [
@@ -464,6 +492,18 @@ test.describe('Release gate · cobertura funcional total', () => {
         expect(source, `Falta la guarda defensiva ${code} en ${moduleName}`).toContain(`'${code}'`);
       }
     }
+  });
+
+  test('los traits de Familias declaran sus dependencias cruzadas sin métodos indefinidos', async () => {
+    const managementSource = read(path.join(
+      backendRoot(),
+      'modules',
+      'socios',
+      'familias_gestion.php',
+    ));
+    expect(managementSource).toContain(
+      "abstract private static function familiasFiltroSociosOperativos(PDO $db, string $alias = 's'): string;",
+    );
   });
 
   test('todo action usado por clientes API del frontend existe en el backend y está dentro del gate', async () => {

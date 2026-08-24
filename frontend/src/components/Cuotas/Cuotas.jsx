@@ -189,6 +189,7 @@ const familyTargetsForMonths = (periodMap, monthIds) =>
         targets.push({
           id_socio: Number(member.id_socio),
           mes: Number(monthId),
+          id_familia: Number(context.familia.id_familia),
           monto: Number(member.monto_sugerido || 0),
         });
       }
@@ -2049,13 +2050,14 @@ export default function Cuotas() {
         });
       } else if (paymentForm.aplicar_familia && family) {
         response = await cuotasApi.registrarPagos({
+          modo_pago: "FAMILIAR",
           fecha_pago: paymentForm.fecha_pago,
           id_medio_pago: Number(paymentForm.id_medio_pago),
           pagos: familyPaymentTargets.map((target) => ({
             id_socio: Number(target.id_socio),
             anio: Number(paymentForm.anio),
             mes: Number(target.mes),
-            monto: Number(target.monto),
+            id_familia: Number(target.id_familia),
           })),
         });
       } else if (selectedMonthIds.length > 1) {

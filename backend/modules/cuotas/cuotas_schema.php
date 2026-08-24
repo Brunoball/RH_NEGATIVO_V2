@@ -28,7 +28,7 @@ function ensure_cuotas_schema(PDO $db): void
         'descuentos_familiares' => [
             'id_descuento_familiar', 'cantidad_integrantes_desde',
             'cantidad_integrantes_hasta', 'porcentaje_descuento',
-            'vigencia_desde', 'vigencia_hasta', 'activo',
+            'vigencia_desde', 'vigencia_hasta', 'activo', 'actualizado_en',
         ],
     ];
 

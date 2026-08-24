@@ -1,6 +1,6 @@
 const { test, expect } = require('./fixtures/auth.fixture');
 const { apiCall, expectApiError } = require('./helpers/api.helper');
-const { todayIso } = require('./helpers/data.helper');
+const { addDaysIso, todayIso } = require('./helpers/data.helper');
 const { categoryData } = require('./fixtures/categorias.fixture');
 
 test.describe('Categorías · contratos API complementarios', () => {
@@ -37,5 +37,19 @@ test.describe('Categorías · contratos API complementarios', () => {
     await expectApiError(request, 'categorias_obtener', { params: { id: 0 } }, { status: 422 });
     await expectApiError(request, 'categorias_listar', { params: { estado: 'INEXISTENTE' } }, { code: 'FILTRO_INVALIDO' });
     await expectApiError(request, 'descuentos_familiares_listar', { params: { estado: 'INEXISTENTE' } }, { code: 'FILTRO_INVALIDO' });
+  });
+
+  test('una regla familiar retroactiva se rechaza para no reescribir cuotas históricas', async ({ request }) => {
+    await expectApiError(request, 'descuentos_familiares_guardar', {
+      method: 'POST',
+      data: {
+        cantidad_integrantes_desde: 2,
+        cantidad_integrantes_hasta: 2,
+        porcentaje_descuento: '10.00',
+        vigencia_desde: addDaysIso(-1),
+        vigencia_hasta: todayIso(),
+        descripcion: `PW E2E RETROACTIVO ${Date.now()}`,
+      },
+    }, { status: 409, code: 'VIGENCIA_DESCUENTO_RETROACTIVA' });
   });
 });

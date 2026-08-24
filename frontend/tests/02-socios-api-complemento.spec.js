@@ -124,7 +124,7 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     // una falla funcional real: si la API está mal, el segundo intento también falla.
     test.describe.configure({ retries: process.platform === 'win32' ? 1 : 0 });
 
-    test('familias: guardar/obtener/baja/reactivar y validaciones directas', async ({ request }) => {
+    test('familias: guardar/obtener/baja/reactivar/eliminar y validaciones directas', async ({ request }) => {
     const a = await createSocio(request, socioData('FAM API A'));
     const b = await createSocio(request, socioData('FAM API B'));
     const family = familyData();
@@ -150,24 +150,44 @@ test.describe('Socios y familias · contratos API complementarios', () => {
       method: 'POST', data: { nombre: family.nombre, integrantes: [{ id_socio: a.id_socio }] },
     }, { status: 409, code: 'FAMILIA_DUPLICADA' });
 
+    await expectApiError(request, 'familias_eliminar_definitivo', {
+      method: 'POST', data: { id, confirmacion: 'ELIMINAR' },
+    }, { status: 409, code: 'FAMILIA_ACTIVA_NO_ELIMINABLE' });
+
     await apiCall(request, 'familias_eliminar', {
       method: 'POST', data: { id, fecha_baja: todayIso(), motivo_baja: 'PW E2E BAJA FAMILIA API' },
     });
+    detail = await apiCall(request, 'familias_obtener', { params: { id } });
+    expect(detail.item.activo).toBe(false);
+    expect(detail.item.integrantes).toHaveLength(0);
+    expect(detail.item.historial_integrantes).toHaveLength(2);
+
     await apiCall(request, 'familias_reactivar', { method: 'POST', data: { id } });
     detail = await apiCall(request, 'familias_obtener', { params: { id } });
     expect(detail.item.activo).toBe(true);
+    expect(detail.item.integrantes).toHaveLength(0);
 
     await expectApiError(request, 'familias_eliminar_definitivo', {
       method: 'POST', data: { id, confirmacion: 'ELIMINAR' },
-    }, { status: 409, code: 'FAMILIA_CON_HISTORIAL_NO_ELIMINABLE' });
-    detail = await apiCall(request, 'familias_obtener', { params: { id } });
-    expect(detail.item.id_familia).toBe(id);
-    // Dar de baja cierra las pertenencias. Reactivar la familia no debe
-    // reabrir automáticamente vínculos históricos: los dos integrantes
-    // permanecen en el historial y pueden reincorporarse explícitamente.
-    expect(detail.item.integrantes).toHaveLength(0);
-    expect(detail.item.historial_integrantes).toHaveLength(2);
-    expect(detail.item.historial_integrantes.every((member) => member.vinculo_activo === false)).toBe(true);
+    }, { status: 409, code: 'FAMILIA_ACTIVA_NO_ELIMINABLE' });
+
+    await apiCall(request, 'familias_eliminar', {
+      method: 'POST', data: { id, fecha_baja: todayIso(), motivo_baja: 'PW E2E BAJA FINAL' },
+    });
+    const deleted = await apiCall(request, 'familias_eliminar_definitivo', {
+      method: 'POST', data: { id, confirmacion: 'ELIMINAR' },
+    });
+    expect(Number(deleted.id_familia)).toBe(Number(id));
+    expect(Number(deleted.impacto_eliminacion.vinculos_eliminados)).toBe(2);
+    expect(Number(deleted.impacto_eliminacion.socios_sin_familia)).toBe(0);
+
+    await expectApiError(request, 'familias_obtener', {
+      params: { id },
+    }, { status: 404, code: 'FAMILIA_NO_ENCONTRADA' });
+    const stillA = await apiCall(request, 'socios_obtener', { params: { id: a.id_socio } });
+    const stillB = await apiCall(request, 'socios_obtener', { params: { id: b.id_socio } });
+    expect(Number(stillA.item.id_socio)).toBe(Number(a.id_socio));
+    expect(Number(stillB.item.id_socio)).toBe(Number(b.id_socio));
     });
   });
 

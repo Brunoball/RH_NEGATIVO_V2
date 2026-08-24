@@ -790,15 +790,17 @@ export default function Familias() {
                           icon={item.activo ? faUserSlash : faRotateLeft}
                         />
                       </button>
-                      <button
-                        className="mov-iconBtn mov-iconBtn--danger"
-                        type="button"
-                        title="Eliminar definitivamente la familia"
-                        aria-label={`Eliminar definitivamente la familia ${item.nombre}`}
-                        onClick={() => openPermanentDelete(item)}
-                      >
-                        <FontAwesomeIcon icon={faTrash} />
-                      </button>
+                      {!item.activo ? (
+                        <button
+                          className="mov-iconBtn mov-iconBtn--danger"
+                          type="button"
+                          title="Eliminar definitivamente la familia"
+                          aria-label={`Eliminar definitivamente la familia ${item.nombre}`}
+                          onClick={() => openPermanentDelete(item)}
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </button>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -1062,14 +1064,14 @@ export default function Familias() {
         row={deleteModal?.item}
         loading={Boolean(deleteModal?.loading)}
         title="Eliminar definitivamente la familia"
-        message="Confirmá la eliminación definitiva. Esta operación es irreversible, pero no eliminará ningún socio ni sus pagos."
-        warning="Todos los integrantes vinculados quedarán sin familia y podrán incorporarse a otra."
+        message="Confirmá la eliminación definitiva. Se borrarán la familia y sus vínculos históricos, pero no se eliminará ningún socio ni sus pagos."
+        warning="Esta operación es irreversible. Los socios seguirán disponibles y podrán incorporarse a otra familia."
         details={
           deleteModal?.item
             ? [
                 { label: "Familia", value: deleteModal.item.nombre },
                 {
-                  label: "Socios que quedarán sin familia",
+                  label: "Integrantes actuales",
                   value: activeMembersToUnlink,
                 },
                 {

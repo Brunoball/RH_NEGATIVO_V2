@@ -789,7 +789,11 @@ trait ContableSocios
                  INNER JOIN familias f ON f.id_familia = fs.id_familia
                  WHERE fs.id_socio IN ({$placeholders})
                    AND (fs.desde IS NULL OR fs.desde <= ?)
-                   AND (fs.hasta IS NULL OR fs.hasta >= ?)";
+                   AND ((fs.activo = 1 AND fs.hasta IS NULL) OR fs.hasta > ?)
+                   AND (
+                        f.activo = 1
+                        OR (fs.activo = 0 AND fs.hasta IS NOT NULL)
+                   )";
             if (!$historical) $familySql .= ' AND fs.activo = 1 AND f.activo = 1';
             $familySql .= ' ORDER BY fs.id_socio, fs.id_familia_socio DESC';
 
@@ -816,7 +820,7 @@ trait ContableSocios
                      INNER JOIN socios s ON s.id_socio = fs.id_socio
                      WHERE fs.id_familia IN ({$familyPlaceholders})
                        AND (fs.desde IS NULL OR fs.desde <= ?)
-                       AND (fs.hasta IS NULL OR fs.hasta >= ?)";
+                       AND ((fs.activo = 1 AND fs.hasta IS NULL) OR fs.hasta > ?)";
                 if (!$historical) $countSql .= ' AND fs.activo = 1 AND s.vigente = 1';
                 $countSql .= ' GROUP BY fs.id_familia';
 
@@ -832,10 +836,30 @@ trait ContableSocios
                             cantidad_integrantes_hasta, porcentaje_descuento
                      FROM descuentos_familiares
                      WHERE vigencia_desde <= ? AND (vigencia_hasta IS NULL OR vigencia_hasta >= ?)';
-                if (!$historical) $rulesSql .= ' AND activo = 1';
+                if ($historical) {
+                    // Misma frontera temporal de Cuotas: el archivo corta ese
+                    // día, preserva fechas anteriores y mantiene versiones que
+                    // fueron cerradas anticipadamente por una regla sucesora.
+                    $rulesSql .=
+                        ' AND (
+                            activo = 1
+                            OR (
+                                activo = 0
+                                AND (
+                                    ? < DATE(actualizado_en)
+                                    OR (
+                                        vigencia_desde <= DATE(actualizado_en)
+                                        AND vigencia_hasta > DATE(actualizado_en)
+                                    )
+                                )
+                            )
+                        )';
+                } else {
+                    $rulesSql .= ' AND activo = 1';
+                }
                 $rulesSql .= ' ORDER BY cantidad_integrantes_desde DESC, id_descuento_familiar DESC';
                 $statement = $db->prepare($rulesSql);
-                $statement->execute([$date, $date]);
+                $statement->execute($historical ? [$date, $date, $date] : [$date, $date]);
                 $rules = $statement->fetchAll(PDO::FETCH_ASSOC);
 
                 foreach ($familyByPartner as $partnerId => $familyId) {

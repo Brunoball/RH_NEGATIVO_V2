@@ -98,6 +98,14 @@ trait DescuentosFamiliaresGestion
                 ['campo' => 'vigencia_hasta']
             );
         }
+        if ($effectiveFrom < date('Y-m-d')) {
+            api_error(
+                'Las reglas nuevas o modificadas no pueden comenzar en el pasado porque alterarían descuentos históricos. Usá hoy o una fecha futura.',
+                'VIGENCIA_DESCUENTO_RETROACTIVA',
+                409,
+                ['campo' => 'vigencia_desde']
+            );
+        }
         $description = optional_text($body['descripcion'] ?? null, 255);
 
         try {
@@ -372,7 +380,14 @@ trait DescuentosFamiliaresGestion
             'SELECT id_descuento_familiar
              FROM descuentos_familiares
              WHERE id_descuento_familiar <> :id_excluido
-               AND activo = 1
+               AND (
+                    activo = 1
+                    OR (
+                        activo = 0
+                        AND vigencia_desde <= DATE(actualizado_en)
+                        AND vigencia_hasta > DATE(actualizado_en)
+                    )
+               )
                AND (cantidad_integrantes_hasta IS NULL
                     OR cantidad_integrantes_hasta >= :cantidad_desde)
                AND (vigencia_hasta IS NULL
