@@ -177,19 +177,12 @@ const isAnnualPaymentAvailable = (periodMap, options = DEFAULT_MONTHS) => {
   );
 };
 
-const familyTargetsForMonths = (periodMap, monthIds, monthAmounts = {}) =>
+const familyTargetsForMonths = (periodMap, monthIds) =>
   monthIds.reduce((targets, monthId) => {
-    const normalizedMonth = String(monthId);
-    const context = periodMap[normalizedMonth]?.context;
+    const context = periodMap[String(monthId)]?.context;
     const members = Array.isArray(context?.familia?.integrantes)
       ? context.familia.integrantes
       : [];
-    const amountState = monthAmounts?.[normalizedMonth] || null;
-    const customAmount = amountState?.personalizado
-      ? Number(decimalInput(amountState.monto))
-      : 0;
-    const hasCustomAmount =
-      Boolean(amountState?.personalizado) && customAmount > 0;
 
     members.forEach((member) => {
       if (member?.puede_pagar) {
@@ -197,10 +190,7 @@ const familyTargetsForMonths = (periodMap, monthIds, monthAmounts = {}) =>
           id_socio: Number(member.id_socio),
           mes: Number(monthId),
           id_familia: Number(context.familia.id_familia),
-          monto: hasCustomAmount
-            ? customAmount
-            : Number(member.monto_sugerido || 0),
-          monto_personalizado: hasCustomAmount,
+          monto: Number(member.monto_sugerido || 0),
         });
       }
     });
@@ -1166,7 +1156,6 @@ export default function Cuotas() {
   const familyPaymentTargets = familyTargetsForMonths(
     paymentPeriods,
     selectedMonthIds,
-    paymentForm.montos_por_mes,
   );
   const familyPaymentCount = familyPaymentTargets.length;
   const familyPaymentTotal = familyPaymentTargets.reduce(
@@ -1743,6 +1732,7 @@ export default function Cuotas() {
       const nextAmount = String(option.monto ?? "");
       return {
         ...current,
+        aplicar_familia: false,
         monto:
           String(current.mes) === normalizedMonth ? nextAmount : current.monto,
         montos_por_mes: {
@@ -1795,6 +1785,7 @@ export default function Cuotas() {
 
       return {
         ...current,
+        aplicar_familia: false,
         monto:
           String(current.mes) === normalizedMonth
             ? String(nextState.monto ?? "")
@@ -1814,6 +1805,7 @@ export default function Cuotas() {
       const previous = current.montos_por_mes?.[normalizedMonth] || {};
       return {
         ...current,
+        aplicar_familia: false,
         monto:
           String(current.mes) === normalizedMonth
             ? sanitizedValue
@@ -2028,23 +2020,6 @@ export default function Cuotas() {
         });
         return;
       }
-      if (
-        paymentForm.aplicar_familia &&
-        selectedMonthIds.some((monthId) => {
-          const amountState = paymentForm.montos_por_mes?.[monthId];
-          return (
-            amountState?.personalizado &&
-            !(Number(decimalInput(amountState.monto)) > 0)
-          );
-        })
-      ) {
-        setFeedback({
-          type: "error",
-          message:
-            "El monto personalizado del pago familiar debe ser mayor a cero.",
-        });
-        return;
-      }
     } else if (
       !paymentForm.pagos.length ||
       paymentForm.pagos.some(
@@ -2083,15 +2058,9 @@ export default function Cuotas() {
             anio: Number(paymentForm.anio),
             mes: Number(target.mes),
             id_familia: Number(target.id_familia),
-<<<<<<< Updated upstream
-            ...(target.monto_personalizado
-              ? { monto: Number(target.monto) }
-              : {}),
-=======
             // El backend no confía en este valor para cobrar: lo usa como
             // versión de la cotización y vuelve a calcularlo bajo transacción.
             monto_esperado: Number(target.monto),
->>>>>>> Stashed changes
           })),
         });
       } else if (selectedMonthIds.length > 1) {
