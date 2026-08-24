@@ -593,8 +593,9 @@ test.describe('Socios', () => {
       await expect(deleteDialog).toContainText('SE CONSERVAN');
       await deleteDialog.getByRole('button', { name: 'Cancelar' }).click();
 
-      // Una familia inactiva y sin integrantes actuales puede eliminarse. Se
-      // borran sus vínculos históricos, pero nunca los socios ni sus pagos.
+      // Una familia inactiva y sin integrantes actuales puede eliminarse de la
+      // gestión. Sus vínculos quedan archivados sólo para cálculos históricos;
+      // nunca se borran los socios ni sus pagos.
       await row.getByTitle('Eliminar definitivamente la familia').click();
       deleteDialog = page.getByRole('dialog', { name: 'Eliminar definitivamente la familia' });
       await deleteDialog.getByRole('button', { name: 'Eliminar definitivamente' }).click();

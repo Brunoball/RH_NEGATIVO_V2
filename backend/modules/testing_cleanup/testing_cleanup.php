@@ -154,7 +154,15 @@ final class TestingCleanup
                 $db,
                 "SELECT id_familia FROM familias
                  WHERE nombre_familia LIKE 'PW E2E FAM %'
-                    OR nombre_familia LIKE 'PW EEE FAM %'"
+                    OR nombre_familia LIKE 'PW EEE FAM %'
+                    OR (
+                        LEFT(nombre_familia, 13) = '__ELIMINADA__'
+                        AND LOCATE('::', nombre_familia) > 13
+                        AND (
+                            SUBSTRING(nombre_familia, LOCATE('::', nombre_familia) + 2) LIKE 'PW E2E FAM %'
+                            OR SUBSTRING(nombre_familia, LOCATE('::', nombre_familia) + 2) LIKE 'PW EEE FAM %'
+                        )
+                    )"
             );
             $testCategories = self::ids(
                 $db,

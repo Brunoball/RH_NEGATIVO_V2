@@ -10,6 +10,7 @@ const {
   paymentPayload,
   quotaCatalogs,
 } = require('./helpers/cuotas.helper');
+const { cuotaCategoryData } = require('./fixtures/cuotas.fixture');
 const { familyData, socioData } = require('./fixtures/socios.fixture');
 
 function currentMonth() {
@@ -185,19 +186,31 @@ test.describe('Eliminación definitiva · trazabilidad transversal', () => {
   });
 
   test('Balance histórico de deudores conserva el DNI archivado sin revivir al socio en períodos posteriores', async ({ request }) => {
-    test.skip(currentMonth() <= 2, 'Este escenario necesita al menos un período bimestral cerrado del año actual.');
-
-    const category = await createQuotaCategory(request);
+    const historicalYear = currentMonth() <= 2 ? currentYear() - 1 : currentYear();
+    const historicalCategory = cuotaCategoryData();
+    const category = await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: historicalCategory.nombre,
+        monto_mensual: historicalCategory.mensual,
+        monto_anual: historicalCategory.anual,
+        vigente_desde: `${historicalYear}-01-01`,
+      },
+    });
     const socio = await createQuotaSocio(request, 'DELETE DEUDA HIST', category.item.id_categoria, {
-      fecha_ingreso: `${currentYear()}-01-01`,
+      fecha_ingreso: `${historicalYear}-01-01`,
     });
 
     await apiCall(request, 'socios_eliminar_definitivo', {
       method: 'POST', data: { id: socio.item.id_socio },
     });
 
+    const februaryLastDay = new Date(Date.UTC(historicalYear, 2, 0)).getUTCDate();
     const historicalBalance = (await apiCall(request, 'contable_balance', {
-      params: { desde: `${currentYear()}-01-01`, hasta: `${currentYear()}-02-28` },
+      params: {
+        desde: `${historicalYear}-01-01`,
+        hasta: `${historicalYear}-02-${String(februaryLastDay).padStart(2, '0')}`,
+      },
     })).balance;
     const historicalDebt = (historicalBalance.deudores.items || []).find(
       (item) => Number(item.id_socio) === Number(socio.item.id_socio),

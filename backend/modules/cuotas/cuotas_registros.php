@@ -377,6 +377,20 @@ abstract class CuotasRegistros extends CuotasConsultas
                 : ($familyBatch
                     ? positive_id($item['id_familia'] ?? null, 'familia del pago')
                     : null);
+            $quotedAmount = null;
+            if ($familyId !== null) {
+                $rawQuotedAmount = $item['monto_esperado'] ?? $item['monto'] ?? null;
+                if ($familyBatch && ($rawQuotedAmount === null || $rawQuotedAmount === '')) {
+                    api_error(
+                        'La cotización familiar está incompleta. Volvé a abrir el modal antes de cobrar.',
+                        'PAGO_FAMILIAR_DESACTUALIZADO',
+                        409
+                    );
+                }
+                $quotedAmount = $rawQuotedAmount === null || $rawQuotedAmount === ''
+                    ? null
+                    : decimal_amount($rawQuotedAmount, 'monto esperado', 0.01, 9999999999.99);
+            }
             // En un pago familiar el cliente sólo propone destinos. El importe
             // se vuelve a calcular en el backend con la composición, categoría,
             // precio y descuento vigentes dentro de la transacción.
@@ -390,6 +404,7 @@ abstract class CuotasRegistros extends CuotasConsultas
                 'anio' => $year,
                 'id_periodo' => $periodId,
                 'monto' => $amount,
+                'monto_esperado' => $quotedAmount,
                 'id_familia_contexto' => $familyId,
             ];
         }
@@ -436,30 +451,47 @@ abstract class CuotasRegistros extends CuotasConsultas
                 'anio' => $year,
                 'id_periodo' => $periodId,
                 'referencia' => $reference,
+                'representante' => $partnerId,
                 'enviados' => [],
             ];
             $groups[$key]['enviados'][$partnerId] = true;
         }
 
         foreach ($groups as $group) {
-            $memberIds = self::integrantesFamilia(
+            // Esta es exactamente la misma fuente de verdad que alimentó el
+            // modal. Además de pagos previos contempla baja del socio, archivo
+            // operativo, fecha de ingreso, categoría y precio configurado.
+            $context = self::contextoPagoDatos(
                 $db,
-                (int)$group['id_familia'],
-                (string)$group['referencia']
+                (int)$group['representante'],
+                (int)$group['anio'],
+                (int)$group['id_periodo'],
+                $paymentDate
             );
-            $payments = self::pagosRegistrados($db, $memberIds, (int)$group['anio']);
-            $payableIds = [];
-            foreach ($memberIds as $memberId) {
-                $periodId = (int)$group['id_periodo'];
-                if (isset($payments[$memberId . '-' . $periodId])) continue;
-                if (self::conflictoModalidad($payments, $memberId, $periodId) !== null) continue;
-                $payableIds[] = $memberId;
+            $actualFamily = $context['familia'] ?? null;
+            if ((int)($actualFamily['id_familia'] ?? 0) !== (int)$group['id_familia']) {
+                api_error(
+                    'El grupo familiar cambió desde que abriste el modal. Volvé a abrirlo antes de registrar el pago.',
+                    'PAGO_FAMILIAR_DESACTUALIZADO',
+                    409
+                );
             }
+            $members = is_array($actualFamily['integrantes'] ?? null)
+                ? $actualFamily['integrantes']
+                : [];
+            $payableIds = array_values(array_map(
+                static fn(array $member): int => (int)$member['id_socio'],
+                array_filter(
+                    $members,
+                    static fn(mixed $member): bool => is_array($member)
+                        && (bool)($member['puede_pagar'] ?? false)
+                )
+            ));
 
             $sentIds = array_map('intval', array_keys($group['enviados']));
             sort($payableIds);
             sort($sentIds);
-            if ($memberIds === [] || $sentIds !== $payableIds) {
+            if ($members === [] || $sentIds !== $payableIds) {
                 api_error(
                     'El grupo familiar o sus cuotas disponibles cambiaron desde que abriste el modal. Actualizá la información antes de cobrar.',
                     'PAGO_FAMILIAR_DESACTUALIZADO',
@@ -689,11 +721,23 @@ abstract class CuotasRegistros extends CuotasConsultas
                 if ($base <= 0) {
                     api_error('La categoría no tiene un monto configurado para ese período.', 'MONTO_NO_CONFIGURADO', 409);
                 }
+                $calculatedAmount = self::aplicarDescuento($base, $discount);
+                $quotedAmount = $target['monto_esperado'] ?? null;
+                if (!$condoned
+                    && $family !== null
+                    && $quotedAmount !== null
+                    && abs((float)$quotedAmount - $calculatedAmount) >= 0.005) {
+                    api_error(
+                        'El importe o el descuento familiar cambió desde que abriste el modal. Actualizá la información antes de cobrar.',
+                        'PAGO_FAMILIAR_DESACTUALIZADO',
+                        409
+                    );
+                }
                 $amount = $condoned
                     ? 0.0
                     : ($target['monto'] !== null
                         ? (float)$target['monto']
-                        : self::aplicarDescuento($base, $discount));
+                        : $calculatedAmount);
                 if (!$condoned && $amount <= 0) api_error('El monto debe ser mayor a cero.', 'MONTO_INVALIDO');
 
                 $insert->execute([

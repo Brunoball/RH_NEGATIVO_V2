@@ -179,11 +179,21 @@ test.describe('Socios y familias · contratos API complementarios', () => {
     });
     expect(Number(deleted.id_familia)).toBe(Number(id));
     expect(Number(deleted.impacto_eliminacion.vinculos_eliminados)).toBe(2);
+    expect(Number(deleted.impacto_eliminacion.vinculos_historicos_preservados)).toBe(2);
     expect(Number(deleted.impacto_eliminacion.socios_sin_familia)).toBe(0);
 
     await expectApiError(request, 'familias_obtener', {
       params: { id },
     }, { status: 404, code: 'FAMILIA_NO_ENCONTRADA' });
+    await expectApiError(request, 'familias_reactivar', {
+      method: 'POST', data: { id },
+    }, { status: 404, code: 'FAMILIA_NO_ENCONTRADA' });
+    const deletedSearch = await apiCall(request, 'familias_listar', {
+      params: { estado: 'inactivo', buscar: family.nombre },
+    });
+    expect(
+      deletedSearch.items.some((item) => Number(item.id_familia) === Number(id)),
+    ).toBe(false);
     const stillA = await apiCall(request, 'socios_obtener', { params: { id: a.id_socio } });
     const stillB = await apiCall(request, 'socios_obtener', { params: { id: b.id_socio } });
     expect(Number(stillA.item.id_socio)).toBe(Number(a.id_socio));

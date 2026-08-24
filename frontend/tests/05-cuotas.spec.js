@@ -736,22 +736,22 @@ test.describe('Cuotas · API y reglas de negocio', () => {
 
   test('regresión: la baja familiar corta el presente sin borrar la composición de períodos anteriores', async ({ request }) => {
     const currentPeriod = currentBimonthlyPeriodId();
-    test.skip(currentPeriod === 1, 'Todavía no existe un bimestre anterior en el año actual.');
-
     const today = todayIso();
-    const previousPeriod = currentPeriod - 1;
+    const previousYear = currentPeriod === 1 ? currentYear() - 1 : currentYear();
+    const previousPeriod = currentPeriod === 1 ? 6 : currentPeriod - 1;
+    const familyStart = `${previousYear}-01-01`;
     const category = await createQuotaCategory(request);
     const first = await createQuotaSocio(
       request,
       'FAMILIA HISTORICA PRIMERO',
       category.item.id_categoria,
-      { fecha_ingreso: `${currentYear()}-01-01` },
+      { fecha_ingreso: familyStart },
     );
     const second = await createQuotaSocio(
       request,
       'FAMILIA HISTORICA SEGUNDO',
       category.item.id_categoria,
-      { fecha_ingreso: `${currentYear()}-01-01` },
+      { fecha_ingreso: familyStart },
     );
     const family = cuotaFamilyData();
     const saved = await apiCall(request, 'familias_guardar', {
@@ -760,8 +760,8 @@ test.describe('Cuotas · API y reglas de negocio', () => {
         nombre: family.nombre,
         observaciones: family.descripcion,
         integrantes: [
-          { id_socio: first.item.id_socio, desde: `${currentYear()}-01-01` },
-          { id_socio: second.item.id_socio, desde: `${currentYear()}-01-01` },
+          { id_socio: first.item.id_socio, desde: familyStart },
+          { id_socio: second.item.id_socio, desde: familyStart },
         ],
       },
     });
@@ -775,16 +775,45 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       },
     });
 
-    const previous = await apiCall(request, 'cuotas_contexto_pago', {
+    const previousBeforeDelete = await apiCall(request, 'cuotas_contexto_pago', {
       params: {
         id_socio: first.item.id_socio,
-        anio: currentYear(),
+        anio: previousYear,
         mes: previousPeriod,
         fecha_pago: today,
       },
     });
-    expect(Number(previous.familia?.id_familia)).toBe(Number(saved.item.id_familia));
-    expect(previous.familia?.integrantes).toHaveLength(2);
+    expect(Number(previousBeforeDelete.familia?.id_familia)).toBe(Number(saved.item.id_familia));
+    expect(previousBeforeDelete.familia?.integrantes).toHaveLength(2);
+
+    // La eliminación definitiva debe sacarla de Socios sin destruir la base
+    // histórica que Cuotas y Contabilidad necesitan para reconstruir importes.
+    const deleted = await apiCall(request, 'familias_eliminar_definitivo', {
+      method: 'POST',
+      data: { id: saved.item.id_familia, confirmacion: 'ELIMINAR' },
+    });
+    expect(Number(deleted.impacto_eliminacion.vinculos_historicos_preservados)).toBe(2);
+    await expectApiError(request, 'familias_obtener', {
+      params: { id: saved.item.id_familia },
+    }, { status: 404, code: 'FAMILIA_NO_ENCONTRADA' });
+
+    const previousAfterDelete = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: previousYear,
+        mes: previousPeriod,
+        fecha_pago: today,
+      },
+    });
+    expect(Number(previousAfterDelete.familia?.id_familia)).toBe(Number(saved.item.id_familia));
+    expect(previousAfterDelete.familia?.nombre).toBe(family.nombre);
+    expect(previousAfterDelete.familia?.integrantes).toHaveLength(2);
+    expect(previousAfterDelete.familia?.porcentaje_descuento).toBe(
+      previousBeforeDelete.familia?.porcentaje_descuento,
+    );
+    expect(previousAfterDelete.principal.monto_sugerido).toBe(
+      previousBeforeDelete.principal.monto_sugerido,
+    );
 
     const current = await apiCall(request, 'cuotas_contexto_pago', {
       params: {
@@ -856,7 +885,7 @@ test.describe('Cuotas · API y reglas de negocio', () => {
           anio: currentYear(),
           mes: periodId,
           id_familia: saved.item.id_familia,
-          monto: member.monto_sugerido,
+          monto_esperado: member.monto_sugerido,
         })),
       },
     }, { status: 409, code: 'PAGO_FAMILIAR_DESACTUALIZADO' });
@@ -872,6 +901,203 @@ test.describe('Cuotas · API y reglas de negocio', () => {
       });
       expect(paid.items).toHaveLength(0);
     }
+  });
+
+  test('regresión: pago familiar acepta sólo los integrantes realmente cobrables del contexto', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const payableCategory = await createQuotaCategory(request);
+    const unavailableCategory = await createQuotaCategory(request);
+    const payable = await createQuotaSocio(
+      request,
+      'FAMILIA COBRABLE',
+      payableCategory.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+    const unavailable = await createQuotaSocio(
+      request,
+      'FAMILIA NO COBRABLE',
+      unavailableCategory.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const family = cuotaFamilyData();
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: payable.item.id_socio, desde: today },
+          { id_socio: unavailable.item.id_socio, desde: today },
+        ],
+      },
+    });
+
+    await apiCall(request, 'categorias_eliminar', {
+      method: 'POST',
+      data: { id: unavailableCategory.item.id_categoria },
+    });
+    const context = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: payable.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    const payableMembers = context.familia.integrantes.filter((member) => member.puede_pagar);
+    const unavailableMember = context.familia.integrantes.find(
+      (member) => Number(member.id_socio) === Number(unavailable.item.id_socio),
+    );
+    expect(payableMembers).toHaveLength(1);
+    expect(unavailableMember.puede_pagar).toBe(false);
+
+    const paid = await apiCall(request, 'cuotas_registrar_pagos', {
+      method: 'POST',
+      data: {
+        modo_pago: 'FAMILIAR',
+        fecha_pago: today,
+        id_medio_pago: catalogs.medium.id_medio_pago,
+        pagos: payableMembers.map((member) => ({
+          id_socio: member.id_socio,
+          anio: currentYear(),
+          mes: periodId,
+          id_familia: context.familia.id_familia,
+          monto_esperado: member.monto_sugerido,
+        })),
+      },
+    });
+    expect(paid.items).toHaveLength(1);
+    expect(Number(paid.items[0].id_socio)).toBe(Number(payable.item.id_socio));
+    await deletePayment(request, paid.items[0].id_pago);
+  });
+
+  test('regresión: una cotización familiar vieja no puede cobrar un importe recalculado silenciosamente', async ({ request }) => {
+    const today = todayIso();
+    const periodId = currentBimonthlyPeriodId();
+    const category = await createQuotaCategory(request);
+    const first = await createQuotaSocio(
+      request,
+      'COTIZACION FAMILIAR PRIMERO',
+      category.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+    const second = await createQuotaSocio(
+      request,
+      'COTIZACION FAMILIAR SEGUNDO',
+      category.item.id_categoria,
+      { fecha_ingreso: today },
+    );
+    const catalogs = await quotaCatalogs(request);
+    const family = cuotaFamilyData();
+    await apiCall(request, 'familias_guardar', {
+      method: 'POST',
+      data: {
+        nombre: family.nombre,
+        observaciones: family.descripcion,
+        integrantes: [
+          { id_socio: first.item.id_socio, desde: today },
+          { id_socio: second.item.id_socio, desde: today },
+        ],
+      },
+    });
+    const stale = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+
+    await expectApiError(request, 'cuotas_registrar_pagos', {
+      method: 'POST',
+      data: {
+        modo_pago: 'FAMILIAR',
+        fecha_pago: today,
+        id_medio_pago: catalogs.medium.id_medio_pago,
+        pagos: stale.familia.integrantes
+          .filter((member) => member.puede_pagar)
+          .map((member) => ({
+            id_socio: member.id_socio,
+            anio: currentYear(),
+            mes: periodId,
+            id_familia: stale.familia.id_familia,
+          })),
+      },
+    }, { status: 409, code: 'PAGO_FAMILIAR_DESACTUALIZADO' });
+
+    const updatedMonthly = (Number(category.mensual) + 777.77).toFixed(2);
+    await apiCall(request, 'categorias_guardar', {
+      method: 'POST',
+      data: {
+        id_categoria: category.item.id_categoria,
+        nombre: category.nombre,
+        monto_mensual: updatedMonthly,
+        monto_anual: category.anual,
+        vigente_desde: today,
+      },
+    });
+
+    const stalePayload = stale.familia.integrantes
+      .filter((member) => member.puede_pagar)
+      .map((member) => ({
+        id_socio: member.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        id_familia: stale.familia.id_familia,
+        monto_esperado: member.monto_sugerido,
+      }));
+    await expectApiError(request, 'cuotas_registrar_pagos', {
+      method: 'POST',
+      data: {
+        modo_pago: 'FAMILIAR',
+        fecha_pago: today,
+        id_medio_pago: catalogs.medium.id_medio_pago,
+        pagos: stalePayload,
+      },
+    }, { status: 409, code: 'PAGO_FAMILIAR_DESACTUALIZADO' });
+
+    for (const socio of [first, second]) {
+      const paid = await apiCall(request, 'cuotas_listar', {
+        params: {
+          estado: 'PAGADOS',
+          anio: currentYear(),
+          mes: periodId,
+          id_socio: socio.item.id_socio,
+        },
+      });
+      expect(paid.items).toHaveLength(0);
+    }
+
+    const fresh = await apiCall(request, 'cuotas_contexto_pago', {
+      params: {
+        id_socio: first.item.id_socio,
+        anio: currentYear(),
+        mes: periodId,
+        fecha_pago: today,
+      },
+    });
+    const freshPayment = await apiCall(request, 'cuotas_registrar_pagos', {
+      method: 'POST',
+      data: {
+        modo_pago: 'FAMILIAR',
+        fecha_pago: today,
+        id_medio_pago: catalogs.medium.id_medio_pago,
+        pagos: fresh.familia.integrantes
+          .filter((member) => member.puede_pagar)
+          .map((member) => ({
+            id_socio: member.id_socio,
+            anio: currentYear(),
+            mes: periodId,
+            id_familia: fresh.familia.id_familia,
+            monto_esperado: member.monto_sugerido,
+          })),
+      },
+    });
+    expect(freshPayment.items).toHaveLength(2);
+    for (const item of freshPayment.items) await deletePayment(request, item.id_pago);
   });
 
 

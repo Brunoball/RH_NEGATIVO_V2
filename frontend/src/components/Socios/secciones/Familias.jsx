@@ -1064,7 +1064,7 @@ export default function Familias() {
         row={deleteModal?.item}
         loading={Boolean(deleteModal?.loading)}
         title="Eliminar definitivamente la familia"
-        message="Confirmá la eliminación definitiva. Se borrarán la familia y sus vínculos históricos, pero no se eliminará ningún socio ni sus pagos."
+        message="Confirmá la eliminación definitiva. La familia desaparecerá de la gestión; sus vínculos quedarán archivados únicamente para conservar cálculos y comprobantes históricos."
         warning="Esta operación es irreversible. Los socios seguirán disponibles y podrán incorporarse a otra familia."
         details={
           deleteModal?.item
@@ -1075,7 +1075,7 @@ export default function Familias() {
                   value: activeMembersToUnlink,
                 },
                 {
-                  label: "Vínculos familiares que se borrarán",
+                  label: "Vínculos que salen de la gestión",
                   value: familyLinksToDelete,
                 },
                 {

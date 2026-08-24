@@ -2083,9 +2083,15 @@ export default function Cuotas() {
             anio: Number(paymentForm.anio),
             mes: Number(target.mes),
             id_familia: Number(target.id_familia),
+<<<<<<< Updated upstream
             ...(target.monto_personalizado
               ? { monto: Number(target.monto) }
               : {}),
+=======
+            // El backend no confía en este valor para cobrar: lo usa como
+            // versión de la cotización y vuelve a calcularlo bajo transacción.
+            monto_esperado: Number(target.monto),
+>>>>>>> Stashed changes
           })),
         });
       } else if (selectedMonthIds.length > 1) {

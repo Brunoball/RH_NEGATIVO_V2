@@ -417,7 +417,13 @@ abstract class CuotasSoporte
         // día al vínculo que Socios ya había cerrado. El flag activo también
         // evita que datos legacy con `hasta` nulo reabran familias dadas de baja.
         $statement = $db->prepare(
-            'SELECT f.id_familia, f.nombre_familia
+            "SELECT f.id_familia,
+                    CASE
+                        WHEN LEFT(f.nombre_familia, 13) = '__ELIMINADA__'
+                             AND LOCATE('::', f.nombre_familia) > 13
+                        THEN SUBSTRING(f.nombre_familia, LOCATE('::', f.nombre_familia) + 2)
+                        ELSE f.nombre_familia
+                    END AS nombre_familia
              FROM familias_socios fs
              INNER JOIN familias f ON f.id_familia = fs.id_familia
              WHERE fs.id_socio = ?
@@ -427,7 +433,7 @@ abstract class CuotasSoporte
                     f.activo = 1
                     OR (fs.activo = 0 AND fs.hasta IS NOT NULL)
                )
-             ORDER BY fs.id_familia_socio DESC LIMIT 1'
+             ORDER BY fs.id_familia_socio DESC LIMIT 1"
         );
         $statement->execute([$partnerId, $date, $date]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -472,7 +478,13 @@ abstract class CuotasSoporte
 
         $placeholders = implode(',', array_fill(0, count($partnerIds), '?'));
         $statement = $db->prepare(
-            "SELECT fs.id_socio, fs.id_familia, fs.id_familia_socio, f.nombre_familia
+            "SELECT fs.id_socio, fs.id_familia, fs.id_familia_socio,
+                    CASE
+                        WHEN LEFT(f.nombre_familia, 13) = '__ELIMINADA__'
+                             AND LOCATE('::', f.nombre_familia) > 13
+                        THEN SUBSTRING(f.nombre_familia, LOCATE('::', f.nombre_familia) + 2)
+                        ELSE f.nombre_familia
+                    END AS nombre_familia
              FROM familias_socios fs
              INNER JOIN familias f
                 ON f.id_familia = fs.id_familia

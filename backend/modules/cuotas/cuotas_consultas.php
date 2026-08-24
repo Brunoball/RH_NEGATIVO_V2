@@ -726,7 +726,13 @@ abstract class CuotasConsultas extends CuotasSoporte
                     c.nombre AS categoria, c.activo AS categoria_activa,
                     co.nombre AS cobrador,
                     es.nombre AS estado_persona,
-                    f.id_familia, f.nombre_familia AS familia,
+                    f.id_familia,
+                    CASE
+                        WHEN LEFT(f.nombre_familia, 13) = '__ELIMINADA__'
+                             AND LOCATE('::', f.nombre_familia) > 13
+                        THEN SUBSTRING(f.nombre_familia, LOCATE('::', f.nombre_familia) + 2)
+                        ELSE f.nombre_familia
+                    END AS familia,
                     fc.cantidad_integrantes
              FROM socios s
              INNER JOIN categoria c ON c.id_categoria = s.id_categoria

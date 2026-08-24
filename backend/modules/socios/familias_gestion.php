@@ -5,6 +5,8 @@ trait FamiliasGestion
 {
     abstract private static function familyDetail(PDO $db, int $id, bool $includeHistory = false): ?array;
     abstract private static function familiasFiltroSociosOperativos(PDO $db, string $alias = 's'): string;
+    abstract private static function familiasNombreArchivado(int $id, string $name): string;
+    abstract private static function familiasEsNombreArchivado(string $name): bool;
 
     private static function guardarDatos(array $auth, array $body): array
     {
@@ -14,6 +16,9 @@ trait FamiliasGestion
             : null;
 
         $name = required_text($body, 'nombre', 'nombre de la familia', 120);
+        if (self::familiasEsNombreArchivado($name)) {
+            api_error('El nombre de la familia utiliza un formato reservado.', 'VALIDATION_ERROR', 422);
+        }
         $observations = optional_text($body['observaciones'] ?? $body['descripcion'] ?? null, 2000);
         $members = self::normalizeMembers($body);
         if ($members === []) {
@@ -56,6 +61,9 @@ trait FamiliasGestion
                     $lock->execute([$id]);
                     $locked = $lock->fetch();
                     if (!$locked) api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+                    if (self::familiasEsNombreArchivado((string)$locked['nombre_familia'])) {
+                        api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+                    }
                     if (!(bool)$locked['activo']) {
                         api_error(
                             'Reactivá la familia antes de modificar sus integrantes.',
@@ -283,6 +291,9 @@ trait FamiliasGestion
             $statement->execute([$id]);
             $locked = $statement->fetch();
             if (!$locked) api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+            if (self::familiasEsNombreArchivado((string)$locked['nombre_familia'])) {
+                api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+            }
             if ((bool)$locked['activo'] === $active) {
                 api_error(
                     $active ? 'La familia ya se encuentra activa.' : 'La familia ya se encuentra dada de baja.',
@@ -363,6 +374,9 @@ trait FamiliasGestion
                 $lock->execute([$id]);
                 $locked = $lock->fetch();
                 if (!$locked) api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+                if (self::familiasEsNombreArchivado((string)$locked['nombre_familia'])) {
+                    api_error('La familia no existe.', 'FAMILIA_NO_ENCONTRADA', 404);
+                }
                 if ((bool)$locked['activo']) {
                     api_error(
                         'Dale de baja a la familia antes de eliminarla definitivamente.',
@@ -383,21 +397,37 @@ trait FamiliasGestion
                 $impact = [
                     'socios_sin_familia' => (int)($impactRow['socios_sin_familia'] ?? 0),
                     'vinculos_eliminados' => (int)($impactRow['vinculos_totales'] ?? 0),
+                    'vinculos_historicos_preservados' => (int)($impactRow['vinculos_totales'] ?? 0),
                 ];
 
-                // La baja ya cerró todos los vínculos operativos. La eliminación
-                // definitiva borra también sus pertenencias históricas, pero no
-                // elimina socios, pagos ni datos personales. `before` conserva
-                // el detalle completo dentro de Auditoría.
-                $deleteLinks = $db->prepare('DELETE FROM familias_socios WHERE id_familia = ?');
-                $deleteLinks->execute([$id]);
-                if ($deleteLinks->rowCount() !== $impact['vinculos_eliminados']) {
-                    throw new RuntimeException('No se pudieron eliminar todos los vínculos de la familia.');
-                }
+                // Sanea instalaciones antiguas en las que una familia inactiva
+                // todavía conservaba vínculos abiertos. Deben quedar liberados
+                // operativamente, pero con su intervalo histórico cerrado.
+                $db->prepare(
+                    'UPDATE familias_socios
+                     SET activo = 0,
+                         hasta = COALESCE(hasta, CURDATE()),
+                         actualizado_en = CURRENT_TIMESTAMP
+                     WHERE id_familia = ?
+                       AND activo = 1
+                       AND hasta IS NULL'
+                )->execute([$id]);
 
-                $deleteFamily = $db->prepare('DELETE FROM familias WHERE id_familia = ?');
-                $deleteFamily->execute([$id]);
-                if ($deleteFamily->rowCount() !== 1) {
+                // Se elimina de forma definitiva de la gestión operativa, pero
+                // la fila y sus intervalos quedan como lápida interna. Cuotas y
+                // Contabilidad necesitan esos intervalos para reproducir el
+                // descuento que correspondía en comprobantes/deudas históricas.
+                $archivedName = self::familiasNombreArchivado(
+                    $id,
+                    (string)$locked['nombre_familia']
+                );
+                $archiveFamily = $db->prepare(
+                    'UPDATE familias
+                     SET nombre_familia = ?, activo = 0, actualizado_en = CURDATE()
+                     WHERE id_familia = ?'
+                );
+                $archiveFamily->execute([$archivedName, $id]);
+                if ($archiveFamily->rowCount() !== 1) {
                     throw new RuntimeException('No se pudo eliminar definitivamente la familia.');
                 }
 

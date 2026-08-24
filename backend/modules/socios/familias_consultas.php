@@ -3,6 +3,21 @@ declare(strict_types=1);
 
 trait FamiliasConsultas
 {
+    private static function familiasEsNombreArchivado(string $name): bool
+    {
+        return str_starts_with($name, '__ELIMINADA__') && str_contains($name, '::');
+    }
+
+    private static function familiasNombreArchivado(int $id, string $name): string
+    {
+        $prefix = '__ELIMINADA__' . $id . '::';
+        $maxLength = max(0, 120 - strlen($prefix));
+        $visibleName = function_exists('mb_substr')
+            ? mb_substr($name, 0, $maxLength, 'UTF-8')
+            : substr($name, 0, $maxLength);
+        return $prefix . $visibleName;
+    }
+
     private static function familiasArchivoSociosEliminadosDisponible(PDO $db): bool
     {
         try {
@@ -22,7 +37,12 @@ trait FamiliasConsultas
 
     private static function listarDatos(PDO $db, array $filters): array
     {
-        $where = [];
+        // Las familias eliminadas conservan una lápida sólo para reconstruir
+        // períodos financieros. Nunca vuelven a aparecer en la gestión.
+        $where = ["NOT (
+            LEFT(f.nombre_familia, 13) = '__ELIMINADA__'
+            AND LOCATE('::', f.nombre_familia) > 13
+        )"];
         $params = [];
         $archiveAvailable = self::familiasArchivoSociosEliminadosDisponible($db);
         $historicalDniJoin = $archiveAvailable
@@ -83,7 +103,11 @@ trait FamiliasConsultas
             "SELECT COUNT(*) AS total,
                     COALESCE(SUM(activo = 1), 0) AS activas,
                     COALESCE(SUM(activo = 0), 0) AS inactivas
-             FROM familias"
+             FROM familias
+             WHERE NOT (
+                LEFT(nombre_familia, 13) = '__ELIMINADA__'
+                AND LOCATE('::', nombre_familia) > 13
+             )"
         )->fetch() ?: [];
 
         $members = (int)$db->query(
@@ -189,6 +213,10 @@ trait FamiliasConsultas
              FROM familias f
              LEFT JOIN familias_socios fs ON fs.id_familia = f.id_familia
              WHERE f.id_familia = ?
+               AND NOT (
+                    LEFT(f.nombre_familia, 13) = '__ELIMINADA__'
+                    AND LOCATE('::', f.nombre_familia) > 13
+               )
              GROUP BY f.id_familia, f.nombre_familia, f.observaciones, f.activo, f.creado_en, f.actualizado_en"
         );
         $statement->execute([$id]);
