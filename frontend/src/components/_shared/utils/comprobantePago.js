@@ -256,13 +256,11 @@ const receiptLegacyEntries = (source) => {
     const regularAddress = firstValue(
       ...orderedLines.map((line) => line.domicilio),
     );
-    const preferredAddress = firstValue(collectionAddress, regularAddress, "—");
-
     return {
       receipt,
       id: first.partnerId || "—",
       name: (people.join(" · ") || receipt.socios || "—").toUpperCase(),
-      address: preferredAddress,
+      address: regularAddress || "",
       collectionAddress,
       phone: firstValue(
         ...orderedLines.map((line) => line.telefonoMovil),
@@ -281,6 +279,7 @@ const receiptPanelHtml = (data, withBarcode) => `
   <div class="legacy-receipt-panel">
     <div class="legacy-receipt-row"><div class="legacy-receipt-cell legacy-receipt-cell--full"><strong>Socio:</strong>&nbsp;${htmlEscape(data.id)} - ${htmlEscape(data.name)}</div></div>
     <div class="legacy-receipt-row"><div class="legacy-receipt-cell legacy-receipt-cell--full"><strong>Domicilio:</strong>&nbsp;${htmlEscape(data.address)}</div></div>
+    <div class="legacy-receipt-row"><div class="legacy-receipt-cell legacy-receipt-cell--full"><strong>Domicilio de cobro:</strong>&nbsp;${htmlEscape(data.collectionAddress)}</div></div>
     <div class="legacy-receipt-row">
       <div class="legacy-receipt-cell"><strong>Tel:</strong>&nbsp;${htmlEscape(data.phone)}</div>
       <div class="legacy-receipt-cell"><div class="legacy-receipt-amount">Importe: ${htmlEscape(data.amount)}</div></div>
@@ -318,10 +317,10 @@ const receiptStyles = `
   .legacy-receipt-row--last { min-height:7mm; }
   .legacy-receipt-period { display:flex; flex-direction:column; justify-content:center; flex:1; }
   .legacy-receipt-period div { flex:1; display:flex; align-items:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .legacy-receipt-barcode-cell { width:37mm; padding:0; display:flex; flex-direction:column; justify-content:center; align-items:center; }
-  .legacy-barcode-container { display:flex; align-items:center; justify-content:center; width:100%; height:5.2mm; }
-  .legacy-barcode { width:100%; height:5.2mm; display:block; }
-  .legacy-barcode-text { height:2.4mm; display:flex; align-items:center; justify-content:center; font-size:6pt; text-align:center; }
+  .legacy-receipt-barcode-cell { flex:1; padding:0; height:100%; min-height:6mm; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+  .legacy-barcode-container { display:flex; align-items:center; justify-content:center; width:100%; height:70%; }
+  .legacy-barcode { width:100%; height:auto; max-height:24px; display:block; }
+  .legacy-barcode-text { margin:0; height:30%; display:flex; align-items:center; justify-content:center; font-size:6pt; text-align:center; }
   .legacy-receipt-signature { width:100%; font-size:8pt; text-align:center; }
   .legacy-receipt-amount { width:100%; margin-right:.5rem; font-size:8pt; font-weight:bold; text-align:right; }
 `;
