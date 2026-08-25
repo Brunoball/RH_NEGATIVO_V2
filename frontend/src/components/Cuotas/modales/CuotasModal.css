@@ -618,6 +618,24 @@
   opacity: 0.5;
 }
 
+.cuotas-year-chip > button {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 10px;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 88px;
+}
+
+.cuotas-year-chip > button > span {
+  width: 100%;
+  text-align: center;
+}
+
+.cuotas-year-chip > button > svg,
+.cuotas-year-chip > button > i {
+  justify-self: center;
+}
+
 .cuotas-year-chip > button i {
   width: 0;
   height: 0;
@@ -651,9 +669,10 @@
   min-height: 32px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   margin: 0;
   padding: 6px 10px;
+  text-align: center;
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--balto-ink);

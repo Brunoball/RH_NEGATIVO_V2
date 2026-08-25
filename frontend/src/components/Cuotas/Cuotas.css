@@ -477,6 +477,26 @@
   white-space: nowrap;
 }
 
+.cuotas-pagination__summaryFull {
+  gap: 5px;
+}
+
+.cuotas-pagination__summaryRange--full {
+  gap: 0;
+}
+
+.cuotas-pagination__summaryDash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cuotas-pagination__summaryLabel,
+.cuotas-pagination__summaryWord {
+  display: inline-flex;
+  align-items: center;
+}
+
 .cuotas-pagination__summaryCompact,
 .cuotas-pagination__loadingCompact {
   display: none;

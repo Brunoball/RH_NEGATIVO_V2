@@ -2742,9 +2742,15 @@ export default function Cuotas() {
                 {totalRegistros ? (
                   <p className="cuotas-pagination__summary">
                     <span className="cuotas-pagination__summaryFull">
-                      Mostrando <strong>{registroDesde}</strong>–
-                      <strong>{registroHasta}</strong> de{" "}
-                      <strong>{totalRegistros}</strong> registros
+                      <span className="cuotas-pagination__summaryLabel">Mostrando</span>
+                      <span className="cuotas-pagination__summaryRange cuotas-pagination__summaryRange--full">
+                        <strong>{registroDesde}</strong>
+                        <span className="cuotas-pagination__summaryDash">–</span>
+                        <strong>{registroHasta}</strong>
+                      </span>
+                      <span className="cuotas-pagination__summaryWord">de</span>
+                      <strong>{totalRegistros}</strong>
+                      <span className="cuotas-pagination__summaryWord">registros</span>
                     </span>
                     <span className="cuotas-pagination__summaryCompact">
                       <span className="cuotas-pagination__summaryRange">
