@@ -28,6 +28,14 @@ const money = (value) =>
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
 
+const collectionMoney = (value) =>
+  new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+
 const dateText = (value) => {
   if (!value) return "—";
   const [year, month, day] = String(value).slice(0, 10).split("-");
@@ -464,138 +472,175 @@ function CollectionDetail({ actions, section, period, loading }) {
   const rows = useMemo(() => {
     const flattenedRows = [];
     (section?.items || []).forEach((collector) => {
-      flattenedRows.push({ ...collector, depth: 0 });
+      const office = normalize(collector.nombre).includes("oficina");
+      const tone = office ? "office" : "collector";
+      flattenedRows.push({
+        ...collector,
+        depth: 0,
+        rowKey: `collector-${collector.nombre}`,
+        tone,
+      });
       (collector.hijos || []).forEach((state) => {
-        flattenedRows.push({ ...state, depth: 1 });
-        (state.hijos || []).forEach((mean) => flattenedRows.push({ ...mean, depth: 2 }));
+        flattenedRows.push({
+          ...state,
+          depth: 1,
+          rowKey: `state-${collector.nombre}-${state.nombre}`,
+          tone,
+        });
+
+        // El informe histórico sólo abre los medios de pago dentro de OFICINA.
+        // COBRADOR conserva el resumen necesario por ACTIVO/PASIVO.
+        if (office) {
+          (state.hijos || []).forEach((mean) => flattenedRows.push({
+            ...mean,
+            depth: 2,
+            rowKey: `mean-${collector.nombre}-${state.nombre}-${mean.nombre}`,
+            tone,
+          }));
+        }
       });
     });
     return flattenedRows;
   }, [section?.items]);
-  const [page, setPage] = useState(1);
   const totalRecords = rows.length;
-  const totalPages = totalRecords ? Math.ceil(totalRecords / PAGE_SIZE) : 0;
-  const firstRecord = totalRecords ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const lastRecord = totalRecords ? Math.min(page * PAGE_SIZE, totalRecords) : 0;
-  const visibleRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [page, rows]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [section]);
-
-  useEffect(() => {
-    if (page > totalPages && totalPages > 0) setPage(totalPages);
-  }, [page, totalPages]);
+  const registrationPartners = Number(summary.inscripciones_socios || 0);
+  const expectedPartners = Number(summary.socios_esperados || 0);
+  const hasCollectionData = totalRecords > 0
+    || registrationPartners > 0
+    || Number(summary.total_ingresado || 0) !== 0
+    || Number(summary.cuotas_esperadas || 0) !== 0;
+  const yearLabel = period?.anio ? `Año ${period.anio}` : "Año seleccionado";
+  const periodLabel = Number(period?.id_periodo) === 7
+    ? "CONTADO ANUAL"
+    : Number(period?.id_periodo) >= 1 && Number(period?.id_periodo) <= 6
+      ? `PERÍODO ${Number(period.id_periodo) * 2 - 1} Y ${Number(period.id_periodo) * 2}`
+      : period?.etiqueta || "PERÍODO";
 
   return (
     <>
-      <IncomeSummary
-        ariaLabel="Totales de cobranza del período"
-        items={[
-          {
-            key: "fees",
-            icon: faCalculator,
-            label: "Cuotas recaudadas",
-            detail: "Sólo pagos de cuotas",
-            tone: "success",
-            value: money(summary.cuotas_recaudadas),
-          },
-          {
-            key: "registrations",
-            icon: faUserPlus,
-            label: "Inscripciones recaudadas",
-            detail: `${summary.inscripciones_socios || 0} socios`,
-            value: money(summary.inscripciones_recaudadas),
-          },
-          {
-            key: "expected",
-            icon: faPeopleGroup,
-            label: "Cuotas esperadas",
-            detail: `${summary.socios_esperados || 0} socios · ${period?.etiqueta || "Período"}`,
-            value: money(summary.cuotas_esperadas),
-          },
-          {
-            key: "difference",
-            icon: faTriangleExclamation,
-            label: difference >= 0 ? "Faltante" : "Superávit",
-            detail: difference >= 0
-              ? "Esperado menos recaudado"
-              : "Recaudado sobre lo esperado",
-            tone: difference >= 0 ? "warning" : "balance",
-            value: money(Math.abs(difference)),
-          },
-          ...(section?.categorias_monto || []).map((item) => ({
-            key: `category-${item.id_categoria}`,
-            icon: faCalculator,
-            label: normalize(item.nombre).startsWith("categoria")
-              ? item.nombre
-              : `Categoría ${item.nombre || "—"}`,
-            detail: `Monto por período · ${money(item.anual)} anual`,
-            value: money(item.mensual),
-          })),
-        ]}
-      />
+      <section className="ct-collection-categories" aria-label="Categorías de monto">
+        <h3>Categorías de monto</h3>
+        <div className="ct-collection-categories__list">
+          {(section?.categorias_monto || []).map((item) => (
+            <span className="ct-collection-category" key={item.id_categoria}>
+              <b>{item.nombre || "—"}</b>
+              <strong>{collectionMoney(item.mensual)}</strong>
+              <small>Anual: {collectionMoney(item.anual)}</small>
+              <i aria-hidden="true">·</i>
+              <small>Monto por período</small>
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="ct-collection-summary" aria-label="Totales de cobranza del período">
+        <article>
+          <span>Cuotas recaudadas</span>
+          <strong>{collectionMoney(summary.cuotas_recaudadas)}</strong>
+          <small>Solo pagos de cuotas</small>
+        </article>
+        <article>
+          <span>Inscripciones recaudadas</span>
+          <strong>{collectionMoney(summary.inscripciones_recaudadas)}</strong>
+          <small>{registrationPartners.toLocaleString("es-AR")} socios · Total ingresado: {collectionMoney(summary.total_ingresado)}</small>
+        </article>
+        <article>
+          <span>Cuotas esperadas</span>
+          <strong>{collectionMoney(summary.cuotas_esperadas)}</strong>
+          <small>{yearLabel}</small>
+        </article>
+        <article className={difference >= 0 ? "is-shortfall" : "is-surplus"}>
+          <span>Faltante / Superávit de cuotas</span>
+          <strong>{collectionMoney(Math.abs(difference))}</strong>
+          <small>{difference >= 0 ? "Cuotas esperadas menos cuotas recaudadas" : "Cuotas recaudadas menos cuotas esperadas"}</small>
+        </article>
+      </section>
+
       <GlobalDivTable
-        className="ct-income-table has-bottom-pagination"
+        className="ct-income-table ct-collection-table"
         bodyClassName="entity-table-wrap"
         gridClassName="ct-income-grid ct-income-grid--collection"
         columns={[
-          "Período / grupo",
+          "Período",
           { label: "Esperado", align: "right" },
           { label: "Recaudado", align: "right" },
           { label: "Socios", align: "center" },
           { label: "Dif. (Esp-Rec)", align: "right" },
         ]}
         ariaLabel="Detalle de cobranza"
-        empty={!loading && !totalRecords}
+        empty={!loading && !hasCollectionData}
         loading={loading}
         loadingLabel="Cargando detalle de cobranza..."
         skeletonActionColumn={false}
         skeletonRows={4}
       >
-        {!loading && !totalRecords ? (
+        {!loading && !hasCollectionData ? (
           <div className="module-empty">
             <FontAwesomeIcon icon={faPeopleGroup} />
             <strong>Sin cobranza para mostrar</strong>
             <span>No hay datos para el período seleccionado.</span>
           </div>
         ) : null}
-        {totalRecords ? (
+        {hasCollectionData ? (
           <div className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-income-period-row" role="row">
-            <div className="mov-gridCell is-strong">{period?.etiqueta || "PERÍODO"}</div>
-            <div className="mov-gridCell is-right">{money(summary.cuotas_esperadas)}</div>
-            <div className="mov-gridCell is-right">{money(summary.cuotas_recaudadas)}</div>
-            <div className="mov-gridCell is-center">{Number(summary.socios_esperados || 0).toLocaleString("es-AR")}</div>
-            <div className="mov-gridCell is-right ct-income-difference">{money(summary.diferencia_cuotas)}</div>
+            <div className="mov-gridCell is-strong">{periodLabel}</div>
+            <div className="mov-gridCell is-right">{collectionMoney(summary.cuotas_esperadas)}</div>
+            <div className="mov-gridCell is-right">{collectionMoney(summary.cuotas_recaudadas)}</div>
+            <div className="mov-gridCell is-center">{expectedPartners.toLocaleString("es-AR")}</div>
+            <div className={`mov-gridCell is-right ct-income-difference ${difference < 0 ? "is-surplus" : ""}`}>{collectionMoney(Math.abs(difference))}</div>
           </div>
         ) : null}
-        {visibleRows.map((row, index) => (
+        {rows.map((row) => (
           <div
-            className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-income-depth-${row.depth}`}
+            className={`mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-income-depth-${row.depth} ct-collection-row is-${row.tipo} is-${row.tone}`}
             role="row"
-            key={`${row.tipo}-${row.nombre}-${index}`}
+            key={row.rowKey}
           >
             <div className="mov-gridCell"><span className={`ct-old-badge is-${row.tipo}`}>{row.nombre}</span></div>
-            <div className="mov-gridCell is-right">{row.esperado === null ? "—" : money(row.esperado)}</div>
-            <div className="mov-gridCell is-right">{money(row.recaudado)}</div>
+            <div className="mov-gridCell is-right">{row.esperado === null ? "—" : collectionMoney(row.esperado)}</div>
+            <div className="mov-gridCell is-right">{collectionMoney(row.recaudado)}</div>
             <div className="mov-gridCell is-center">{Number(row.socios || 0).toLocaleString("es-AR")}</div>
-            <div className="mov-gridCell is-right ct-income-difference">{row.diferencia === null ? "—" : money(row.diferencia)}</div>
+            <div className={`mov-gridCell is-right ct-income-difference ${Number(row.diferencia || 0) < 0 ? "is-surplus" : ""}`}>{row.diferencia === null ? "—" : collectionMoney(Math.abs(Number(row.diferencia || 0)))}</div>
           </div>
         ))}
+
+        {hasCollectionData ? (
+          <>
+            <div className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-collection-registration-row" role="row">
+              <div className="mov-gridCell"><span className="ct-old-badge is-registration"><FontAwesomeIcon icon={faUserPlus} /> Inscripciones</span></div>
+              <div className="mov-gridCell is-right">—</div>
+              <div className="mov-gridCell is-right">{collectionMoney(summary.inscripciones_recaudadas)}</div>
+              <div className="mov-gridCell is-center">{registrationPartners.toLocaleString("es-AR")}</div>
+              <div className="mov-gridCell is-right">—</div>
+            </div>
+            <div className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-collection-total-row" role="row">
+              <div className="mov-gridCell">TOTAL CUOTAS</div>
+              <div className="mov-gridCell is-right">{collectionMoney(summary.cuotas_esperadas)}</div>
+              <div className="mov-gridCell is-right">{collectionMoney(summary.cuotas_recaudadas)}</div>
+              <div className="mov-gridCell is-center">{expectedPartners.toLocaleString("es-AR")}</div>
+              <div className={`mov-gridCell is-right ct-income-difference ${difference < 0 ? "is-surplus" : ""}`}>{collectionMoney(Math.abs(difference))}</div>
+            </div>
+            <div className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-collection-total-row is-registration" role="row">
+              <div className="mov-gridCell">TOTAL INSCRIPCIONES</div>
+              <div className="mov-gridCell is-right">—</div>
+              <div className="mov-gridCell is-right">{collectionMoney(summary.inscripciones_recaudadas)}</div>
+              <div className="mov-gridCell is-center">{registrationPartners.toLocaleString("es-AR")}</div>
+              <div className="mov-gridCell is-right">—</div>
+            </div>
+            <div className="mov-gridTable mov-gridTable--row global-divTable__row entity-table-row ct-income-grid ct-income-grid--collection ct-collection-total-row is-grand" role="row">
+              <div className="mov-gridCell">TOTAL INGRESADO</div>
+              <div className="mov-gridCell is-right">—</div>
+              <div className="mov-gridCell is-right">{collectionMoney(summary.total_ingresado)}</div>
+              <div className="mov-gridCell is-center">—</div>
+              <div className="mov-gridCell is-right">—</div>
+            </div>
+          </>
+        ) : null}
       </GlobalDivTable>
       <IncomePagination
         actions={actions}
-        currentPage={page}
-        firstRecord={firstRecord}
-        lastRecord={lastRecord}
         loading={loading}
-        noun="grupos"
-        onPageChange={setPage}
-        totalPages={totalPages}
-        totalRecords={totalRecords}
+        totalRecords={0}
       />
     </>
   );

@@ -492,6 +492,117 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
 }
 
+.ct-collection-categories {
+  flex: 0 0 auto;
+  padding: 8px 14px 12px;
+}
+
+.ct-collection-categories h3 {
+  margin: 0 0 12px;
+  color: var(--balto-ink);
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: .015em;
+  text-transform: uppercase;
+}
+
+.ct-collection-categories__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ct-collection-category {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #fff;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.ct-collection-category b,
+.ct-collection-category strong {
+  color: var(--balto-ink);
+  font-size: 13px;
+}
+
+.ct-collection-category small {
+  font-size: 11px;
+}
+
+.ct-collection-category i {
+  color: #94a3b8;
+  font-style: normal;
+}
+
+.ct-collection-summary {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 10px 12px;
+}
+
+.ct-collection-summary article {
+  min-width: 0;
+  min-height: 98px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px dashed #d8dee8;
+  border-radius: 13px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.ct-collection-summary span {
+  color: #334155;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.ct-collection-summary strong {
+  margin-top: 7px;
+  color: var(--balto-ink);
+  font-size: clamp(20px, 1.7vw, 25px);
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ct-collection-summary small {
+  margin-top: 8px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ct-collection-summary article.is-shortfall {
+  border-color: var(--balto-danger, #ef4444);
+}
+
+.ct-collection-summary article.is-shortfall span,
+.ct-collection-summary article.is-shortfall strong {
+  color: var(--balto-danger, #dc2626);
+}
+
+.ct-collection-summary article.is-surplus {
+  border-color: var(--success-500, #22c55e);
+}
+
+.ct-collection-summary article.is-surplus span,
+.ct-collection-summary article.is-surplus strong {
+  color: var(--success-700, #15803d);
+}
+
 .ct-income-table {
 
   max-height:  calc(100dvh - 340px);
@@ -502,6 +613,13 @@
 .ct-income-table .entity-table-wrap {
   min-height: 175px;
   max-height: none;
+}
+
+.ct-collection-table {
+  min-height: 300px;
+  max-height: none;
+  flex: 1 1 340px;
+  margin-inline: 10px;
 }
 
 .ct-income-grid {
@@ -624,14 +742,75 @@
   background: color-mix(in srgb, var(--balto-bg) 68%, #fff);
 }
 
-.ct-income-depth-0 > :first-child,
-.ct-income-depth-1 > :first-child,
-.ct-income-depth-2 > :first-child {
+.ct-income-depth-0 > :first-child {
   padding-left: 10px;
+}
+
+.ct-income-depth-1 > :first-child {
+  padding-left: 22px;
+}
+
+.ct-income-depth-2 > :first-child {
+  padding-left: 42px;
+}
+
+.ct-collection-row .ct-old-badge,
+.ct-collection-registration-row .ct-old-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.ct-collection-row.is-collector .ct-old-badge {
+  border-color: #86e0c1;
+  background: #ecfbf5;
+  color: #0f8061;
+}
+
+.ct-collection-row.is-office .ct-old-badge {
+  border-color: #9bbcff;
+  background: #f0f5ff;
+  color: #315bd4;
+}
+
+.ct-collection-registration-row .ct-old-badge.is-registration {
+  border-color: #c4a8ff;
+  background: #f5f0ff;
+  color: #6d35db;
+}
+
+.ct-collection-registration-row .mov-gridCell {
+  background: #f8f3ff;
+}
+
+.ct-collection-total-row .mov-gridCell {
+  background: #eef5ff;
+  font-weight: 850;
+}
+
+.ct-collection-total-row.is-registration .mov-gridCell {
+  background: #f5efff;
+}
+
+.ct-collection-total-row.is-grand .mov-gridCell {
+  border-top-color: #9bbcff;
+  background: #dde9ff;
 }
 
 .ct-income-difference {
   color: var(--balto-danger, #b42318);
+  font-weight: 750;
+}
+
+.ct-income-difference.is-surplus {
+  color: var(--success-700, #15803d);
 }
 
 .global-pagination.ct-income-pagination {
@@ -737,6 +916,10 @@
     overflow: hidden;
   }
 
+  .ct-collection-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
 }
 
 @media (max-width: 720px) {
@@ -748,7 +931,34 @@
     padding-inline: 0;
   }
 
-  .ct-income-table {
+  .ct-collection-categories,
+  .ct-collection-summary {
+    padding-inline: 0;
+  }
+
+  .ct-collection-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .ct-collection-summary article {
+    min-height: 88px;
+  }
+
+  .ct-collection-category {
+    width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .ct-collection-table {
+    min-height: 300px;
+    height: 360px;
+    max-height: 360px;
+    flex-basis: 360px;
+    margin-inline: 0;
+  }
+
+  .ct-income-table:not(.ct-collection-table) {
     min-height: 210px;
     height: 260px;
     max-height: 260px;

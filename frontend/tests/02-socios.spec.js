@@ -67,24 +67,22 @@ async function birthdayDrawer(page, { open = false } = {}) {
 async function closeBirthdayDrawer(page) {
   // Este helper sólo evita que el drawer pueda tapar controles posteriores.
   // La acción funcional importante (marcar el aviso como gestionado) ya se
-  // valida por API/feedback en el test. Tras esa acción React puede desmontar
-  // el portal o reemplazar su contenido, por lo que no debemos conservar un
-  // locator viejo ni exigir una clase CSS concreta.
-  const closeButton = page.getByRole('button', {
+  // valida por API/feedback en el test. Tras esa acción React cierra y desmonta
+  // el drawer automáticamente; comprobamos su estado actual antes de intentar
+  // cerrar y nunca dejamos que una transición consuma el timeout del test.
+  if (page.isClosed()) return;
+
+  const drawer = page.getByLabel('Socios para contactar de 18 a 23 años');
+  if ((await drawer.count()) === 0) return;
+  const drawerClass = await drawer.getAttribute('class', { timeout: 1000 }).catch(() => '');
+  const isOpen = String(drawerClass || '').split(/\s+/).includes('is-open');
+  if (!isOpen) return;
+
+  const closeButton = drawer.getByRole('button', {
     name: 'Cerrar avisos de cumpleaños',
     exact: true,
   });
-
-  if ((await closeButton.count()) === 0) return;
-
-  // Usamos un locator fresco y force porque el panel tiene una transición
-  // lateral; el objetivo es ejecutar el handler real, no validar geometría CSS.
-  await closeButton.first().click({ force: true }).catch(async () => {
-    // Si React desmontó el portal entre count() y click(), ya está cerrado.
-    if ((await closeButton.count()) > 0) {
-      await closeButton.first().evaluate((element) => element.click()).catch(() => {});
-    }
-  });
+  await closeButton.click({ force: true, timeout: 2000 }).catch(() => {});
 }
 
 async function findBirthdayCardFor(page, name) {

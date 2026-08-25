@@ -76,6 +76,11 @@ function fakeDebtRows(count = 101) {
 }
 
 test.describe('Blindaje final · integridad histórica y acciones deterministas', () => {
+  // Chromium/Node puede ser abortado por Windows con 0xC0000409 antes de que
+  // Playwright ejecute el cuerpo de una prueba. Un único reintento levanta un
+  // worker limpio; los errores funcionales reales vuelven a fallar y se informan.
+  test.describe.configure({ retries: process.platform === 'win32' ? 1 : 0 });
+
   test('Socios ejecuta BAJA_SUPERPONE_FAMILIA cuando la baja queda antes de un vínculo vigente', async ({ request }) => {
     const familySocio = await createSocio(request, socioData('BAJA SUP FAMILIA'), {
       fecha_ingreso: addDaysIso(-20),

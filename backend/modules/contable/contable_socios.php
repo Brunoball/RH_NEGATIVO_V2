@@ -529,17 +529,29 @@ trait ContableSocios
                 'id_categoria' => (int)$partner['id_categoria'],
                 'cobrador' => (string)($partner['cobrador'] ?? 'SIN COBRADOR'),
                 'estado' => (string)($partner['estado'] ?? 'SIN ESTADO'),
+                'fecha_ingreso' => $partner['fecha_ingreso_efectiva'] ?? $partner['fecha_ingreso'] ?? null,
             ];
         }
 
         $partnerIds = array_map('intval', array_column($partners, 'id_socio'));
-        $discountsByPartner = self::porcentajesDescuentoSocios($db, $partnerIds, $start, true);
+        $today = date('Y-m-d');
+        $familyReference = $today >= $start && $today < $endExclusive ? $today : $start;
+        $discountsByPartner = self::porcentajesDescuentoSocios($db, $partnerIds, $familyReference, true);
 
         $expectedTotal = 0;
         $expectedGroups = [];
         foreach ($partners as $partner) {
             $partnerId = (int)$partner['id_socio'];
-            $base = self::precioHistorico($db, (int)$partner['id_categoria'], $periodId === 7 ? 'anual' : 'mensual', $start);
+            $joinDate = trim((string)($partner['fecha_ingreso'] ?? ''));
+            $priceReference = $joinDate !== '' && $joinDate > $start && $joinDate < $endExclusive
+                ? $joinDate
+                : $start;
+            $base = self::precioHistorico(
+                $db,
+                (int)$partner['id_categoria'],
+                $periodId === 7 ? 'anual' : 'mensual',
+                $priceReference
+            );
             $discount = (float)($discountsByPartner[$partnerId] ?? 0.0);
             $expected = self::centavos(round($base * (1 - $discount / 100), 2));
             $expectedTotal += $expected;
@@ -578,16 +590,23 @@ trait ContableSocios
             $paymentPartner = $snapshot[(int)$payment['id_socio']] ?? null;
             $collector = trim((string)($paymentPartner['cobrador'] ?? '')) ?: 'SIN COBRADOR';
             $state = self::estadoContable($paymentPartner['estado'] ?? null);
+            $meanId = (int)($payment['id_medio_pago'] ?? 0);
             $mean = (string)$payment['medio'];
+            $meanKey = $meanId . '|' . $mean;
             if (!isset($collectedGroups[$collector])) $collectedGroups[$collector] = ['total' => 0, 'states' => []];
             $collectedGroups[$collector]['total'] += $amount;
             if (!isset($collectedGroups[$collector]['states'][$state])) $collectedGroups[$collector]['states'][$state] = ['total' => 0, 'means' => []];
             $collectedGroups[$collector]['states'][$state]['total'] += $amount;
-            if (!isset($collectedGroups[$collector]['states'][$state]['means'][$mean])) {
-                $collectedGroups[$collector]['states'][$state]['means'][$mean] = ['total' => 0, 'partners' => []];
+            if (!isset($collectedGroups[$collector]['states'][$state]['means'][$meanKey])) {
+                $collectedGroups[$collector]['states'][$state]['means'][$meanKey] = [
+                    'id_medio_pago' => $meanId,
+                    'nombre' => $mean,
+                    'total' => 0,
+                    'partners' => [],
+                ];
             }
-            $collectedGroups[$collector]['states'][$state]['means'][$mean]['total'] += $amount;
-            $collectedGroups[$collector]['states'][$state]['means'][$mean]['partners'][(int)$payment['id_socio']] = true;
+            $collectedGroups[$collector]['states'][$state]['means'][$meanKey]['total'] += $amount;
+            $collectedGroups[$collector]['states'][$state]['means'][$meanKey]['partners'][(int)$payment['id_socio']] = true;
         }
 
         $registrationStatement = $db->prepare(
@@ -611,16 +630,23 @@ trait ContableSocios
                 $expectedState = $expectedCollector['states'][$state] ?? ['expected' => 0, 'partners' => 0];
                 $collectedState = $collectedCollector['states'][$state] ?? ['total' => 0, 'means' => []];
                 $means = [];
-                foreach ($collectedState['means'] as $mean => $values) {
+                foreach ($collectedState['means'] as $values) {
                     $means[] = [
-                        'tipo' => 'medio', 'nombre' => $mean,
+                        'tipo' => 'medio', 'nombre' => (string)$values['nombre'],
+                        'id_medio_pago' => (int)$values['id_medio_pago'],
                         'esperado' => null,
                         'recaudado' => self::importeDesdeCentavos((int)$values['total']),
                         'socios' => count($values['partners']),
                         'diferencia' => null,
                     ];
                 }
-                usort($means, static fn(array $a, array $b): int => strnatcasecmp($a['nombre'], $b['nombre']));
+                usort($means, static function (array $a, array $b): int {
+                    $orderA = (int)$a['id_medio_pago'] > 0 ? (int)$a['id_medio_pago'] : PHP_INT_MAX;
+                    $orderB = (int)$b['id_medio_pago'] > 0 ? (int)$b['id_medio_pago'] : PHP_INT_MAX;
+                    return [$orderA, $a['nombre']] <=> [$orderB, $b['nombre']];
+                });
+                foreach ($means as &$meanRow) unset($meanRow['id_medio_pago']);
+                unset($meanRow);
                 $children[] = [
                     'tipo' => 'estado', 'nombre' => $state,
                     'esperado' => self::importeDesdeCentavos((int)$expectedState['expected']),
@@ -674,15 +700,26 @@ trait ContableSocios
             api_error('La jerarquía de cobranza no coincide con sus totales.', 'CONTABLE_DESCUADRE_JERARQUIA', 500);
         }
 
-        $categories = $db->query('SELECT id_categoria, nombre FROM categoria WHERE activo = 1 ORDER BY nombre')->fetchAll(PDO::FETCH_ASSOC);
+        $categories = $db->query(
+            'SELECT id_categoria, nombre, creado_en
+             FROM categoria WHERE activo = 1 ORDER BY nombre'
+        )->fetchAll(PDO::FETCH_ASSOC);
         $categoryAmounts = [];
         foreach ($categories as $category) {
             $id = (int)$category['id_categoria'];
+            $createdOn = trim((string)($category['creado_en'] ?? ''));
+            $monthlyReference = $createdOn !== '' && $createdOn > $start && $createdOn < $endExclusive
+                ? $createdOn
+                : $start;
+            $annualStart = sprintf('%04d-01-01', $year);
+            $annualReference = $createdOn !== '' && $createdOn > $annualStart && $createdOn < $endExclusive
+                ? $createdOn
+                : $annualStart;
             $categoryAmounts[] = [
                 'id_categoria' => $id,
                 'nombre' => (string)$category['nombre'],
-                'mensual' => number_format(self::precioHistorico($db, $id, 'mensual', $start), 2, '.', ''),
-                'anual' => number_format(self::precioHistorico($db, $id, 'anual', sprintf('%04d-01-01', $year)), 2, '.', ''),
+                'mensual' => number_format(self::precioHistorico($db, $id, 'mensual', $monthlyReference), 2, '.', ''),
+                'anual' => number_format(self::precioHistorico($db, $id, 'anual', $annualReference), 2, '.', ''),
             ];
         }
 
