@@ -17,6 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../../Global/ModulePage";
 import DataTableSkeleton from "../../Global/DataTableSkeleton";
+import { useSmartScrollRefresh } from "../../Global/useSmartScrollRefresh";
 import CrudModal from "../../Global/Modales/CrudModal";
 import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
@@ -298,9 +299,13 @@ function CatalogStat({ icon, label, value, detail, tone }) {
   );
 }
 
-function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState, onDelete }) {
+function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState, onDelete, externalBodyRef }) {
   const { bodyRef, hasVerticalScroll, scrollbarWidth } =
     useTableScrollbarCompensation();
+  const setBodyRef = useCallback((node) => {
+    bodyRef(node);
+    if (externalBodyRef) externalBodyRef.current = node;
+  }, [bodyRef, externalBodyRef]);
 
   return (
     <div
@@ -328,7 +333,7 @@ function CatalogTable({ items, loading, meta, listKey, writable, onEdit, onState
         </span>
       </div>
 
-      <div ref={bodyRef} className="config-catalogTable__body" role="rowgroup">
+      <div ref={setBodyRef} className="config-catalogTable__body" role="rowgroup">
         {loading ? (
           <DataTableSkeleton
             actionColumnIndex={3}
@@ -466,6 +471,14 @@ function CatalogsPanel() {
   const { listas, resumen, loading, error, cargar } = useConfiguracion();
   const requestedList = searchParams.get("lista");
   const [activeList, setActiveList] = useState(() => CATALOG_META[requestedList] ? requestedList : "categoria");
+  const { bodyRef: tableBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading,
+    contentKey: `${activeList}:${(listas[activeList] || []).length}`,
+  });
+  const refreshKeepingScroll = useCallback(async () => {
+    captureScroll();
+    return cargar();
+  }, [captureScroll, cargar]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm());
   const [formOpen, setFormOpen] = useState(false);
@@ -576,7 +589,7 @@ function CatalogsPanel() {
       const response = await configuracionApi.guardarItem(payload);
       setFormOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
-      void cargar();
+      await refreshKeepingScroll();
     } catch (requestError) {
       setFeedback({
         type: "error",
@@ -596,7 +609,7 @@ function CatalogsPanel() {
         stateModal.action === "reactivar"
           ? await configuracionApi.reactivarItem(activeList, id)
           : await configuracionApi.darBajaItem(activeList, id);
-      void cargar();
+      await refreshKeepingScroll();
       return response;
     } finally {
       setSaving(false);
@@ -612,7 +625,7 @@ function CatalogsPanel() {
         activeList,
         id,
       );
-      void cargar();
+      await refreshKeepingScroll();
       return response;
     } finally {
       setSaving(false);
@@ -738,6 +751,7 @@ function CatalogsPanel() {
             onEdit={openEdit}
             onState={(item, action) => setStateModal({ item, action })}
             onDelete={setDeleteModal}
+            externalBodyRef={tableBodyRef}
           />
         </section>
       </ModulePage>

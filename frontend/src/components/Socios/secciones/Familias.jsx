@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faAddressBook,
@@ -15,6 +15,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../../Global/ModulePage";
 import GlobalDivTable from "../../Global/GlobalDivTable";
+import { useSmartScrollRefresh } from "../../Global/useSmartScrollRefresh";
 import CrudModal from "../../Global/Modales/CrudModal";
 import InfoModal, {
   InfoEmpty,
@@ -500,6 +501,14 @@ export default function Familias() {
     [debouncedSearch, status],
   );
   const { items, catalogos, loading, error, cargar } = useFamilias(filters);
+  const { bodyRef: tableBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading,
+    contentKey: `${status}:${items.length}`,
+  });
+  const refreshKeepingScroll = useCallback(async () => {
+    captureScroll();
+    return cargar();
+  }, [captureScroll, cargar]);
   const [form, setForm] = useState(emptyForm);
   const [formTab, setFormTab] = useState(FORM_TAB_DETAILS);
   const [pendingMemberIds, setPendingMemberIds] = useState(() => new Set());
@@ -582,7 +591,7 @@ export default function Familias() {
       });
       setModalOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
-      void cargar();
+      await refreshKeepingScroll();
     } catch (requestError) {
       const field = requestError?.data?.detalles?.campo || "";
       if (["nombre", "descripcion", "observaciones"].includes(field)) {
@@ -622,7 +631,7 @@ export default function Familias() {
           motivo_baja: motivo,
         })
       : await familiasApi.reactivar(stateModal.id_familia);
-    void cargar();
+    await refreshKeepingScroll();
     return response;
   };
   const openPermanentDelete = async (item) => {
@@ -648,7 +657,7 @@ export default function Familias() {
       id: deleteModal.item.id_familia,
       confirmacion: "ELIMINAR",
     });
-    void cargar();
+    await refreshKeepingScroll();
     return response;
   };
 
@@ -717,6 +726,7 @@ export default function Familias() {
           onClose={() => setFeedback(null)}
         />
         <GlobalDivTable
+          bodyRef={tableBodyRef}
           className="familias-table"
           bodyClassName="entity-table-wrap"
           gridClassName="familias-grid"

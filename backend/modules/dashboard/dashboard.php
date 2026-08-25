@@ -49,7 +49,11 @@ final class Dashboard
         $payments = self::currentPayments($db, $year, $month);
         $expected = $withCategory > 0 ? $withCategory : $active;
         $resolved = min($expected, $payments['pagadas'] + $payments['condonadas']);
-        $partnerIncome = self::safeSum($db, "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ?", [$start->format('Y-m-d'), $end->format('Y-m-d')]);
+        $quotaIncome = self::safeSum($db, "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado = 'PAGADO' AND fecha_pago >= ? AND fecha_pago < ?", [$start->format('Y-m-d'), $end->format('Y-m-d')]);
+        $registrationIncome = self::tableExists($db, 'pagos_inscripcion')
+            ? self::safeSum($db, "SELECT COALESCE(SUM(monto), 0) FROM pagos_inscripcion WHERE fecha_pago >= ? AND fecha_pago < ?", [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            : 0.0;
+        $partnerIncome = $quotaIncome + $registrationIncome;
         $otherIncome = self::accountingSum($db, 'contable_ingresos', $start, $end);
         $expenses = self::accountingSum($db, 'contable_egresos', $start, $end);
 

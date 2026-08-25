@@ -28,6 +28,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../Global/ModulePage";
 import GlobalDivTable from "../Global/GlobalDivTable";
+import { useSmartScrollRefresh } from "../Global/useSmartScrollRefresh";
 import CrudModal from "../Global/Modales/CrudModal";
 import InfoModal, {
   InfoEmpty,
@@ -1114,7 +1115,6 @@ function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
 
 export default function Socios() {
   const writable = canWrite();
-  const tableBodyRef = useRef(null);
   const [searchSocio, setSearchSocio] = useState("");
   const [searchId, setSearchId] = useState("");
   const [debouncedSearchSocio, setDebouncedSearchSocio] = useState("");
@@ -1163,6 +1163,11 @@ export default function Socios() {
     cargar,
   } = useSocios(filters);
 
+  const { bodyRef: tableBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading,
+    contentKey: `${page}:${items.length}`,
+  });
+
   const totalPages = Number(paginacion?.total_paginas || 0);
   const pages = useMemo(() => paginationItems(page, totalPages), [page, totalPages]);
   const activeAdvancedFilters = useMemo(
@@ -1209,13 +1214,9 @@ export default function Socios() {
   }, []);
 
   const refresh = useCallback(async () => {
-    const scrollTop = tableBodyRef.current?.scrollTop || 0;
-    const result = await cargar();
-    window.requestAnimationFrame(() => {
-      if (tableBodyRef.current) tableBodyRef.current.scrollTop = scrollTop;
-    });
-    return result;
-  }, [cargar]);
+    captureScroll();
+    return cargar();
+  }, [captureScroll, cargar]);
 
   const setFormSession = useCallback((nextForm, mode) => {
     initialFormRef.current = nextForm;

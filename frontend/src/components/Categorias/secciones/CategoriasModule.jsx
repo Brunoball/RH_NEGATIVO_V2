@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDays,
@@ -14,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../../Global/ModulePage";
 import GlobalDivTable from "../../Global/GlobalDivTable";
+import { useSmartScrollRefresh } from "../../Global/useSmartScrollRefresh";
 import CrudModal from "../../Global/Modales/CrudModal";
 import InfoModal, {
   InfoEmpty,
@@ -318,8 +319,6 @@ function DiscountForm({ form, setForm }) {
 
 export default function CategoriasModule({ section = "categorias" }) {
   const writable = canWrite();
-  const tableBodyRef = useRef(null);
-  const pendingTableScrollRef = useRef(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("activo");
   const [discountStatus, setDiscountStatus] = useState("vigente");
@@ -349,37 +348,23 @@ export default function CategoriasModule({ section = "categorias" }) {
     cargar: cargarDescuentos,
   } = useDescuentosFamiliares(discountFilters, section === "descuentos");
 
-  const refreshCategoriesKeepingScroll = useCallback(async () => {
-    pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
-    return cargar();
-  }, [cargar]);
-
-  const refreshDiscountsKeepingScroll = useCallback(async () => {
-    pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
-    return cargarDescuentos();
-  }, [cargarDescuentos]);
-
   const activeLoading = section === "categorias" ? loading : discountsLoading;
   const activeItemsLength =
     section === "categorias" ? items.length : discounts.length;
+  const { bodyRef: tableBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading: activeLoading,
+    contentKey: `${section}:${activeItemsLength}`,
+  });
 
-  useEffect(() => {
-    if (activeLoading || pendingTableScrollRef.current == null) return undefined;
+  const refreshCategoriesKeepingScroll = useCallback(async () => {
+    captureScroll();
+    return cargar();
+  }, [captureScroll, cargar]);
 
-    const scrollTop = pendingTableScrollRef.current;
-    let frame = window.requestAnimationFrame(() => {
-      frame = window.requestAnimationFrame(() => {
-        const body = tableBodyRef.current;
-        if (body) {
-          const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
-          body.scrollTop = Math.min(scrollTop, maxScrollTop);
-        }
-        pendingTableScrollRef.current = null;
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeLoading, activeItemsLength]);
+  const refreshDiscountsKeepingScroll = useCallback(async () => {
+    captureScroll();
+    return cargarDescuentos();
+  }, [captureScroll, cargarDescuentos]);
 
   const [categoryForm, setCategoryForm] = useState(emptyCategoryForm());
   const [categoryFormTab, setCategoryFormTab] = useState(CATEGORY_TAB_GENERAL);

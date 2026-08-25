@@ -51,6 +51,36 @@ trait ContableSocios
             : $periodStart;
     }
 
+    /**
+     * Orden económico usado por el Balance legacy para comparar períodos.
+     * El contado anual pertenece al inicio de su año (enero); por eso un
+     * CONTADO ANUAL 2025 no forma parte de un balance que comienza en julio
+     * de 2025, aunque cubra meses posteriores del mismo año.
+     */
+    private static function ordenPeriodoBalance(int $year, int $periodId): int
+    {
+        if ($year <= 0 || $periodId < 1 || $periodId > 7) return 0;
+        $month = $periodId === 7 ? 1 : (($periodId - 1) * 2 + 1);
+        return ($year * 100) + $month;
+    }
+
+    /**
+     * Fecha desde la que nace la obligación de una cuota. Los socios que ya
+     * existían usan el inicio del bimestre; si ingresaron dentro del período,
+     * Cuotas reconstruye el precio desde su fecha de ingreso.
+     */
+    private static function fechaReferenciaDeudaPeriodo(
+        string $periodStart,
+        string $periodEnd,
+        mixed $joinDate
+    ): string {
+        $joined = trim((string)$joinDate);
+        if ($joined !== '' && $joined > $periodStart && $joined <= $periodEnd) {
+            return $joined;
+        }
+        return $periodStart;
+    }
+
     protected static function ingresosSociosDatos(PDO $db, array $filters): array
     {
         $year = self::filtroAnio($filters['anio'] ?? null);
@@ -1308,25 +1338,48 @@ trait ContableSocios
             $pay->execute($partnerIds);
             foreach ($pay->fetchAll(PDO::FETCH_ASSOC) as $row) $paymentsByPartner[(int)$row['id_socio']][] = $row;
         }
-        $allowed = [];
-        $years = [];
+        // Mismo criterio económico que el Balance anterior: el rango se
+        // compara por el primer mes de cada período y el contado anual se
+        // posiciona en enero de su año.
+        $rangeStartSort = PHP_INT_MAX;
+        $rangeEndSort = 0;
         foreach ($periods as $period) {
-            $allowed[(int)$period['anio'] . '-' . (int)$period['id_periodo']] = true;
-            $years[(int)$period['anio']] = true;
+            $sort = self::ordenPeriodoBalance((int)$period['anio'], (int)$period['id_periodo']);
+            if ($sort <= 0) continue;
+            $rangeStartSort = min($rangeStartSort, $sort);
+            $rangeEndSort = max($rangeEndSort, $sort);
         }
 
         $items = [];
         $groups = [];
         $paidCount = $condonedCount = $paidTotal = 0;
+        // Si un socio tiene más de una baja histórica, un mismo pago no puede
+        // contabilizarse dos veces en bajas distintas.
+        $assignedPaymentsByPartner = [];
         foreach ($events as $event) {
             $covered = [];
             $partnerPaid = 0;
             $partnerPaidCount = 0;
             $partnerCondoned = 0;
-            foreach ($paymentsByPartner[(int)$event['id_socio']] ?? [] as $payment) {
-                $key = (int)$payment['anio_aplicado'] . '-' . (int)$payment['id_periodo'];
-                $isAnnual = (int)$payment['id_periodo'] === 7 && isset($years[(int)$payment['anio_aplicado']]);
-                if (!isset($allowed[$key]) && !$isAnnual) continue;
+            $leavePeriod = self::periodoDeFecha((string)$event['fecha_baja']);
+            $leaveSort = self::ordenPeriodoBalance(
+                (int)substr((string)$event['fecha_baja'], 0, 4),
+                (int)$leavePeriod['id_periodo']
+            );
+            $partnerId = (int)$event['id_socio'];
+            foreach ($paymentsByPartner[$partnerId] ?? [] as $payment) {
+                $paymentId = (int)$payment['id_pago'];
+                if (isset($assignedPaymentsByPartner[$partnerId][$paymentId])) continue;
+
+                $paymentSort = self::ordenPeriodoBalance(
+                    (int)$payment['anio_aplicado'],
+                    (int)$payment['id_periodo']
+                );
+                if ($paymentSort <= 0) continue;
+                if ($paymentSort < $rangeStartSort || $paymentSort > $rangeEndSort) continue;
+                if ($leaveSort > 0 && $paymentSort > $leaveSort) continue;
+
+                $assignedPaymentsByPartner[$partnerId][$paymentId] = true;
                 $covered[] = self::etiquetaPeriodo((int)$payment['id_periodo'], (int)$payment['anio_aplicado']);
                 if ((string)$payment['estado'] === 'PAGADO') {
                     $partnerPaidCount++;
@@ -1338,7 +1391,7 @@ trait ContableSocios
             $paidCount += $partnerPaidCount;
             $condonedCount += $partnerCondoned;
             $paidTotal += $partnerPaid;
-            $period = self::periodoDeFecha((string)$event['fecha_baja']);
+            $period = $leavePeriod;
             $state = self::estadoContable($event['estado'] ?? null);
             $item = [
                 'id_historial' => (int)$event['id_historial'], 'id_socio' => (int)$event['id_socio'],
@@ -1415,10 +1468,30 @@ trait ContableSocios
             $periodEnd = (string)$period['hasta'];
             $snapshot = self::snapshotSociosEnFecha($db, $periodEnd);
             $eligibleIds = [];
+            $debtReferenceByPartner = [];
+            $partnersByDebtReference = [];
             foreach ($snapshot as $partnerId => $historical) {
-                if (!empty($historical['vigente_fecha']) && isset($partnersById[$partnerId])) $eligibleIds[] = (int)$partnerId;
+                if (empty($historical['vigente_fecha']) || !isset($partnersById[$partnerId])) continue;
+                $partnerId = (int)$partnerId;
+                $eligibleIds[] = $partnerId;
+                $debtReference = self::fechaReferenciaDeudaPeriodo(
+                    $reference,
+                    $periodEnd,
+                    $historical['fecha_ingreso_efectiva'] ?? $historical['fecha_ingreso'] ?? null
+                );
+                $debtReferenceByPartner[$partnerId] = $debtReference;
+                $partnersByDebtReference[$debtReference][] = $partnerId;
             }
-            $discountsByPartner = self::porcentajesDescuentoSocios($db, $eligibleIds, $reference, true);
+
+            // Precio y descuento se reconstruyen en la misma fecha en que nace
+            // la obligación: inicio del período o fecha de ingreso si ocurrió
+            // dentro del bimestre.
+            $discountsByPartner = [];
+            foreach ($partnersByDebtReference as $debtReference => $idsAtReference) {
+                foreach (self::porcentajesDescuentoSocios($db, $idsAtReference, $debtReference, true) as $id => $discount) {
+                    $discountsByPartner[(int)$id] = (float)$discount;
+                }
+            }
 
             foreach ($eligibleIds as $partnerId) {
                 $historical = $snapshot[$partnerId];
@@ -1427,7 +1500,8 @@ trait ContableSocios
                 if (isset($payments[$partnerId . '-' . $year . '-7'])) continue;
 
                 $categoryId = (int)($historical['id_categoria'] ?? 0);
-                $base = $categoryId > 0 ? self::precioHistorico($db, $categoryId, 'mensual', $reference) : 0.0;
+                $debtReference = $debtReferenceByPartner[$partnerId] ?? $reference;
+                $base = $categoryId > 0 ? self::precioHistorico($db, $categoryId, 'mensual', $debtReference) : 0.0;
                 $discount = (float)($discountsByPartner[$partnerId] ?? 0.0);
                 $amount = self::centavos(round($base * (1 - $discount / 100), 2));
                 $total += $amount;

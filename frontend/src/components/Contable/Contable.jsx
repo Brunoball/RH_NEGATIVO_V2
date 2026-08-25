@@ -598,6 +598,7 @@ export default function ContableModule({ view = "summary" }) {
   const requestId = useRef(0);
   const tableBodyRef = useRef(null);
   const pendingTableScrollRef = useRef(null);
+  const pendingWindowScrollRef = useRef(null);
   const expenseFileInputRef = useRef(null);
 
   const loadCatalogs = useCallback(async () => {
@@ -618,6 +619,7 @@ export default function ContableModule({ view = "summary" }) {
 
   useEffect(() => {
     pendingTableScrollRef.current = null;
+    pendingWindowScrollRef.current = null;
     setCategory("");
     setMean("");
     setSearch("");
@@ -633,6 +635,7 @@ export default function ContableModule({ view = "summary" }) {
 
   useEffect(() => {
     pendingTableScrollRef.current = null;
+    pendingWindowScrollRef.current = null;
     setPage(1);
   }, [year, month, feePeriod, search, category, mean]);
 
@@ -702,6 +705,10 @@ export default function ContableModule({ view = "summary" }) {
 
   const refreshKeepingTableScroll = useCallback(async () => {
     pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
+    pendingWindowScrollRef.current = {
+      x: window.scrollX,
+      y: window.scrollY,
+    };
     return loadData();
   }, [loadData]);
 
@@ -727,7 +734,12 @@ export default function ContableModule({ view = "summary" }) {
           const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
           body.scrollTop = Math.min(scrollTop, maxScrollTop);
         }
+        const windowScroll = pendingWindowScrollRef.current;
+        if (windowScroll) {
+          window.scrollTo({ left: windowScroll.x, top: windowScroll.y, behavior: "auto" });
+        }
         pendingTableScrollRef.current = null;
+        pendingWindowScrollRef.current = null;
       });
     });
 

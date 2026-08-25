@@ -19,6 +19,7 @@ import { ModulePage } from "../../Global/ModulePage";
 import CrudModal from "../../Global/Modales/CrudModal";
 import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
+import { useSmartScrollRefresh } from "../../Global/useSmartScrollRefresh";
 import { canWrite } from "../../_shared/auth/session";
 import { upperCatalogName, upperLettersOnly } from "../../Global/Formularios/inputSanitizers";
 import { contableApi } from "../../Contable/api/contableApi";
@@ -208,8 +209,16 @@ export default function ContableConfiguracion() {
   const [form, setForm] = useState({ id_opcion: "", tipo: "PROVEEDOR", nombre: "" });
   const [stateModal, setStateModal] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
-  const { bodyRef: tableBodyRef, hasVerticalScroll, scrollbarWidth } =
+  const { bodyRef: compensationBodyRef, hasVerticalScroll, scrollbarWidth } =
     useTableScrollbarCompensation();
+  const { bodyRef: scrollBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading,
+    contentKey: `${activeType}:${(lists[activeType] || []).length}`,
+  });
+  const setTableBodyRef = useCallback((node) => {
+    compensationBodyRef(node);
+    scrollBodyRef.current = node;
+  }, [compensationBodyRef, scrollBodyRef]);
 
   const meta = LIST_META[activeType];
   const items = useMemo(() => lists[activeType] || [], [lists, activeType]);
@@ -285,6 +294,11 @@ export default function ContableConfiguracion() {
     }
   }, []);
 
+  const refreshKeepingScroll = useCallback(async () => {
+    captureScroll();
+    return loadOptions();
+  }, [captureScroll, loadOptions]);
+
   useEffect(() => {
     loadOptions();
     return () => {
@@ -326,7 +340,7 @@ export default function ContableConfiguracion() {
       });
       setFormOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
-      await loadOptions();
+      await refreshKeepingScroll();
     } catch (error) {
       setFeedback({
         type: "error",
@@ -345,7 +359,7 @@ export default function ContableConfiguracion() {
         stateModal.id_opcion,
         !stateModal.activo,
       );
-      await loadOptions();
+      await refreshKeepingScroll();
       return response;
     } finally {
       setSaving(false);
@@ -357,7 +371,7 @@ export default function ContableConfiguracion() {
     setSaving(true);
     try {
       const response = await contableApi.eliminarOpcion(deleteModal.id_opcion);
-      await loadOptions();
+      await refreshKeepingScroll();
       return response;
     } finally {
       setSaving(false);
@@ -436,7 +450,7 @@ export default function ContableConfiguracion() {
             style={{ "--config-table-scrollbar-width": `${scrollbarWidth}px` }}
           >
             <div className="config-contableTable__head"><span>Nombre</span><span>Estado</span><span>Uso</span><span>Acciones</span></div>
-            {loading ? <ContableSkeleton bodyRef={tableBodyRef} /> : (
+            {loading ? <ContableSkeleton bodyRef={setTableBodyRef} /> : (
               <OptionList
                 items={filteredItems}
                 meta={meta}
@@ -444,7 +458,7 @@ export default function ContableConfiguracion() {
                 onEdit={openEdit}
                 onState={setStateModal}
                 onDelete={setDeleteModal}
-                bodyRef={tableBodyRef}
+                bodyRef={setTableBodyRef}
               />
             )}
           </div>

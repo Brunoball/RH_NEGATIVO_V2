@@ -21,6 +21,7 @@ import DataTableSkeleton from "../../Global/DataTableSkeleton";
 import CrudModal from "../../Global/Modales/CrudModal";
 import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import ModuleFeedback from "../../Global/ModuleFeedback";
+import { useSmartScrollRefresh } from "../../Global/useSmartScrollRefresh";
 import { FloatingField } from "../../Global/Formularios/TabbedForm";
 import { emailInput, usernameInput } from "../../Global/Formularios/inputSanitizers";
 import { getSession, saveSession } from "../../_shared/auth/session";
@@ -90,8 +91,16 @@ export default function UsuariosConfiguracion({ onBack }) {
   const [stateModal, setStateModal] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
   const [feedback, setFeedback] = useState(null);
-  const { bodyRef: tableBodyRef, hasVerticalScroll, scrollbarWidth } =
+  const { bodyRef: compensationBodyRef, hasVerticalScroll, scrollbarWidth } =
     useTableScrollbarCompensation();
+  const { bodyRef: scrollBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading,
+    contentKey: data.usuarios.length,
+  });
+  const setTableBodyRef = useCallback((node) => {
+    compensationBodyRef(node);
+    scrollBodyRef.current = node;
+  }, [compensationBodyRef, scrollBodyRef]);
 
   const handleModalToast = useCallback((type, message, duration) => {
     setFeedback({ type, message, duration });
@@ -118,6 +127,11 @@ export default function UsuariosConfiguracion({ onBack }) {
       setLoading(false);
     }
   }, []);
+
+  const refreshKeepingScroll = useCallback(async () => {
+    captureScroll();
+    return cargar();
+  }, [captureScroll, cargar]);
 
   useEffect(() => {
     cargar();
@@ -211,7 +225,7 @@ export default function UsuariosConfiguracion({ onBack }) {
 
       setFormOpen(false);
       setFeedback({ type: "success", message: response.mensaje });
-      void cargar();
+      await refreshKeepingScroll();
     } catch (error) {
       setFeedback({
         type: "error",
@@ -230,7 +244,7 @@ export default function UsuariosConfiguracion({ onBack }) {
         stateModal.id,
         !stateModal.activo,
       );
-      void cargar();
+      await refreshKeepingScroll();
       return response;
     } finally {
       setSaving(false);
@@ -242,7 +256,7 @@ export default function UsuariosConfiguracion({ onBack }) {
     setSaving(true);
     try {
       const response = await configuracionApi.eliminarUsuario(deleteModal.id);
-      void cargar();
+      await refreshKeepingScroll();
       return response;
     } finally {
       setSaving(false);
@@ -384,7 +398,7 @@ export default function UsuariosConfiguracion({ onBack }) {
                 Acciones
               </span>
             </div>
-            <div ref={tableBodyRef} className="config-usersTable__body" role="rowgroup">
+            <div ref={setTableBodyRef} className="config-usersTable__body" role="rowgroup">
               {loading ? (
                 <DataTableSkeleton
                   actionColumnIndex={5}

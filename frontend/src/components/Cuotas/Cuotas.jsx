@@ -16,6 +16,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ModulePage } from "../Global/ModulePage";
 import GlobalDivTable from "../Global/GlobalDivTable";
+import { useSmartScrollRefresh } from "../Global/useSmartScrollRefresh";
 import ModalEliminarGlobal from "../Global/Modales/ModalEliminarGlobal";
 import ModalExportarGlobal from "../Global/Modales/ModalExportarGlobal";
 import ModalComprobantePago from "../Global/Modales/ModalComprobantePago";
@@ -737,8 +738,6 @@ export default function Cuotas() {
   const writable = canWrite();
   const contextRequestId = useRef(0);
   const rowActionsRef = useRef({});
-  const tableBodyRef = useRef(null);
-  const pendingTableScrollRef = useRef(null);
   const totalsRequestId = useRef(0);
   const tipo = "PERSONA";
   const [estado, setEstado] = useState("DEUDORES");
@@ -825,6 +824,11 @@ export default function Cuotas() {
     cargar,
     cargarCatalogos,
   } = useCuotas(filtros);
+
+  const { bodyRef: tableBodyRef, captureScroll } = useSmartScrollRefresh({
+    loading,
+    contentKey: `${estado}:${pagina}:${items.length}`,
+  });
 
   const filtrosTotales = useMemo(
     () => ({
@@ -949,24 +953,6 @@ export default function Cuotas() {
       setPagina(Math.max(1, totalPaginas));
     }
   }, [loading, pagina, totalPaginas]);
-
-  useEffect(() => {
-    if (loading || pendingTableScrollRef.current == null) return undefined;
-
-    const scrollTop = pendingTableScrollRef.current;
-    let frame = window.requestAnimationFrame(() => {
-      frame = window.requestAnimationFrame(() => {
-        const body = tableBodyRef.current;
-        if (body) {
-          const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
-          body.scrollTop = Math.min(scrollTop, maxScrollTop);
-        }
-        pendingTableScrollRef.current = null;
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [loading, itemsPagina.length]);
 
   const visibleYearOptions = useMemo(
     () =>
@@ -2262,7 +2248,7 @@ export default function Cuotas() {
           lineas: fallbackLines,
         }),
       );
-      pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
+      captureScroll();
       setFeedback(null);
       clearMultipleSelection();
       // Conservamos pestaña, período, página y posición de la tabla. El pago
@@ -2281,6 +2267,7 @@ export default function Cuotas() {
   };
 
   const deletePayment = async () => {
+    captureScroll();
     const response = await cuotasApi.eliminarPago(deleteRow.id_pago);
     const successMessage = "Cuota eliminada correctamente.";
     setDeleteRow(null);
@@ -2302,7 +2289,7 @@ export default function Cuotas() {
       fecha_condonacion: localToday(),
     });
     const successMessage = "Cuota condonada correctamente.";
-    pendingTableScrollRef.current = tableBodyRef.current?.scrollTop || 0;
+    captureScroll();
     setCondoneRow(null);
     setFeedback({ type: "success", message: successMessage });
     await Promise.all([cargar(), cargarTotalesEstado(), cargarCatalogos()]);
@@ -2538,6 +2525,7 @@ export default function Cuotas() {
   };
 
   const handleBarcodeSaved = async ({ type }) => {
+    captureScroll();
     setFeedback({
       type: "success",
       message:
