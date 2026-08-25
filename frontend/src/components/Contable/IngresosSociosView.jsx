@@ -131,6 +131,27 @@ function IncomeSummary({ ariaLabel, items }) {
   );
 }
 
+function CollectionCategoryCards({ items = [] }) {
+  const cards = (Array.isArray(items) ? items : []).map((item, index) => ({
+    key: item.id_categoria || item.nombre || `categoria-${index}`,
+    label: item.nombre || "Sin categoría",
+    detail: `Anual: ${collectionMoney(item.anual)} · Monto por período`,
+    value: collectionMoney(item.mensual),
+  }));
+
+  if (!cards.length) return null;
+
+  return (
+    <SummaryCards
+      title=""
+      ariaLabel="Categorías de monto"
+      variant="footer"
+      className="ct-summaryCards ct-collection-category-summary"
+      items={cards}
+    />
+  );
+}
+
 function SearchBox({ value, onChange, placeholder }) {
   return (
     <FloatingField
@@ -157,10 +178,11 @@ function IncomePagination({
   loading = false,
   noun = "registros",
   onPageChange,
+  supplementalContent = null,
   totalPages,
   totalRecords,
 }) {
-  if (!totalRecords && !actions) return null;
+  if (!totalRecords && !actions && !supplementalContent) return null;
 
   const pageOptions = paginationItems(currentPage, totalPages);
   const paginationSummary = totalRecords ? (
@@ -221,6 +243,11 @@ function IncomePagination({
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+      {supplementalContent ? (
+        <div className="ct-income-pagination__supplemental">
+          {supplementalContent}
         </div>
       ) : null}
       {actions ? (
@@ -518,21 +545,6 @@ function CollectionDetail({ actions, section, period, loading }) {
 
   return (
     <>
-      <section className="ct-collection-categories" aria-label="Categorías de monto">
-        <h3>Categorías de monto</h3>
-        <div className="ct-collection-categories__list">
-          {(section?.categorias_monto || []).map((item) => (
-            <span className="ct-collection-category" key={item.id_categoria}>
-              <b>{item.nombre || "—"}</b>
-              <strong>{collectionMoney(item.mensual)}</strong>
-              <small>Anual: {collectionMoney(item.anual)}</small>
-              <i aria-hidden="true">·</i>
-              <small>Monto por período</small>
-            </span>
-          ))}
-        </div>
-      </section>
-
       <section className="ct-collection-summary" aria-label="Totales de cobranza del período">
         <article>
           <span>Cuotas recaudadas</span>
@@ -557,7 +569,7 @@ function CollectionDetail({ actions, section, period, loading }) {
       </section>
 
       <GlobalDivTable
-        className="ct-income-table ct-collection-table"
+        className="ct-income-table ct-collection-table has-bottom-pagination"
         bodyClassName="entity-table-wrap"
         gridClassName="ct-income-grid ct-income-grid--collection"
         columns={[
@@ -640,6 +652,11 @@ function CollectionDetail({ actions, section, period, loading }) {
       <IncomePagination
         actions={actions}
         loading={loading}
+        supplementalContent={(
+          <CollectionCategoryCards
+            items={section?.categorias_monto || []}
+          />
+        )}
         totalRecords={0}
       />
     </>
@@ -1296,7 +1313,7 @@ export default function IngresosSociosView({
 
   return (
     <section className="ct-income">
-      <div className="ct-income-body">
+      <div className={`ct-income-body ${activeTab === "collection" ? "is-collection" : ""}`.trim()}>
         {activeTab === "detail" ? (
           <IncomeDetail
             actions={tableActions}

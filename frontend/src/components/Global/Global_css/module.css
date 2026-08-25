@@ -365,11 +365,9 @@
 
 .mov-tableWrap {
   flex: 1;
-  min-height: 0;
+  height: calc(100dvh - 250px);
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: calc(100vh - 250px);
-  min-height: calc(100vh - 250px);
 }
 
 .mov-gridTable {
@@ -1489,7 +1487,7 @@
 
 .module-card .global-divTable > .mov-tableWrap {
   min-height: 280px;
-  max-height: calc(100vh - 240px);
+  height: calc(100vh - 240px);
 }
 
 .module-card .global-divTable.has-bottom-pagination > .mov-tableWrap {
@@ -1644,13 +1642,8 @@
    CRUD — SOCIOS, FAMILIAS Y CATEGORÍAS
    ========================================================= */
 .entity-table-wrap {
-  min-height: 280px;
-  max-height: none;
   overflow-x: hidden;
   overflow-y: auto;
-}
-.entity-table-row .mov-gridCell {
-  min-height: 62px;
 }
 .entity-main-cell {
   flex-direction: column;

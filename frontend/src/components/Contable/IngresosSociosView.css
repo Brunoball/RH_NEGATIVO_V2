@@ -449,21 +449,34 @@
 
 /* Vista principal de Ingresos: comparte el patrón visual global de Socios. */
 .ct-income {
+  width: 100%;
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 ;
+  padding: 0;
+  overflow-x: hidden;
 }
 
 .ct-income-body {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 0;
   padding-top: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.ct-income-body > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ct-income .ct-old-pane-head {
@@ -549,77 +562,159 @@
 }
 
 .ct-collection-summary article {
+  --collection-card-tone: var(--balto-action);
+  position: relative;
   min-width: 0;
-  min-height: 98px;
+  min-height: 94px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  border: 1px dashed #d8dee8;
-  border-radius: 13px;
-  padding: 12px 14px;
-  background: #fff;
+  overflow: hidden;
+  padding: 13px 14px 13px 16px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--collection-card-tone) 22%,
+      color-mix(in srgb, var(--balto-ink) 12%, transparent)
+    );
+  border-radius: var(--blue-inst-radius-lg, 14px);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--collection-card-tone) 12%, #fff) 0%,
+    #fff 75%
+  );
+  box-shadow: var(--mov-shadow-sm);
+}
+
+.ct-collection-summary article::before {
+  position: absolute;
+  inset: 14px auto 14px 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: var(--collection-card-tone);
+  content: "";
+}
+
+.ct-collection-summary article:nth-child(2) {
+  --collection-card-tone: var(--balto-success, #22ad5c);
+}
+
+.ct-collection-summary article:nth-child(3) {
+  --collection-card-tone: var(--balto-warning, #c68122);
 }
 
 .ct-collection-summary span {
-  color: #334155;
-  font-size: 11px;
+  overflow: hidden;
+  color: color-mix(
+    in srgb,
+    var(--collection-card-tone) 76%,
+    var(--balto-text)
+  );
+  font-size: 9px;
   font-weight: 750;
+  letter-spacing: .045em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .ct-collection-summary strong {
-  margin-top: 7px;
+  margin-top: 5px;
+  overflow: hidden;
   color: var(--balto-ink);
-  font-size: clamp(20px, 1.7vw, 25px);
+  font-size: clamp(18px, 1.45vw, 24px);
   font-weight: 850;
-  line-height: 1;
+  line-height: 1.05;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ct-collection-summary small {
-  margin-top: 8px;
+  margin-top: 5px;
   overflow: hidden;
-  color: #64748b;
-  font-size: 10px;
+  color: color-mix(in srgb, var(--balto-text) 72%, transparent);
+  font-size: 9px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ct-collection-summary article.is-shortfall {
-  border-color: var(--balto-danger, #ef4444);
-}
-
-.ct-collection-summary article.is-shortfall span,
-.ct-collection-summary article.is-shortfall strong {
-  color: var(--balto-danger, #dc2626);
+  --collection-card-tone: var(--balto-danger, #e13d45);
 }
 
 .ct-collection-summary article.is-surplus {
-  border-color: var(--success-500, #22c55e);
+  --collection-card-tone: var(--balto-success, #22ad5c);
 }
 
-.ct-collection-summary article.is-surplus span,
-.ct-collection-summary article.is-surplus strong {
-  color: var(--success-700, #15803d);
+.ct-collection-category-cards.global-summaryCards--tableFooter {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 10px;
+  margin: 12px 10px 0;
+  padding: 0;
+  background: transparent;
+}
+
+.ct-collection-category-cards .global-summaryCards__title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .01em;
+  text-transform: uppercase;
+}
+
+.ct-collection-category-cards .global-summaryCards__list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 10px;
+}
+
+.ct-collection-category-cards .global-summaryCards__item {
+  min-height: 88px;
+  align-content: start;
+  gap: 6px;
+  padding: 14px 16px;
+  border-color: color-mix(in srgb, var(--mov-border) 92%, #fff);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.06);
+}
+
+.ct-collection-category-cards .global-summaryCards__label {
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.ct-collection-category-cards .global-summaryCards__detail {
+  grid-column: 1 / -1;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.ct-collection-category-cards .global-summaryCards__value {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  color: var(--balto-action);
+  font-size: 21px;
+  font-weight: 850;
+  line-height: 1.05;
 }
 
 .ct-income-table {
-
-  max-height:  calc(100dvh - 340px);
-
-  flex: 0 1  calc(100dvh - 430px);
+  max-height: calc(100vh - 340px);
+  flex: 0 0 auto;
 }
 
-.ct-income-table .entity-table-wrap {
-  min-height: 175px;
-  max-height: none;
-}
-
+/* Detalle de cobranza usa la misma estructura global; sólo cambia la altura
+   disponible de esta pestaña para dejar lugar al resumen y al footer. */
 .ct-collection-table {
-  min-height: 300px;
-  max-height: none;
-  flex: 1 1 340px;
-  margin-inline: 10px;
+  max-height: calc(100vh - 360px);
+  flex: 0 0 auto;
+}
+
+.ct-collection-table .ct-income-grid--collection .mov-gridCell {
+  padding-block: 6px;
 }
 
 .ct-income-grid {
@@ -738,7 +833,6 @@
 }
 
 .ct-income-period-row .mov-gridCell {
-  min-height: 50px;
   background: color-mix(in srgb, var(--balto-bg) 68%, #fff);
 }
 
@@ -817,7 +911,7 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -844,6 +938,42 @@
 .ct-income-pagination__navigation .global-pagination__summary {
   margin-right: auto;
   justify-content: flex-start;
+}
+
+.ct-income-pagination__supplemental {
+  min-width: 0;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Usa exactamente las tarjetas de Resumen del período.
+   Sólo cambia el layout exterior para que no se estiren. */
+.ct-collection-category-summary.ct-summaryCards.global-summaryCards--footer {
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.ct-collection-category-summary .global-summaryCards__list {
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ct-collection-category-summary .global-summaryCards__item {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+}
+
+.ct-collection-category-summary .global-summaryCards__detail {
+  white-space: nowrap;
 }
 
 .ct-income-pagination__actions.global-tableActions {
@@ -951,22 +1081,12 @@
   }
 
   .ct-collection-table {
-    min-height: 300px;
-    height: 360px;
-    max-height: 360px;
-    flex-basis: 360px;
+    max-height: calc(100vh - 520px);
     margin-inline: 0;
   }
 
   .ct-income-table:not(.ct-collection-table) {
-    min-height: 210px;
-    height: 260px;
-    max-height: 260px;
-    flex-basis: 260px;
-  }
-
-  .ct-income-table .entity-table-wrap {
-    min-height: 155px;
+    max-height: calc(100vh - 470px);
   }
 
   .global-pagination.ct-income-pagination {
@@ -979,4 +1099,69 @@
   .ct-income-pagination__actions .mov-btn {
     flex: 0 0 auto;
   }
+}
+
+
+/* Ingresos no genera desplazamiento horizontal; GlobalDivTable ya oculta el eje X. */
+.global-pagination.ct-income-pagination {
+  overflow-x: hidden;
+}
+
+/* Ingresos: la sección sólo desplaza verticalmente. */
+.ct-income,
+.ct-income-body,
+.ct-income-body > .global-pagination,
+.ct-income-body > .global-divTable {
+  overflow-x: hidden;
+}
+
+
+
+
+/* Detalle de cobranza: sin márgenes laterales ni desplazamiento horizontal. */
+.ct-income-body.is-collection {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.ct-income-body.is-collection > * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.ct-income-body.is-collection > .ct-collection-summary {
+  width: 100%;
+  margin: 0;
+  padding-inline: 0;
+}
+
+.ct-income-body.is-collection > .ct-collection-table {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.ct-income-body.is-collection .ct-collection-table .global-divTable__head,
+.ct-income-body.is-collection .ct-collection-table .global-divTable__wrap,
+.ct-income-body.is-collection .ct-collection-table .global-divTable__body,
+.ct-income-body.is-collection .ct-collection-table .entity-table-wrap {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.ct-income-body.is-collection > .ct-income-pagination {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.ct-income-body.is-collection .ct-income-pagination__supplemental,
+.ct-income-body.is-collection .ct-collection-category-summary,
+.ct-income-body.is-collection .ct-collection-category-summary .global-summaryCards__list {
+  min-width: 0;
+  max-width: 100%;
 }
