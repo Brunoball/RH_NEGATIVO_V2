@@ -256,7 +256,7 @@ abstract class CuotasRegistros extends CuotasConsultas
         self::validarEsquema($db);
         $paymentId = positive_id($body['id_pago'] ?? $body['id'] ?? null, 'pago');
 
-        return transaction($db, static function () use ($db, $auth, $paymentId): array {
+        $deleted = transaction($db, static function () use ($db, $paymentId): array {
             $statement = $db->prepare(
                 'SELECT p.*, s.nombre AS socio, s.dni, c.nombre AS categoria,
                         pe.nombre AS periodo, pe.meses AS periodo_meses,
@@ -283,7 +283,19 @@ abstract class CuotasRegistros extends CuotasConsultas
             $delete->execute([$paymentId]);
             if ($delete->rowCount() !== 1) api_error('No se pudo eliminar el pago.', 'PAGO_NO_ELIMINADO', 409);
 
-            $item = self::pagoEliminado($row);
+            return [
+                'item' => self::pagoEliminado($row),
+                'row' => $row,
+            ];
+        });
+
+        // La auditoría no forma parte de la integridad transaccional del pago.
+        // Si el almacenamiento de auditoría tiene una incompatibilidad puntual
+        // en producción, no debe convertir una eliminación ya válida en HTTP 500
+        // ni dejar la operación de negocio atrapada en un rollback artificial.
+        try {
+            $row = $deleted['row'];
+            $item = $deleted['item'];
             audit_change(
                 $db,
                 $auth,
@@ -301,8 +313,17 @@ abstract class CuotasRegistros extends CuotasConsultas
                 $item,
                 null
             );
-            return $item;
-        });
+        } catch (Throwable $error) {
+            error_log(
+                sprintf(
+                    'No se pudo auditar la eliminación del pago %d: %s',
+                    $paymentId,
+                    $error->getMessage()
+                )
+            );
+        }
+
+        return $deleted['item'];
     }
 
     private static function normalizarObjetivos(PDO $db, array $body, string $paymentDate): array

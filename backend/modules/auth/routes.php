@@ -228,7 +228,26 @@ function auth_current(): never
 function auth_logout(): never
 {
     $auth = auth_context();
-    app_db()->prepare('UPDATE sis_sesiones SET activo = 0 WHERE idSesion = ?')->execute([$auth['id_sesion']]);
+    $db = app_db();
+
+    try {
+        $db->prepare('UPDATE sis_sesiones SET activo = 0 WHERE idSesion = ?')
+            ->execute([$auth['id_sesion']]);
+    } catch (Throwable $error) {
+        // Las sesiones son efímeras. Si el UPDATE lógico no puede persistirse
+        // en el host, eliminar la fila produce la misma garantía de logout y
+        // evita devolver un 500 por una diferencia de esquema/trigger.
+        error_log(
+            sprintf(
+                'Falló invalidación lógica de sesión %d; se usa eliminación segura: %s',
+                (int)$auth['id_sesion'],
+                $error->getMessage()
+            )
+        );
+        $db->prepare('DELETE FROM sis_sesiones WHERE idSesion = ?')
+            ->execute([$auth['id_sesion']]);
+    }
+
     auth_cookie('', time() - 3600);
     api_success([], 'Sesión cerrada correctamente.');
 }

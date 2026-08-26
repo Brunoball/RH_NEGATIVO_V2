@@ -751,10 +751,18 @@ test.describe('Contabilidad · UI completa', () => {
     await expect(collectionTotals.getByText('Cuotas recaudadas', { exact: true })).toBeVisible();
     await expect(collectionTotals.getByText('Inscripciones recaudadas', { exact: true })).toBeVisible();
     await expect(collectionTotals.getByText('Cuotas esperadas', { exact: true })).toBeVisible();
-    const expectedDifferenceLabel = Number(apiReport.cobranza?.resumen?.diferencia_cuotas || 0) >= 0
-      ? 'Faltante'
-      : 'Superávit';
-    await expect(collectionTotals.getByText(expectedDifferenceLabel, { exact: true })).toBeVisible();
+    const collectionDifference = Number(apiReport.cobranza?.resumen?.diferencia_cuotas || 0);
+    await expect(
+      collectionTotals.getByText('Faltante / Superávit de cuotas', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      collectionTotals.getByText(
+        collectionDifference >= 0
+          ? 'Cuotas esperadas menos cuotas recaudadas'
+          : 'Cuotas recaudadas menos cuotas esperadas',
+        { exact: true },
+      ),
+    ).toBeVisible();
 
     await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
     await exportFromGlobalModal(page, {

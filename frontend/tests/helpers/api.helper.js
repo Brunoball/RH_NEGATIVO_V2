@@ -7,6 +7,26 @@ loadTestEnv();
 const FRONTEND_ROOT = path.resolve(__dirname, '..', '..');
 const AUTH_FILE = path.join(FRONTEND_ROOT, 'tests', '.auth', 'user.json');
 
+let lastRemoteApiFinishedAt = 0;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRemoteEnvironment() {
+  return String(process.env.PW_ENVIRONMENT || '').toLowerCase() === 'hostinger';
+}
+
+async function settleRemoteApi() {
+  if (!isRemoteEnvironment()) return;
+  const configured = Number(process.env.PW_HOSTINGER_API_GAP_MS || 120);
+  const gapMs = Number.isFinite(configured) ? Math.max(0, Math.min(1000, configured)) : 120;
+  if (!gapMs) return;
+
+  const elapsed = Date.now() - lastRemoteApiFinishedAt;
+  if (lastRemoteApiFinishedAt && elapsed < gapMs) await sleep(gapMs - elapsed);
+}
+
 function normalizedApiBase() {
   return String(process.env.PW_API_URL || 'http://localhost:3001/routes')
     .trim()
@@ -26,11 +46,15 @@ function actionUrl(action, params = {}) {
   return url.toString();
 }
 
-function readAuthSession() {
+function readPersistentAuthSession() {
   if (!fs.existsSync(AUTH_FILE)) {
     throw new Error(`No existe la sesión de testing: ${AUTH_FILE}`);
   }
   return JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
+}
+
+function readAuthSession() {
+  return readPersistentAuthSession();
 }
 
 function readTestCredentials() {
@@ -74,11 +98,13 @@ async function apiResult(requestContext, action, options = {}) {
   if (options.form !== undefined) requestOptions.form = options.form;
   if (options.multipart !== undefined) requestOptions.multipart = options.multipart;
 
+  await settleRemoteApi();
   const response = await requestContext.fetch(actionUrl(action, options.params), {
     ...requestOptions,
     method,
   });
   const body = await parseResponse(response);
+  if (isRemoteEnvironment()) lastRemoteApiFinishedAt = Date.now();
   return {
     ok: response.ok() && body?.exito !== false,
     status: response.status(),
@@ -118,12 +144,14 @@ async function apiBinaryResult(requestContext, action, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const hasSessionOverride = Object.prototype.hasOwnProperty.call(options, 'session');
   const session = hasSessionOverride ? options.session : readAuthSession();
+  await settleRemoteApi();
   const response = await requestContext.fetch(actionUrl(action, options.params), {
     method,
     headers: authHeaders(session, options.headers || {}),
     failOnStatusCode: false,
   });
   const buffer = await response.body();
+  if (isRemoteEnvironment()) lastRemoteApiFinishedAt = Date.now();
   return {
     ok: response.ok(),
     status: response.status(),
@@ -202,6 +230,7 @@ module.exports = {
   createApiSession,
   expectApiError,
   normalizedApiBase,
+  readPersistentAuthSession,
   readAuthSession,
   readTestCredentials,
 };

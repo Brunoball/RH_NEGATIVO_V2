@@ -119,10 +119,9 @@ test.describe('Socios y familias · contratos API complementarios', () => {
   });
 
   test.describe('Familias API', () => {
-    // En Windows se observó una salida nativa aislada del worker antes de ejecutar
-    // el test (0 ms). Un único retry permite distinguir ese crash del sistema de
-    // una falla funcional real: si la API está mal, el segundo intento también falla.
-    test.describe.configure({ retries: process.platform === 'win32' ? 1 : 0 });
+    // Release gate estricto: un fallo de worker también debe quedar visible.
+    // No se usan retries internos que puedan convertir un caso flaky en verde.
+    test.describe.configure({ retries: 0 });
 
     test('familias: guardar/obtener/baja/reactivar/eliminar y validaciones directas', async ({ request }) => {
     const a = await createSocio(request, socioData('FAM API A'));

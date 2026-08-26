@@ -190,15 +190,11 @@ final class Usuarios
             )->execute($values);
 
             if ($password !== '') {
-                if ($isCurrent) {
-                    $db->prepare(
-                        'UPDATE sis_sesiones SET activo = 0
-                         WHERE idUsuario = ? AND idSesion <> ?'
-                    )->execute([$id, $auth['id_sesion']]);
-                } else {
-                    $db->prepare('UPDATE sis_sesiones SET activo = 0 WHERE idUsuario = ?')
-                        ->execute([$id]);
-                }
+                self::invalidarSesionesUsuario(
+                    $db,
+                    $id,
+                    $isCurrent ? (int)$auth['id_sesion'] : null
+                );
             }
 
             self::audit($auth, 'EDITAR_USUARIO', $id, [
@@ -257,7 +253,7 @@ final class Usuarios
             )->execute([$active ? 1 : 0, $id]);
 
             if (!$active) {
-                $db->prepare('UPDATE sis_sesiones SET activo = 0 WHERE idUsuario = ?')->execute([$id]);
+                self::invalidarSesionesUsuario($db, $id);
             }
 
             self::audit(
@@ -399,6 +395,41 @@ final class Usuarios
         if ($statement->fetchColumn()) {
             api_error('Ya existe un usuario con ese email.', 'EMAIL_DUPLICADO', 409);
         }
+    }
+
+    /**
+     * Invalida sesiones de un usuario. Las sesiones son datos efímeros: si el
+     * UPDATE lógico falla por una particularidad del esquema/trigger del host,
+     * se elimina la fila como fallback para mantener exactamente la misma
+     * garantía de seguridad (la sesión deja de ser utilizable).
+     */
+    private static function invalidarSesionesUsuario(
+        PDO $db,
+        int $userId,
+        ?int $exceptSessionId = null
+    ): void {
+        $where = 'idUsuario = ?';
+        $params = [$userId];
+        if ($exceptSessionId !== null) {
+            $where .= ' AND idSesion <> ?';
+            $params[] = $exceptSessionId;
+        }
+
+        try {
+            $db->prepare("UPDATE sis_sesiones SET activo = 0 WHERE {$where}")
+                ->execute($params);
+            return;
+        } catch (Throwable $error) {
+            error_log(
+                sprintf(
+                    'Falló invalidación lógica de sesiones para usuario %d; se usa eliminación segura: %s',
+                    $userId,
+                    $error->getMessage()
+                )
+            );
+        }
+
+        $db->prepare("DELETE FROM sis_sesiones WHERE {$where}")->execute($params);
     }
 
     private static function assertAnotherActiveAdmin(PDO $db, int $excludeId): void

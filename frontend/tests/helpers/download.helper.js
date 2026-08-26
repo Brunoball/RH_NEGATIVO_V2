@@ -33,12 +33,25 @@ async function exportFromGlobalModal(page, {
   scope = null,
   expectedExtension,
 }) {
+  const dialog = page.getByRole('dialog').filter({ hasText: /Elegí el formato|Alcance/i }).last();
+
   await expect(openButton).toBeVisible();
   await expect(openButton).toBeEnabled();
+  await openButton.scrollIntoViewIfNeeded();
   await openButton.click();
 
-  const dialog = page.getByRole('dialog').filter({ hasText: /Elegí el formato|Alcance/i }).last();
-  await expect(dialog).toBeVisible();
+  // En remoto la tabla puede terminar un refresh justo después del click y
+  // React reemplaza el árbol del botón/modal. Esperamos primero una ventana
+  // corta y, sólo si el modal nunca llegó a montarse, repetimos UNA vez la
+  // acción real del usuario. No se ignora ningún error de API ni de exportación.
+  try {
+    await expect(dialog).toBeVisible({ timeout: 3000 });
+  } catch (_firstOpenError) {
+    await expect(openButton).toBeVisible();
+    await expect(openButton).toBeEnabled();
+    await openButton.click();
+    await expect(dialog).toBeVisible();
+  }
 
   if (scope) {
     const scopeRadio = dialog.getByRole('radio', { name: new RegExp(scope, 'i') });

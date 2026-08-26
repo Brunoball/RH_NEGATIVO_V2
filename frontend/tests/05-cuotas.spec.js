@@ -1937,8 +1937,16 @@ test.describe('Cuotas · UI', () => {
     await expect(familyToggle).not.toBeChecked();
     await familyToggle.check();
     await expect(familyToggle).toBeChecked();
-    await dialog.getByRole('tab', { name: /Meses a pagar/ }).click();
-    await dialog.getByLabel('Medio de pago *').selectOption(String(catalogs.medium.id_medio_pago));
+    await expect(dialog.getByRole('button', { name: /Registrar pago familiar \(1 cuota\)/ })).toBeVisible();
+
+    const periodsTab = dialog.getByRole('tab', { name: /Meses a pagar/ });
+    await periodsTab.click();
+    await expect(periodsTab).toHaveAttribute('aria-selected', 'true');
+
+    const paymentMedium = dialog.getByLabel('Medio de pago *');
+    await expect(paymentMedium).toBeVisible();
+    await expect(paymentMedium).toBeEnabled();
+    await paymentMedium.selectOption(String(catalogs.medium.id_medio_pago));
     await dialog.getByRole('button', { name: /Registrar pago familiar \(1 cuota\)/ }).click();
 
     const receipt = page.getByRole('dialog', { name: 'Registro de pagos' });
