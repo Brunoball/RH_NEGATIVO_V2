@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
 import { apiPost } from "../_shared/api/apiClient";
 import { saveSession } from "../_shared/auth/session";
+import Toast from "../Global/Toast";
 import bannerRh from "../../imagenes/Rh_banner.png";
 import "./inicio.css";
 
@@ -53,16 +54,33 @@ export default function Inicio() {
   const [recordarCuenta, setRecordarCuenta] = useState(Boolean(rememberedAccount));
   const [visible, setVisible] = useState(false);
   const [cargando, setCargando] = useState(false);
-  const [mensaje, setMensaje] = useState("");
+  const [toast, setToast] = useState(null);
+
+  const mostrarToast = (tipo, mensaje, duracion = 4200) => {
+    setToast({ id: Date.now(), tipo, mensaje, duracion });
+  };
 
   const ingresar = async (event) => {
     event.preventDefault();
-    setMensaje("");
+    setToast(null);
+
+    const usuarioNormalizado = usuario.trim();
+
+    if (!usuarioNormalizado) {
+      mostrarToast("advertencia", "Ingresá tu usuario.");
+      return;
+    }
+
+    if (!contrasena) {
+      mostrarToast("advertencia", "Ingresá tu contraseña.");
+      return;
+    }
+
     setCargando(true);
 
     try {
       const data = await apiPost("auth_login", {
-        usuario: usuario.trim(),
+        usuario: usuarioNormalizado,
         contrasena,
       });
 
@@ -74,14 +92,14 @@ export default function Inicio() {
       });
 
       if (recordarCuenta) {
-        saveRememberedAccount(usuario.trim(), contrasena);
+        saveRememberedAccount(usuarioNormalizado, contrasena);
       } else {
         clearRememberedAccount();
       }
 
       navigate("/panel", { replace: true });
     } catch (error) {
-      setMensaje(error.message || "No se pudo iniciar sesión.");
+      mostrarToast("error", error.message || "No se pudo iniciar sesión.");
     } finally {
       setCargando(false);
     }
@@ -89,6 +107,17 @@ export default function Inicio() {
 
   return (
     <div className="ini_contenedor-principal">
+      {toast ? (
+        <Toast
+          key={toast.id}
+          tipo={toast.tipo}
+          mensaje={toast.mensaje}
+          duracion={toast.duracion}
+          persistente={false}
+          onClose={() => setToast(null)}
+        />
+      ) : null}
+
       <main className="ini_login-shell" aria-label={`Acceso a ${APP_NAME}`}>
         <section className="ini_brand-panel">
           <div className="ini_brand-glow" aria-hidden="true" />
@@ -126,7 +155,6 @@ export default function Inicio() {
                   onChange={(event) => setUsuario(event.target.value)}
                   placeholder="Usuario"
                   autoComplete="username"
-                  required
                   maxLength={100}
                   autoFocus
                 />
@@ -140,7 +168,6 @@ export default function Inicio() {
                   onChange={(event) => setContrasena(event.target.value)}
                   placeholder="Contraseña"
                   autoComplete="current-password"
-                  required
                   maxLength={255}
                 />
                 <button
@@ -169,8 +196,6 @@ export default function Inicio() {
                   <span>Recordar cuenta y contraseña</span>
                 </label>
               </div>
-
-              {mensaje ? <p className="ini_mensaje-error">{mensaje}</p> : null}
 
               <button className="ini_boton" type="submit" disabled={cargando}>
                 {cargando ? "Ingresando..." : "Ingresar"}
