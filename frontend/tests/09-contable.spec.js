@@ -296,6 +296,198 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
       params: { anio: year, mes: 13 },
     }, { status: 422, code: 'FILTRO_INVALIDO' });
   });
+
+
+  test('Balance anual reconstruye deuda histórica, pagos, condonaciones, contado anual, altas e inscripción con un escenario E2E controlado', async ({ request }) => {
+    const { year } = dateParts();
+    const category = await createQuotaCategory(request);
+    const catalogs = await quotaCatalogs(request, year);
+    const periodIds = catalogs.bimonthly
+      .map((item) => Number(item.id_periodo ?? item.id_mes))
+      .filter((id) => id >= 1 && id <= 3);
+    expect(periodIds).toEqual(expect.arrayContaining([1, 2, 3]));
+
+    const allowedRegistrationMedium = (catalogs.catalogos.medios_pago || []).find((item) => {
+      const name = String(item.nombre || '').toUpperCase();
+      return item.activo !== false && (name.includes('EFECTIVO') || name.includes('TRANSFERENCIA'));
+    });
+    if (!allowedRegistrationMedium) {
+      throw new Error('Balance E2E requiere un medio EFECTIVO o TRANSFERENCIA activo para probar inscripción.');
+    }
+
+    const debtFromJoin = await createQuotaSocio(
+      request,
+      'BALANCE DEUDA DESDE ALTA',
+      category.item.id_categoria,
+      { fecha_ingreso: `${year}-02-10` },
+    );
+    const partiallyCovered = await createQuotaSocio(
+      request,
+      'BALANCE PAGO Y CONDONACION',
+      category.item.id_categoria,
+      { fecha_ingreso: `${year}-01-01` },
+    );
+    const annualCovered = await createQuotaSocio(
+      request,
+      'BALANCE CONTADO ANUAL',
+      category.item.id_categoria,
+      { fecha_ingreso: `${year}-01-01` },
+    );
+    const registered = await createQuotaSocio(
+      request,
+      'BALANCE INSCRIPCION',
+      category.item.id_categoria,
+      { fecha_ingreso: `${year}-03-10` },
+    );
+    const leaver = await createQuotaSocio(
+      request,
+      'BALANCE BAJA',
+      category.item.id_categoria,
+      { fecha_ingreso: `${year}-01-01` },
+    );
+
+    await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: partiallyCovered.item.id_socio,
+        periodId: 1,
+        mediumId: catalogs.medium.id_medio_pago,
+        year,
+        date: `${year}-02-15`,
+      }),
+    });
+    await apiCall(request, 'cuotas_condonar_pago', {
+      method: 'POST',
+      data: {
+        id_socio: partiallyCovered.item.id_socio,
+        anio: year,
+        mes: 2,
+        fecha_condonacion: `${year}-04-15`,
+        motivo: 'PW E2E BALANCE CONDONACION',
+      },
+    });
+    await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: annualCovered.item.id_socio,
+        periodId: Number(catalogs.annual.id_periodo ?? catalogs.annual.id_mes),
+        mediumId: catalogs.medium.id_medio_pago,
+        year,
+        date: `${year}-01-15`,
+      }),
+    });
+    await apiCall(request, 'cuotas_registrar_inscripcion', {
+      method: 'POST',
+      data: {
+        id_socio: registered.item.id_socio,
+        fecha_pago: `${year}-03-10`,
+        monto: '12345',
+        id_medio_pago: allowedRegistrationMedium.id_medio_pago,
+      },
+    });
+    await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: leaver.item.id_socio,
+        periodId: 1,
+        mediumId: catalogs.medium.id_medio_pago,
+        year,
+        date: `${year}-02-15`,
+      }),
+    });
+    await apiCall(request, 'cuotas_condonar_pago', {
+      method: 'POST',
+      data: {
+        id_socio: leaver.item.id_socio,
+        anio: year,
+        mes: 2,
+        fecha_condonacion: `${year}-04-15`,
+        motivo: 'PW E2E BALANCE BAJA CONDONADA',
+      },
+    });
+    await apiCall(request, 'socios_eliminar', {
+      method: 'POST',
+      data: {
+        id: leaver.item.id_socio,
+        fecha_baja: `${year}-05-15`,
+        motivo_baja: 'PW E2E BALANCE BAJA CONTROLADA',
+      },
+    });
+
+    const response = await apiCall(request, 'contable_balance', {
+      params: { desde: `${year}-01-01`, hasta: `${year}-06-30` },
+    });
+    const balance = response.balance;
+    expect(balance.periodos.map((item) => Number(item.id_periodo))).toEqual([1, 2, 3]);
+
+    // Alta dentro de un bimestre: la obligación existe desde su fecha real de
+    // ingreso, no desde enero ni desde una foto del socio actual.
+    const joinedDebts = (balance.deudores.items || [])
+      .filter((item) => Number(item.id_socio) === Number(debtFromJoin.item.id_socio))
+      .sort((a, b) => Number(a.id_periodo) - Number(b.id_periodo));
+    expect(joinedDebts.map((item) => Number(item.id_periodo))).toEqual([1, 2, 3]);
+    expect(joinedDebts[0].ingreso).toBe(`${year}-02-10`);
+    for (const item of joinedDebts) {
+      expect(cents(item.monto_base)).toBe(cents(category.mensual));
+      expect(cents(item.monto)).toBe(cents(category.mensual));
+      expect(Number(item.descuento_familiar)).toBe(0);
+    }
+
+    // Un pago y una condonación resuelven exactamente sus períodos; el tercero
+    // sigue siendo deuda. Un Contado Anual elimina todas las deudas bimestrales.
+    const partialDebtPeriods = (balance.deudores.items || [])
+      .filter((item) => Number(item.id_socio) === Number(partiallyCovered.item.id_socio))
+      .map((item) => Number(item.id_periodo));
+    expect(partialDebtPeriods).toEqual([3]);
+    expect((balance.deudores.items || []).some(
+      (item) => Number(item.id_socio) === Number(annualCovered.item.id_socio),
+    )).toBe(false);
+
+    const registrationItem = (balance.inscripciones.items || []).find(
+      (item) => Number(item.id_socio) === Number(registered.item.id_socio),
+    );
+    expect(registrationItem).toBeTruthy();
+    expect(registrationItem.tipo).toBe('PAGADA');
+    expect(registrationItem.fecha_alta).toBe(`${year}-03-10`);
+    expect(cents(registrationItem.monto)).toBe(cents(12345));
+
+    const leaverItem = (balance.bajas.items || []).find(
+      (item) => Number(item.id_socio) === Number(leaver.item.id_socio),
+    );
+    expect(leaverItem).toBeTruthy();
+    expect(leaverItem.fecha_baja).toBe(`${year}-05-15`);
+    expect(leaverItem.motivo).toBe('PW E2E BALANCE BAJA CONTROLADA');
+    expect(Number(leaverItem.pagos)).toBe(1);
+    expect(Number(leaverItem.condonaciones)).toBe(1);
+    expect(cents(leaverItem.total_pagado)).toBe(cents(category.mensual));
+    expect(leaverItem.periodos_cubiertos).toEqual(expect.arrayContaining([
+      `1/2 / ${year}`,
+      `3/4 / ${year}`,
+    ]));
+
+    // El test no se queda en “la API respondió 200”: vuelve a conciliar los
+    // tres informes por grupo y por importe para fijar el contrato del Balance.
+    const registrationGroupCount = (balance.inscripciones.por_periodo || [])
+      .reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const registrationGroupAmount = (balance.inscripciones.por_periodo || [])
+      .reduce((sum, item) => sum + cents(item.total_cobrado), 0);
+    expect(registrationGroupCount).toBe(Number(balance.inscripciones.resumen.inscripciones));
+    expect(registrationGroupAmount).toBe(cents(balance.inscripciones.resumen.total_inscripcion));
+
+    const leaverGroupCount = (balance.bajas.por_periodo || [])
+      .reduce((sum, item) => sum + Number(item.bajas || 0), 0);
+    const leaverGroupAmount = (balance.bajas.por_periodo || [])
+      .reduce((sum, item) => sum + cents(item.monto_pagado), 0);
+    expect(leaverGroupCount).toBe(Number(balance.bajas.resumen.total_bajas));
+    expect(leaverGroupAmount).toBe(cents(balance.bajas.resumen.total_pagado));
+
+    const debtGroupCount = (balance.deudores.por_periodo || [])
+      .reduce((sum, item) => sum + Number(item.deudores || 0), 0);
+    const debtGroupAmount = (balance.deudores.por_periodo || [])
+      .reduce((sum, item) => sum + cents(item.monto_adeudado), 0);
+    expect(debtGroupCount).toBe(Number(balance.deudores.resumen.total_deudas));
+    expect(debtGroupAmount).toBe(cents(balance.deudores.resumen.total_adeudado));
+  });
 });
 
 test.describe('Contabilidad · configuración y movimientos API', () => {
@@ -566,6 +758,11 @@ test.describe('Contabilidad · configuración y movimientos API', () => {
 
 test.describe('Contabilidad · UI completa', () => {
   test('Ingresos de socios muestra cuotas e inscripciones por fecha y cubre búsqueda, paginación, exportación y Balance anual', async ({ page, request }) => {
+    // Este escenario ejecuta múltiples exportaciones reales (Excel/PDF), genera el Balance anual
+    // y puede cargar más de 100 deudores. En máquinas/CI lentos supera legítimamente el timeout
+    // estándar de 60 s aunque todas las operaciones sigan progresando. Playwright triplica sólo
+    // el timeout de este caso; el resto de la suite conserva el gate normal.
+    test.slow();
     const { year, period } = dateParts();
     const quotaCategory = await createQuotaCategory(request);
     const quotaSocio = await createQuotaSocio(request, 'CONTABLE EXPORT SOCIOS', quotaCategory.item.id_categoria);
@@ -751,10 +948,13 @@ test.describe('Contabilidad · UI completa', () => {
     await expect(collectionTotals.getByText('Cuotas recaudadas', { exact: true })).toBeVisible();
     await expect(collectionTotals.getByText('Inscripciones recaudadas', { exact: true })).toBeVisible();
     await expect(collectionTotals.getByText('Cuotas esperadas', { exact: true })).toBeVisible();
-    const expectedDifferenceLabel = Number(apiReport.cobranza?.resumen?.diferencia_cuotas || 0) >= 0
-      ? 'Faltante'
-      : 'Superávit';
-    await expect(collectionTotals.getByText(expectedDifferenceLabel, { exact: true })).toBeVisible();
+    await expect(
+      collectionTotals.getByText('Faltante / Superávit de cuotas', { exact: true }),
+    ).toBeVisible();
+    const expectedDifferenceDetail = Number(apiReport.cobranza?.resumen?.diferencia_cuotas || 0) >= 0
+      ? 'Cuotas esperadas menos cuotas recaudadas'
+      : 'Cuotas recaudadas menos cuotas esperadas';
+    await expect(collectionTotals.getByText(expectedDifferenceDetail, { exact: true })).toBeVisible();
 
     await segmented.getByRole('tab', { name: 'Detalle', exact: true }).click();
     await exportFromGlobalModal(page, {
@@ -786,6 +986,16 @@ test.describe('Contabilidad · UI completa', () => {
     await page.getByRole('button', { name: 'Balance anual' }).click();
     const balance = page.locator('[role="dialog"].ct-balance-modal');
     await expect(balance).toBeVisible();
+
+    // El modal debe cortar un rango inválido en frontend, sin depender de que
+    // el backend lo rechace. Luego restauramos un rango anual válido.
+    await balance.getByLabel('Desde', { exact: true }).fill(`${year}-06-30`);
+    await balance.getByLabel('Hasta', { exact: true }).fill(`${year}-01-01`);
+    await balance.getByRole('button', { name: 'Generar balance', exact: true }).click();
+    await expect(page.getByText('Seleccioná un rango de fechas válido.', { exact: true })).toBeVisible();
+    await balance.getByLabel('Desde', { exact: true }).fill(`${year}-01-01`);
+    await balance.getByLabel('Hasta', { exact: true }).fill(`${year}-12-31`);
+
     await Promise.all([
       page.waitForResponse((response) => response.url().includes('action=contable_balance')),
       balance.getByRole('button', { name: 'Generar balance' }).click(),

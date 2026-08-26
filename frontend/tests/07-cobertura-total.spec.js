@@ -22,6 +22,16 @@ const FRONTEND_API_DIRS = [
 ];
 const TECHNICAL_MODULES = ['testing_cleanup'];
 
+const SMART_SCROLL_SURFACE_MANIFEST = {
+  'src/components/Categorias/secciones/CategoriasModule.jsx': 'bodyRef={tableBodyRef}',
+  'src/components/Configuracion/secciones/ConfiguracionModule.jsx': 'externalBodyRef={tableBodyRef}',
+  'src/components/Configuracion/secciones/ContableConfiguracion.jsx': 'bodyRef={setTableBodyRef}',
+  'src/components/Configuracion/secciones/UsuariosConfiguracion.jsx': 'ref={setTableBodyRef}',
+  'src/components/Cuotas/Cuotas.jsx': 'bodyRef={tableBodyRef}',
+  'src/components/Socios/Socios.jsx': 'bodyRef={tableBodyRef}',
+  'src/components/Socios/secciones/Familias.jsx': 'bodyRef={tableBodyRef}',
+};
+
 const EXPORT_SURFACE_MANIFEST = {
   'src/components/Socios/Socios.jsx': 1,
   'src/components/Socios/secciones/Familias.jsx': 1,
@@ -156,6 +166,31 @@ const UI_COVERAGE_EVIDENCE = {
   balance_cargar_todos: {
     spec: '11-blindaje-final.spec.js',
     tokens: ['Cargar todos ejecuta la rama >100', 'Quedan 1 registros más', 'PW E2E CARGAR TODOS 101'],
+  },
+  balance_regresion_historica_controlada: {
+    spec: '09-contable.spec.js',
+    tokens: [
+      'Balance anual reconstruye deuda histórica, pagos, condonaciones, contado anual, altas e inscripción',
+      'BALANCE DEUDA DESDE ALTA',
+      'BALANCE PAGO Y CONDONACION',
+      'BALANCE CONTADO ANUAL',
+      'BALANCE INSCRIPCION',
+      'BALANCE BAJA CONTROLADA',
+      'registrationGroupAmount',
+      'debtGroupAmount',
+      'Seleccioná un rango de fechas válido.',
+    ],
+  },
+  scroll_inteligente_regresion_real: {
+    spec: '13-regresiones-20260825.spec.js',
+    tokens: [
+      'useSmartScrollRefresh conserva scroll vertical, horizontal y de ventana',
+      'Contabilidad conserva posición al eliminar y recargar Otros ingresos',
+      'forceScrollableTable',
+      'expectScrollRestored',
+      'action=categorias_listar',
+      'action=contable_ingresos_listar',
+    ],
   },
   eliminacion_socio_trazabilidad_transversal: {
     spec: '12-eliminacion-trazabilidad.spec.js',
@@ -361,6 +396,26 @@ function frontendRawDialogOccurrences() {
   };
   visit(componentRoot);
   return actual;
+}
+
+function frontendSmartScrollSurfaces() {
+  const root = frontendRoot();
+  const componentRoot = path.join(root, 'src', 'components');
+  const actual = [];
+  const visit = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (entry.isFile() && entry.name.endsWith('.jsx')) {
+        const source = read(full);
+        if (source.includes('useSmartScrollRefresh(')) {
+          actual.push(path.relative(root, full).replace(/\\/g, '/'));
+        }
+      }
+    }
+  };
+  visit(componentRoot);
+  return actual.sort();
 }
 
 function specSources({ includeTransversal = true } = {}) {
@@ -616,6 +671,39 @@ test.describe('Release gate · cobertura funcional total', () => {
         expect(source, `Falta evidencia del filtro/acción ${token} en ${moduleName}`).toContain(token);
       }
     }
+  });
+
+  test('cada superficie con scroll inteligente queda inventariada y tiene regresión funcional del mecanismo compartido y de Contabilidad', async () => {
+    expect(
+      frontendSmartScrollSurfaces(),
+      'Cambió una integración de useSmartScrollRefresh: inventariá la superficie y agregá/actualizá su regresión antes de liberar.',
+    ).toEqual(Object.keys(SMART_SCROLL_SURFACE_MANIFEST).sort());
+
+    for (const [relative, attachmentToken] of Object.entries(SMART_SCROLL_SURFACE_MANIFEST)) {
+      const source = read(path.join(frontendRoot(), relative));
+      expect(source, `${relative} debe capturar la posición antes del refresh`).toContain('captureScroll');
+      expect(source, `${relative} debe conectar el ref del scroll a una superficie real`).toContain(attachmentToken);
+    }
+
+    const hookSource = read(path.join(frontendRoot(), 'src', 'components', 'Global', 'useSmartScrollRefresh.js'));
+    for (const token of ['tableTop', 'tableLeft', 'windowX', 'windowY', 'requestAnimationFrame', 'maxScrollTop', 'maxScrollLeft']) {
+      expect(hookSource, `El hook compartido perdió ${token}`).toContain(token);
+    }
+
+    const contableSource = read(path.join(frontendRoot(), 'src', 'components', 'Contable', 'Contable.jsx'));
+    for (const token of [
+      'refreshKeepingTableScroll',
+      'pendingTableScrollRef',
+      'pendingWindowScrollRef',
+      'tableBodyRef.current?.scrollTop',
+      'window.scrollTo',
+    ]) {
+      expect(contableSource, `Contabilidad perdió su restauración de scroll: ${token}`).toContain(token);
+    }
+
+    const regressionSpec = read(path.join(__dirname, '13-regresiones-20260825.spec.js'));
+    expect(regressionSpec).toContain('useSmartScrollRefresh conserva scroll vertical, horizontal y de ventana');
+    expect(regressionSpec).toContain('Contabilidad conserva posición al eliminar y recargar Otros ingresos');
   });
 
   test('cleanup E2E queda aislado como infraestructura y no se confunde con funcionalidad del sistema', async () => {
