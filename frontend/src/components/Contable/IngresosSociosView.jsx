@@ -17,6 +17,7 @@ import {
 } from "../Global/Formularios/TabbedForm";
 import CrudModal from "../Global/Modales/CrudModal";
 import ModalExportarGlobal from "../Global/Modales/ModalExportarGlobal";
+import ModalMotivoGlobal, { MotivoPreviewGlobal } from "../Global/Modales/ModalMotivoGlobal";
 import SummaryCards from "../Global/SummaryCards";
 import { contableApi } from "./api/contableApi";
 import "./IngresosSociosView.css";
@@ -821,6 +822,7 @@ function BalanceModal({ open, onClose, onFeedback }) {
   const [search, setSearch] = useState("");
   const [showAllDebts, setShowAllDebts] = useState(false);
   const [exportMode, setExportMode] = useState(null);
+  const [reasonModal, setReasonModal] = useState(null);
   if (!open) return null;
 
   const generate = async () => {
@@ -1102,7 +1104,15 @@ function BalanceModal({ open, onClose, onFeedback }) {
                     <div className="mov-gridCell is-center">{r.periodo_baja || "—"}</div>
                     <div className="mov-gridCell ct-balance-cell-wrap">{(r.periodos_cubiertos || []).join(", ") || "—"}</div>
                     <div className="mov-gridCell is-right is-strong ct-balance-number">{money(r.total_pagado)}</div>
-                    <div className="mov-gridCell ct-balance-cell-wrap">{r.motivo || "—"}</div>
+                    <div className="mov-gridCell ct-balance-cell-wrap">
+                      <MotivoPreviewGlobal
+                        text={r.motivo}
+                        emptyText="SIN MOTIVO INFORMADO"
+                        onOpen={() => setReasonModal(r)}
+                        title="Ver motivo de baja completo"
+                        ariaLabel={`Ver motivo de baja completo de ${r.socio || `socio ${r.id_socio}`}`}
+                      />
+                    </div>
                   </div>
                 ))}
               </GlobalDivTable>
@@ -1218,6 +1228,19 @@ function BalanceModal({ open, onClose, onFeedback }) {
           )}
         </div>
       </CrudModal>
+      <ModalMotivoGlobal
+        open={Boolean(reasonModal)}
+        title="Motivo de baja"
+        subtitle={
+          reasonModal
+            ? `Socio: ${reasonModal.socio || reasonModal.id_socio} · Baja: ${dateText(reasonModal.fecha_baja)}`
+            : ""
+        }
+        label="Motivo registrado"
+        text={reasonModal?.motivo}
+        emptyText="SIN MOTIVO INFORMADO"
+        onClose={() => setReasonModal(null)}
+      />
       <ModalExportarGlobal
         open={Boolean(exportMode)}
         title={exportConfig.title || "Exportar balance"}

@@ -208,8 +208,8 @@
     minmax(0, .92fr)
     minmax(0, 1.05fr)
     minmax(0, 1.5fr)
-    minmax(0, 1.05fr)
-    minmax(0, 1.55fr);
+    minmax(0, .8fr)
+    minmax(0, 1.8fr);
 }
 
 .ct-balance-grid--debt-summary {
@@ -730,11 +730,11 @@
   grid-template-columns:
     minmax(0, 1.45fr)
     minmax(0, .82fr)
-    minmax(0, .62fr)
-    minmax(0, .95fr)
+    minmax(0, .63fr)
+    minmax(0, .80fr)
     minmax(0, .88fr)
     minmax(0, 1fr)
-    minmax(0, .82fr)
+    minmax(0, .96fr)
     minmax(0, .88fr);
 }
 
@@ -1165,3 +1165,4 @@
   min-width: 0;
   max-width: 100%;
 }
+

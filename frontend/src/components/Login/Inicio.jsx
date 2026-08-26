@@ -99,7 +99,15 @@ export default function Inicio() {
 
       navigate("/panel", { replace: true });
     } catch (error) {
-      mostrarToast("error", error.message || "No se pudo iniciar sesión.");
+      const mensajeError = String(error?.message || "").trim();
+      const esErrorDeConexion = /failed to fetch|networkerror|network error|load failed/i.test(mensajeError);
+
+      mostrarToast(
+        "error",
+        esErrorDeConexion
+          ? "No se pudo conectar con el servidor. Intentá nuevamente."
+          : mensajeError || "No se pudo iniciar sesión.",
+      );
     } finally {
       setCargando(false);
     }
