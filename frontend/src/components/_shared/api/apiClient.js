@@ -5,6 +5,9 @@ const normalizedBaseUrl = String(BASE_URL || "").trim().replace(/\/+$/, "");
 const API_URL = /\/api\.php$/i.test(normalizedBaseUrl)
   ? normalizedBaseUrl
   : `${normalizedBaseUrl}/api.php`;
+const E2E_HEADERS = process.env.REACT_APP_E2E === "1"
+  ? { "X-RH-E2E": "PLAYWRIGHT" }
+  : {};
 
 function buildUrl(action, params = {}) {
   const url = new URL(API_URL, window.location.origin);
@@ -32,6 +35,7 @@ async function request(action, { method = "GET", params, body, signal } = {}) {
       Accept: "application/json",
       ...(body ? { "Content-Type": "application/json" } : {}),
       ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...E2E_HEADERS,
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
@@ -86,6 +90,7 @@ export async function apiFormPost(action, formData, options = {}) {
     headers: {
       Accept: "application/json",
       ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...E2E_HEADERS,
     },
     body: formData,
   });
@@ -121,6 +126,7 @@ export async function apiDownload(action, params = {}, options = {}) {
     credentials: "include",
     headers: {
       ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...E2E_HEADERS,
     },
   });
   if (response.status === 401) {

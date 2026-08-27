@@ -1,4 +1,19 @@
-﻿const BASE_URL = "https://rhnegativo.3devsnet.com/api/routes";
+﻿const HOSTINGER_URL = "https://rhnegativo.3devsnet.com/api/routes";
+
+const configuredUrl = String(
+  process.env.REACT_APP_API_URL || ""
+)
+  .trim()
+  .replace(/\/+$/, "");
+
+const isRunningOnLocalhost =
+  typeof window !== "undefined" &&
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+const BASE_URL =
+  isRunningOnLocalhost && configuredUrl
+    ? configuredUrl
+    : HOSTINGER_URL;
 
 export default BASE_URL;
 
@@ -9,4 +24,9 @@ export default BASE_URL;
 // URL HOSTINGER= https://rhnegativo.3devsnet.com/api/routes
 
 //npx playwright test --project=chromium --workers=1 --reporter=list
+
+
+
+
+
 

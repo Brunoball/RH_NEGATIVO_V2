@@ -1,27 +1,24 @@
-# Desde frontend
+RH NEGATIVO V2 · PLAYWRIGHT
+===========================
 
-# TODO el alcance RH (recomendado)
-npx playwright test --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+ÚNICO COMANDO:
+  npx playwright test --project=chromium --workers=1 --reporter=list
 
-# Lo mismo con navegador visible
-npx playwright test --config=playwright.rh.config.js --project=chromium --workers=1 --headed --reporter=list
+CAMBIAR LOCAL <-> HOSTINGER:
+  Editar SOLAMENTE frontend/.env y dejar UNA REACT_APP_API_URL activa.
 
-# Por módulo
-npx playwright test tests/00-contratos-seguridad.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/01-login.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/02-socios.spec.js tests/02-socios-api-complemento.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/03-categorias.spec.js tests/03-categorias-api-complemento.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/04-dashboard.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/05-cuotas.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/06-configuracion.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
-npx playwright test tests/07-cobertura-total.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+LOCAL:
+  REACT_APP_API_URL=http://localhost:3001/routes
 
-# Blindaje adicional
-npx playwright test tests/08-blindaje-modulos.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+HOSTINGER:
+  REACT_APP_API_URL=https://rhnegativo.3devsnet.com/api/routes
 
-# Atajos Windows incluidos en el ZIP
-run-testing-rh.cmd
-run-testing-rh-headed.cmd
+NO tocar PW_API_URL / PW_BASE_URL en .env.test: ya no existen como selección de entorno.
+Playwright siempre levanta el frontend actual en localhost:3000.
+Si la API es LOCAL también levanta PHP; si es HOSTINGER usa la API HTTPS remota.
 
-# Blindaje funcional final (sin pruebas puramente CSS)
-npx playwright test tests/11-blindaje-final.spec.js --config=playwright.rh.config.js --project=chromium --workers=1 --reporter=list
+IMPORTANTE:
+- No dejar otro npm start ocupando el puerto 3000: Playwright levanta su propio frontend
+  con REACT_APP_E2E=1 para que la protección E2E/CORS sea determinista.
+- .env.test contiene credenciales reales: NO subirlo a Git.
+- Al final deben aparecer cleanup e Integridad OK. Si cambia un dato NO-E2E, la corrida falla.

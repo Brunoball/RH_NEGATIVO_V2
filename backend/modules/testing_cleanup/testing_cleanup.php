@@ -24,6 +24,9 @@ final class TestingCleanup
     public static function run(): never
     {
         $auth = require_admin();
+        if (!function_exists('e2e_request_header_active') || !e2e_request_header_active()) {
+            api_error('Falta el header E2E.', 'E2E_HEADER_REQUIRED', 403);
+        }
         $body = request_body();
         $confirmation = strtoupper(trim((string)($body['confirmacion'] ?? '')));
 
@@ -148,8 +151,23 @@ final class TestingCleanup
                 $db,
                 "SELECT id_socio FROM socios
                  WHERE nombre LIKE 'PW E2E SOCIO %'
-                    OR nombre LIKE 'PW EEE SOCIO %'"
+                    OR nombre LIKE 'PW EEE SOCIO %'
+                    OR nombre LIKE 'PW EEE DNI %'"
             );
+            // Un test puede ejecutar eliminación definitiva y conservar pagos/
+            // inscripción como historia contable. En ese punto el socio ya no
+            // existe en `socios`, así que recuperamos su ID desde el archivo para
+            // poder limpiar también todas sus dependencias E2E al finalizar.
+            if (self::tableExists($db, 'socios_eliminados')) {
+                $archivedTestSocios = self::ids(
+                    $db,
+                    "SELECT id_socio FROM socios_eliminados
+                     WHERE nombre LIKE 'PW E2E SOCIO %'
+                        OR nombre LIKE 'PW EEE SOCIO %'
+                        OR nombre LIKE 'PW EEE DNI %'"
+                );
+                $testSocios = array_values(array_unique(array_merge($testSocios, $archivedTestSocios)));
+            }
             $testFamilies = self::ids(
                 $db,
                 "SELECT id_familia FROM familias
@@ -173,7 +191,7 @@ final class TestingCleanup
                 ? self::ids(
                     $db,
                     "SELECT id_descuento_familiar FROM descuentos_familiares
-                     WHERE descripcion LIKE 'PW E2E DESC %'"
+                     WHERE descripcion LIKE 'PW E2E DESC %' OR descripcion LIKE 'PW E2E RETROACTIVO %'"
                 )
                 : [];
 
@@ -477,13 +495,22 @@ final class TestingCleanup
 
             $db->commit();
 
-            // DELETE no retrocede AUTO_INCREMENT. Como la suite crea y también
-            // elimina registros (algunos incluso antes del teardown), si no
-            // corregimos los contadores el testing consume números técnicos.
-            // Fuera de la transacción restauramos cada AUTO_INCREMENT sin
-            // renumerar filas. En socios se preserva además el mayor número
-            // REAL histórico para no reutilizar números de socios eliminados.
-            $autoIncrement = self::resetAutoIncrementCounters($db);
+            // LOCAL puede restaurar AUTO_INCREMENT porque trabaja sobre una
+            // copia de desarrollo. En producción/Hostinger NO ejecutamos ALTER
+            // TABLE: el aislamiento se basa en namespace E2E + huella de datos
+            // reales, evitando bloqueos o cambios de metadatos en producción.
+            if (in_array(strtolower(trim((string)env_value('APP_ENV', 'production'))), ['local', 'dev', 'development', 'test', 'testing'], true)) {
+                $autoIncrement = self::resetAutoIncrementCounters($db);
+            } else {
+                $autoIncrement = [
+                    'verificado' => true,
+                    'omitido' => true,
+                    'motivo' => 'produccion',
+                    'tablas_detectadas' => 0,
+                    'tablas_reiniciadas' => 0,
+                    'tablas' => [],
+                ];
+            }
             $counts['contable_archivos'] += self::deleteContableFiles($contableFiles);
         } catch (Throwable $error) {
             if ($db->inTransaction()) $db->rollBack();

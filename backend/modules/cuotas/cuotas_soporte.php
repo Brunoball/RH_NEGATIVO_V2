@@ -226,30 +226,60 @@ abstract class CuotasSoporte
 
         $placeholders = implode(',', array_fill(0, count($partnerIds), '?'));
         $statement = $db->prepare(
-            "SELECT id_socio, id_categoria
+            "SELECT id_socio, id_categoria, creado_en
              FROM socios
              WHERE id_socio IN ({$placeholders})"
         );
         $statement->execute($partnerIds);
         $map = [];
+        $createdAt = [];
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $map[(int)$row['id_socio']] = (int)$row['id_categoria'];
+            $id = (int)$row['id_socio'];
+            $map[$id] = (int)$row['id_categoria'];
+            $createdAt[$id] = trim((string)($row['creado_en'] ?? ''));
         }
 
         $targetEnd = $date . ' 23:59:59';
+
+        // La limpieza E2E restablece AUTO_INCREMENT de forma segura. Eso implica
+        // que, entre ejecuciones distintas, un id_socio de Playwright puede volver
+        // a utilizarse. La auditoría histórica se identifica por tabla + id; por
+        // eso nunca debemos aplicar a la encarnación actual eventos registrados
+        // antes de que esta fila de socios haya sido creada.
+        //
+        // Si la fecha consultada es anterior a creado_en, la fila todavía no
+        // existía en esta encarnación y la única categoría válida de base es la
+        // actual. Evitamos además consultar auditorías obsoletas de IDs reciclados.
+        $auditableIds = [];
+        foreach (array_keys($map) as $id) {
+            $created = $createdAt[$id] ?? '';
+            if ($created === '' || $created <= $targetEnd) {
+                $auditableIds[] = $id;
+            }
+        }
+        if ($auditableIds === []) return $map;
+
+        $auditPlaceholders = implode(',', array_fill(0, count($auditableIds), '?'));
         $audit = $db->prepare(
-            "SELECT id_registro, datos_anteriores
+            "SELECT id_registro, datos_anteriores, fecha
              FROM auditoria
              WHERE tabla = 'socios'
                AND accion = 'UPDATE'
                AND fecha > ?
-               AND id_registro IN ({$placeholders})
+               AND id_registro IN ({$auditPlaceholders})
              ORDER BY fecha DESC, id_auditoria DESC"
         );
-        $audit->execute([$targetEnd, ...$partnerIds]);
+        $audit->execute([$targetEnd, ...$auditableIds]);
         foreach ($audit->fetchAll(PDO::FETCH_ASSOC) as $entry) {
             $id = (int)$entry['id_registro'];
             if (!isset($map[$id])) continue;
+
+            $eventDate = trim((string)($entry['fecha'] ?? ''));
+            $created = $createdAt[$id] ?? '';
+            if ($created !== '' && $eventDate !== '' && $eventDate < $created) {
+                continue;
+            }
+
             $before = json_decode((string)($entry['datos_anteriores'] ?? ''), true);
             if (!is_array($before) || !array_key_exists('id_categoria', $before)) continue;
             $map[$id] = (int)$before['id_categoria'];

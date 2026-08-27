@@ -374,6 +374,9 @@ test.describe('Socios', () => {
       row = rowByText(page, data.nombreEditado);
 
       // Contratos negativos de API que no crean registros extra.
+      const emptySocioError = process.env.PW_ENVIRONMENT === 'hostinger'
+        ? { status: 409, code: 'E2E_SCOPE_BLOCKED' }
+        : { status: 422, code: 'VALIDATION_ERROR' };
       await expectApiError(request, 'socios_guardar', {
         method: 'POST',
         data: {
@@ -381,7 +384,7 @@ test.describe('Socios', () => {
           id_categoria: created.id_categoria,
           id_cobrador: created.id_cobrador,
         },
-      }, { status: 422, code: 'VALIDATION_ERROR' });
+      }, emptySocioError);
       await expectApiError(request, 'socios_guardar', {
         method: 'POST',
         data: {

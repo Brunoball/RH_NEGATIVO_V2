@@ -133,10 +133,18 @@ test.describe('Configuración · catálogos', () => {
     const structuralPeriod = (config.listas?.periodo || []).find((item) => Number(item.id_periodo) === 1);
     expect(structuralPeriod).toBeTruthy();
 
+    // Crear un período adicional usa un nombre E2E seguro, por lo que puede
+    // llegar al contrato funcional tanto en LOCAL como en Hostinger.
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST',
       data: { lista: 'periodo', nombre: definitions.periodo.nombre, ...definitions.periodo.payload },
     }, { status: 409, code: 'PERIODO_ESTRUCTURAL' });
+
+    // En cambio, tocar los IDs estructurales reales 1..7 sólo se ejercita
+    // contra la copia LOCAL. En Hostinger el guard E2E los corta antes.
+    const structuralWriteError = process.env.PW_ENVIRONMENT === 'hostinger'
+      ? { status: 409, code: 'E2E_SCOPE_BLOCKED' }
+      : { status: 409, code: 'PERIODO_ESTRUCTURAL' };
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST',
       data: {
@@ -145,23 +153,30 @@ test.describe('Configuración · catálogos', () => {
         nombre: `${structuralPeriod.nombre} X`,
         meses: structuralPeriod.meses,
       },
-    }, { status: 409, code: 'PERIODO_ESTRUCTURAL' });
+    }, structuralWriteError);
     for (const action of ['configuracion_lista_baja', 'configuracion_lista_eliminar_definitivo']) {
       await expectApiError(request, action, {
         method: 'POST', data: { lista: 'periodo', id: structuralPeriod.id_periodo },
-      }, { status: 409, code: 'PERIODO_ESTRUCTURAL' });
+      }, structuralWriteError);
     }
 
     const catalogs = await apiCall(request, 'cuotas_catalogos', { params: { anio: currentYear(), mes: 1 } });
     const quotaPeriodIds = (catalogs.catalogos?.periodos || catalogs.periodos || []).map((item) => Number(item.id_periodo));
     expect(quotaPeriodIds.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
 
+    const invalidConfigError = process.env.PW_ENVIRONMENT === 'hostinger'
+      ? { status: 409, code: 'E2E_SCOPE_BLOCKED' }
+      : { status: 422, code: 'LISTA_CONFIGURACION_INVALIDA' };
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST', data: { lista: 'inventada', nombre: 'X' },
-    }, { status: 422, code: 'LISTA_CONFIGURACION_INVALIDA' });
+    }, invalidConfigError);
+
+    const emptyConfigNameError = process.env.PW_ENVIRONMENT === 'hostinger'
+      ? { status: 409, code: 'E2E_SCOPE_BLOCKED' }
+      : { status: 422, code: 'VALIDATION_ERROR' };
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST', data: { lista: 'cobrador', nombre: '' },
-    }, { status: 422, code: 'VALIDATION_ERROR' });
+    }, emptyConfigNameError);
   });
 
   test('IDs manuales no se reutilizan después de una eliminación definitiva', async ({ request }) => {

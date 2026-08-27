@@ -20,7 +20,7 @@ const FRONTEND_API_DIRS = [
   'Configuracion',
   'Contable',
 ];
-const TECHNICAL_MODULES = ['testing_cleanup'];
+const TECHNICAL_MODULES = ['testing_cleanup', 'testing_safety'];
 
 const SMART_SCROLL_SURFACE_MANIFEST = {
   'src/components/Categorias/secciones/CategoriasModule.jsx': 'bodyRef={tableBodyRef}',
@@ -47,7 +47,7 @@ const MODAL_SURFACE_MANIFEST = {
   'src/components/Configuracion/secciones/ContableConfiguracion.jsx': { CrudModal: 1, ModalEliminarGlobal: 2 },
   'src/components/Configuracion/secciones/UsuariosConfiguracion.jsx': { CrudModal: 1, ModalEliminarGlobal: 2 },
   'src/components/Contable/Contable.jsx': { CrudModal: 4, SummaryDetailModal: 1, ModalExportarGlobal: 1, ModalEliminarGlobal: 1 },
-  'src/components/Contable/IngresosSociosView.jsx': { CrudModal: 1, ModalExportarGlobal: 2, BalanceModal: 1 },
+  'src/components/Contable/IngresosSociosView.jsx': { CrudModal: 1, ModalExportarGlobal: 2, BalanceModal: 1, ModalMotivoGlobal: 1 },
   'src/components/Cuotas/Cuotas.jsx': { ModalExportarGlobal: 1, ModalPagoCuota: 1, ModalComprobantePago: 1, ModalCodigoBarras: 1, ModalEliminarGlobal: 3 },
   'src/components/Cuotas/modales/ModalCodigoBarras.jsx': { CrudModal: 1, ModalEliminarGlobal: 1 },
   'src/components/Cuotas/modales/ModalPagoCuota.jsx': { CrudModal: 1 },
@@ -708,8 +708,8 @@ test.describe('Release gate · cobertura funcional total', () => {
 
   test('cleanup E2E queda aislado como infraestructura y no se confunde con funcionalidad del sistema', async () => {
     const technical = technicalActions();
-    expect(technical).toEqual(['e2e_cleanup']);
+    expect(technical).toEqual(['e2e_cleanup', 'e2e_guard_probe', 'e2e_integridad', 'e2e_residuos']);
     const functional = new Set(registeredActions());
-    expect(functional.has('e2e_cleanup')).toBe(false);
+    for (const action of technical) expect(functional.has(action)).toBe(false);
   });
 });

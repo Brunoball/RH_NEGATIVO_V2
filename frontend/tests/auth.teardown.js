@@ -1,16 +1,17 @@
 const fs = require('fs');
+const path = require('path');
 const { request } = require('@playwright/test');
-const { AUTH_FILE, apiResult } = require('./helpers/api.helper');
+const { AUTH_FILE, apiCall, apiResult } = require('./helpers/api.helper');
 const { envBoolean, loadTestEnv } = require('./helpers/env.helper');
 
 loadTestEnv();
+const BASELINE_FILE = path.join(__dirname, '.auth', 'baseline.json');
 
 function cleanupSummary(body) {
   const deleted = body?.datos?.eliminados || body?.eliminados || {};
   const skipped = body?.datos?.omitidos_por_seguridad || body?.omitidos_por_seguridad || {};
   return {
     totalDeleted: Object.values(deleted).reduce((sum, value) => sum + (Number(value) || 0), 0),
-    deleted,
     skipped,
   };
 }
@@ -20,52 +21,74 @@ module.exports = async function globalTeardown() {
 
   const session = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
   const api = await request.newContext({
-    ignoreHTTPSErrors: true,
-    extraHTTPHeaders: { 'User-Agent': 'PW-RH-E2E-TEARDOWN/1.0' },
+    ignoreHTTPSErrors: false,
+    extraHTTPHeaders: { 'User-Agent': 'PW-RH-E2E-TEARDOWN/2.0' },
   });
-  let cleanupError = null;
+  const failures = [];
 
   try {
-    if (envBoolean('PW_FINAL_CLEANUP', true)) {
-      const cleanup = await apiResult(api, 'e2e_cleanup', {
-        method: 'POST',
-        data: { confirmacion: 'LIMPIAR_PLAYWRIGHT' },
-        session,
-      });
+    // Primero comparamos la integridad mientras la sesión E2E todavía existe.
+    // Las filas E2E se excluyen de la huella, así que cualquier diferencia es
+    // un cambio real fuera del namespace de Playwright.
+    if (fs.existsSync(BASELINE_FILE)) {
+      try {
+        const baseline = JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf8'));
+        const current = await apiCall(api, 'e2e_integridad', { session });
+        if (baseline.sha256 !== current.datos?.sha256) {
+          const changed = [];
+          const tables = new Set([
+            ...Object.keys(baseline.tablas || {}),
+            ...Object.keys(current.datos?.tablas || {}),
+          ]);
+          for (const table of [...tables].sort()) {
+            const before = baseline.tablas?.[table];
+            const after = current.datos?.tablas?.[table];
+            if (JSON.stringify(before) !== JSON.stringify(after)) changed.push({ table, before, after });
+          }
+          failures.push(
+            new Error(`La huella de datos reales cambió durante el testing: ${JSON.stringify(changed)}`),
+          );
+        } else {
+          console.log('[Playwright safety] Integridad OK: ningún registro NO E2E cambió durante la corrida.');
+        }
+      } catch (error) {
+        failures.push(error);
+      }
+    } else {
+      failures.push(new Error('No existe baseline de integridad E2E.'));
+    }
 
-      if (!cleanup.ok) {
-        const detail = cleanup.body?.detalle || cleanup.body?.detalles || '';
-        cleanupError = new Error(
-          `Falló la limpieza final E2E (HTTP ${cleanup.status}): ` +
-            `${cleanup.body?.mensaje || 'respuesta inválida del backend'}` +
-            `${detail ? `\nDetalle backend: ${typeof detail === 'object' ? JSON.stringify(detail) : detail}` : ''}`,
-        );
-      } else {
-        const summary = cleanupSummary(cleanup.body);
-        const autoIncrement = cleanup.body?.datos?.auto_increment || cleanup.body?.auto_increment;
-        if (autoIncrement?.verificado !== true) {
-          cleanupError = new Error(
-            'La limpieza final E2E eliminó los registros, pero no confirmó el reinicio de AUTO_INCREMENT.',
-          );
+    if (envBoolean('PW_FINAL_CLEANUP', true)) {
+      try {
+        const cleanup = await apiResult(api, 'e2e_cleanup', {
+          method: 'POST',
+          data: { confirmacion: 'LIMPIAR_PLAYWRIGHT' },
+          session,
+        });
+        if (!cleanup.ok) {
+          failures.push(new Error(
+            `Falló la limpieza final E2E (HTTP ${cleanup.status}): ${cleanup.body?.mensaje || 'respuesta inválida'}`,
+          ));
+        } else {
+          const summary = cleanupSummary(cleanup.body);
+          console.log(`[Playwright cleanup] ${summary.totalDeleted} registro(s)/archivo(s) E2E eliminados.`);
+          if (Object.keys(summary.skipped).length) {
+            failures.push(new Error(
+              `La limpieza final omitió elementos por seguridad: ${JSON.stringify(summary.skipped)}`,
+            ));
+          }
         }
-        console.log(`[Playwright cleanup] ${summary.totalDeleted} registro(s) E2E eliminados.`);
-        if (autoIncrement?.verificado === true) {
-          console.log(
-            `[Playwright cleanup] AUTO_INCREMENT verificado en ${Number(autoIncrement.tablas_detectadas) || 0} tabla(s); ` +
-              `${Number(autoIncrement.tablas_reiniciadas) || 0} contador(es) corregido(s).`,
-          );
-        }
-        if (Object.keys(summary.skipped).length) {
-          console.warn('[Playwright cleanup] Omitidos por seguridad:', summary.skipped);
-        }
+      } catch (error) {
+        failures.push(error);
       }
     }
-  } catch (error) {
-    cleanupError = error;
   } finally {
     await api.dispose();
     fs.rmSync(AUTH_FILE, { force: true });
+    fs.rmSync(BASELINE_FILE, { force: true });
   }
 
-  if (cleanupError) throw cleanupError;
+  if (failures.length) {
+    throw new Error(failures.map((error) => error?.message || String(error)).join('\n'));
+  }
 };

@@ -63,12 +63,27 @@ function require_auth(): array
         api_error('El usuario se encuentra deshabilitado.', 'USER_DISABLED', 403);
     }
 
-    $db->prepare(
-        'UPDATE sis_sesiones
-         SET ultimo_uso = NOW()
-         WHERE idSesion = ?
-           AND (ultimo_uso IS NULL OR ultimo_uso < DATE_SUB(NOW(), INTERVAL 1 MINUTE))'
-    )->execute([(int)$row['idSesion']]);
+    // `ultimo_uso` es telemetría de actividad, no una condición de seguridad.
+    // En hosting compartido pueden aparecer deadlocks/lock timeouts puntuales al
+    // tocar la misma sesión desde varias solicitudes casi simultáneas (la SPA
+    // dispara varias llamadas al cargar una pantalla). Ese fallo auxiliar nunca
+    // debe convertir una operación válida del sistema en HTTP 500.
+    try {
+        $db->prepare(
+            'UPDATE sis_sesiones
+             SET ultimo_uso = NOW()
+             WHERE idSesion = ?
+               AND (ultimo_uso IS NULL OR ultimo_uso < DATE_SUB(NOW(), INTERVAL 1 MINUTE))'
+        )->execute([(int)$row['idSesion']]);
+    } catch (Throwable $error) {
+        error_log(
+            sprintf(
+                '[auth] No se pudo actualizar ultimo_uso de la sesión %d: %s',
+                (int)$row['idSesion'],
+                $error->getMessage()
+            )
+        );
+    }
 
     $organization = application_profile();
     $userId = (int)$row['idUsuario'];

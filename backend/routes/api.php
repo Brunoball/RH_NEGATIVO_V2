@@ -10,9 +10,6 @@ require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/router.php';
 require_once __DIR__ . '/../core/domain.php';
 
-// Base reutilizada para RH Negativo. El login, las sesiones y la gestión de
-// usuarios ya trabajan sobre rh_neg_v2; los módulos funcionales se conservan
-// para ser adaptados a la nueva estructura de datos en las próximas etapas.
 require_once __DIR__ . '/../modules/auth/routes.php';
 require_once __DIR__ . '/../modules/dashboard/routes.php';
 require_once __DIR__ . '/../modules/socios/routes.php';
@@ -22,13 +19,12 @@ require_once __DIR__ . '/../modules/configuracion/routes.php';
 require_once __DIR__ . '/../modules/usuarios/routes.php';
 require_once __DIR__ . '/../modules/contable/routes.php';
 
-$appEnv = strtolower(trim((string)env_value('APP_ENV', 'production')));
-$e2eCleanupEnabled = in_array($appEnv, ['local', 'dev', 'development', 'test', 'testing'], true)
-    || env_bool('ENABLE_E2E_CLEANUP', false);
-
-if ($e2eCleanupEnabled) {
-    require_once __DIR__ . '/../modules/testing_cleanup/routes.php';
-}
+// Infraestructura E2E siempre registrada, también en producción. No queda
+// abierta al uso normal: exige admin + X-RH-E2E: PLAYWRIGHT + confirmación y
+// sólo opera sobre el namespace Playwright. Así LOCAL/HOSTINGER usan el mismo
+// backend sin flags secretos ni despliegues especiales.
+require_once __DIR__ . '/../modules/testing_cleanup/routes.php';
+require_once __DIR__ . '/../modules/testing_safety/routes.php';
 
 date_default_timezone_set((string)env_value('APP_TIMEZONE', 'America/Argentina/Cordoba'));
 ini_set('display_errors', env_bool('APP_DEBUG', false) ? '1' : '0');
@@ -51,10 +47,8 @@ register_categorias_routes($router);
 register_configuracion_routes($router);
 register_usuarios_routes($router);
 register_contable_routes($router);
-
-if ($e2eCleanupEnabled) {
-    register_testing_cleanup_routes($router);
-}
+register_testing_cleanup_routes($router);
+register_testing_safety_routes($router);
 
 try {
     $router->dispatch(request_action());

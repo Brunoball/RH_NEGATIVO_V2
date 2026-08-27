@@ -25,12 +25,12 @@ const protectedActions = [
   ['contable_opcion_guardar', 'POST'], ['contable_opcion_cambiar_estado', 'POST'], ['contable_opcion_eliminar', 'POST'],
   ['contable_ingreso_guardar', 'POST'], ['contable_ingreso_eliminar', 'POST'],
   ['contable_egreso_guardar', 'POST'], ['contable_egreso_eliminar', 'POST'], ['contable_egreso_archivo', 'GET'],
-  ['e2e_cleanup', 'POST'],
+  ['e2e_cleanup', 'POST'], ['e2e_guard_probe', 'POST'], ['e2e_residuos', 'GET'], ['e2e_integridad', 'GET'],
 ];
 
 test.describe('Contratos, routing y seguridad transversal', () => {
   test('health responde y auth_login conserva su contrato público', async () => {
-    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: false });
     try {
       const health = await apiResult(api, 'health', { session: null });
       expect(health.status).toBe(200);
@@ -45,7 +45,7 @@ test.describe('Contratos, routing y seguridad transversal', () => {
   });
 
   test('todas las acciones privadas rechazan una petición sin sesión antes de ejecutar lógica de negocio', async () => {
-    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: false });
     try {
       for (const [action, method] of protectedActions) {
         const result = await apiResult(api, action, {
@@ -62,7 +62,7 @@ test.describe('Contratos, routing y seguridad transversal', () => {
   });
 
   test('router rechaza métodos HTTP incorrectos en todas las acciones funcionales', async () => {
-    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: false });
     try {
       const routes = [['health', 'GET'], ['auth_login', 'POST'], ...protectedActions];
       for (const [action, expectedMethod] of routes) {

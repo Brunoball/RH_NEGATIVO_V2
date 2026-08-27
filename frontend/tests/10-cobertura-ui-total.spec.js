@@ -463,7 +463,9 @@ test.describe('Cobertura UI total · huecos funcionales', () => {
     await expectApiError(request, 'configuracion_lista_guardar', {
       method: 'POST',
       data: { lista: 'estado', id: 1, nombre: 'PW E2E NO RENOMBRAR ESTADO' },
-    }, { status: 409, code: 'ESTADO_ESTRUCTURAL' });
+    }, process.env.PW_ENVIRONMENT === 'hostinger'
+      ? { status: 409, code: 'E2E_SCOPE_BLOCKED' }
+      : { status: 409, code: 'ESTADO_ESTRUCTURAL' });
 
     await expectApiError(request, 'contable_ingresos_socios', {
       params: { anio: currentYear(), periodo: 99, pagina: 1 },

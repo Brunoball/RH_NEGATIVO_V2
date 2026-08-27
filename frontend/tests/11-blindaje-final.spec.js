@@ -76,10 +76,9 @@ function fakeDebtRows(count = 101) {
 }
 
 test.describe('Blindaje final · integridad histórica y acciones deterministas', () => {
-  // Chromium/Node puede ser abortado por Windows con 0xC0000409 antes de que
-  // Playwright ejecute el cuerpo de una prueba. Un único reintento levanta un
-  // worker limpio; los errores funcionales reales vuelven a fallar y se informan.
-  test.describe.configure({ retries: process.platform === 'win32' ? 1 : 0 });
+  // Release gate estricto: ningún retry interno. Si el worker o una aserción
+  // fallan, la corrida queda roja y el problema se diagnostica explícitamente.
+  test.describe.configure({ retries: 0 });
 
   test('Socios ejecuta BAJA_SUPERPONE_FAMILIA cuando la baja queda antes de un vínculo vigente', async ({ request }) => {
     const familySocio = await createSocio(request, socioData('BAJA SUP FAMILIA'), {
@@ -375,6 +374,10 @@ test.describe('Blindaje final · integridad histórica y acciones deterministas'
     });
 
     await page.goto('/socios/personas');
+    // Socios tiene debounce de 280 ms que ejecuta setPage(1). Si el test pulsa
+    // Siguiente antes de que termine, ese timer puede devolver la UI a página 1
+    // aunque la request de página 2 ya haya ocurrido. Esperamos ese debounce real.
+    await page.waitForTimeout(350);
     const sociosPagination = page.getByRole('navigation', { name: 'Paginación de socios' });
     const sociosNext = sociosPagination.getByRole('button', { name: 'Siguiente', exact: true });
     await expect(sociosNext).toBeEnabled();
@@ -421,6 +424,8 @@ test.describe('Blindaje final · integridad histórica y acciones deterministas'
     });
 
     await page.goto('/cuotas');
+    // Cuotas aplica un debounce equivalente (250 ms) y también fuerza página 1.
+    await page.waitForTimeout(320);
     const cuotasPagination = page.getByRole('navigation', { name: 'Paginación de cuotas' });
     const cuotasNext = cuotasPagination.getByRole('button', { name: 'Siguiente', exact: true });
     await expect(cuotasNext).toBeEnabled();

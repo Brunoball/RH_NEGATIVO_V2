@@ -58,10 +58,10 @@ test.describe('Login y sesión', () => {
     await page.goto('/');
     const user = page.getByPlaceholder('Usuario');
     const password = page.getByPlaceholder('Contraseña');
-    await expect(user).toHaveAttribute('required', '');
+    await expect(user).not.toHaveAttribute('required', '');
     await expect(user).toHaveAttribute('maxlength', '100');
     await expect(user).toHaveAttribute('autocomplete', 'username');
-    await expect(password).toHaveAttribute('required', '');
+    await expect(password).not.toHaveAttribute('required', '');
     await expect(password).toHaveAttribute('maxlength', '255');
     await expect(password).toHaveAttribute('autocomplete', 'current-password');
     await expect(user).toHaveValue(username);
@@ -76,7 +76,7 @@ test.describe('Login y sesión', () => {
     expect(legacy.old).toBeNull();
   });
 
-  test('validación nativa, mostrar contraseña, error, recordar, cancelar y confirmar logout', async ({ page }) => {
+  test('validación explícita, mostrar contraseña, error, recordar, cancelar y confirmar logout', async ({ page }) => {
     const { username, password } = readTestCredentials();
     const invalidUsername = `pw_e2e_invalido_${uniqueSuffix().toLowerCase()}`;
 
@@ -85,10 +85,10 @@ test.describe('Login y sesión', () => {
     const pass = page.getByPlaceholder('Contraseña');
     const enter = page.getByRole('button', { name: /^Ingresar$/ });
     await enter.click();
-    expect(await user.evaluate((node) => node.validity.valueMissing)).toBe(true);
+    await expect(page.getByRole('status')).toContainText('Ingresá tu usuario.');
     await user.fill('x');
     await enter.click();
-    expect(await pass.evaluate((node) => node.validity.valueMissing)).toBe(true);
+    await expect(page.getByRole('status')).toContainText('Ingresá tu contraseña.');
 
     await user.fill(invalidUsername);
     await pass.fill('INCORRECTA');
@@ -102,7 +102,7 @@ test.describe('Login y sesión', () => {
       page.waitForResponse((r) => r.url().includes('action=auth_login') && r.status() === 401),
       enter.click(),
     ]);
-    await expect(page.locator('.ini_mensaje-error')).toContainText('Usuario o contraseña incorrectos.');
+    await expect(page.getByRole('status')).toContainText('Usuario o contraseña incorrectos.');
 
     await user.fill(username);
     await pass.fill(password);
@@ -206,7 +206,7 @@ test.describe('Login y sesión', () => {
   });
 
   test('API valida campos, credenciales largas y bloqueo por 5 intentos', async () => {
-    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: false });
     try {
       await expectApiError(api, 'auth_login', {
         method: 'POST', data: { usuario: '', contrasena: '' }, session: null,

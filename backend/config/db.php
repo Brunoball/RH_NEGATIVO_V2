@@ -10,11 +10,33 @@ function pdo_connection(string $host, int $port, string $database, string $user,
     }
 
     $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
-    return new PDO($dsn, $user, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]);
+    $attempts = 3;
+    $lastError = null;
+
+    for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+        try {
+            return new PDO($dsn, $user, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_TIMEOUT => 5,
+            ]);
+        } catch (PDOException $error) {
+            $lastError = $error;
+            $message = strtolower($error->getMessage());
+            $transient = str_contains($message, '[2002]')
+                || str_contains($message, 'connection refused')
+                || str_contains($message, 'operation not permitted')
+                || str_contains($message, 'too many connections')
+                || str_contains($message, 'connection timed out')
+                || str_contains($message, 'server has gone away');
+
+            if (!$transient || $attempt >= $attempts) throw $error;
+            usleep(150000 * $attempt);
+        }
+    }
+
+    throw $lastError ?? new RuntimeException('No se pudo abrir la conexión a MySQL.');
 }
 
 /**
