@@ -15,12 +15,34 @@ function pdo_connection(string $host, int $port, string $database, string $user,
 
     for ($attempt = 1; $attempt <= $attempts; $attempt++) {
         try {
-            return new PDO($dsn, $user, $password, [
+            $connection = new PDO($dsn, $user, $password, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
                 PDO::ATTR_TIMEOUT => 5,
             ]);
+
+            // PHP y MySQL/MariaDB mantienen zonas horarias independientes.
+            // En Hostinger la sesión SQL puede quedar en UTC aunque PHP use
+            // America/Argentina/Cordoba, haciendo que CURDATE()/NOW() salten
+            // al día siguiente entre las 21:00 y las 00:00 de Argentina.
+            // Sincronizamos cada conexión con APP_TIMEZONE usando un offset
+            // numérico para no depender de que el servidor tenga cargadas las
+            // tablas de zonas horarias de MySQL/MariaDB.
+            $appTimezoneName = (string)env_value('APP_TIMEZONE', 'America/Argentina/Cordoba');
+            try {
+                $appTimezone = new DateTimeZone($appTimezoneName);
+            } catch (Throwable $error) {
+                throw new RuntimeException(
+                    'La variable APP_TIMEZONE no contiene una zona horaria válida.',
+                    0,
+                    $error
+                );
+            }
+            $dbTimezoneOffset = (new DateTimeImmutable('now', $appTimezone))->format('P');
+            $connection->exec('SET SESSION time_zone = ' . $connection->quote($dbTimezoneOffset));
+
+            return $connection;
         } catch (PDOException $error) {
             $lastError = $error;
             $message = strtolower($error->getMessage());

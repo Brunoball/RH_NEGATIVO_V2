@@ -1,4 +1,4 @@
-﻿const HOSTINGER_URL = "http://localhost:3001/routes";
+﻿const HOSTINGER_URL = "https://rhnegativo.3devsnet.com/api/routes";
 
 const configuredUrl = String(
   process.env.REACT_APP_API_URL || ""
