@@ -20,6 +20,7 @@ import ModalExportarGlobal from "../Global/Modales/ModalExportarGlobal";
 import ModalMotivoGlobal, { MotivoPreviewGlobal } from "../Global/Modales/ModalMotivoGlobal";
 import SummaryCards from "../Global/SummaryCards";
 import { contableApi } from "./api/contableApi";
+import logoRhPdf from "../../imagenes/Logo_rh_sf.png";
 import "./IngresosSociosView.css";
 
 const money = (value) =>
@@ -1667,6 +1668,14 @@ export default function IngresosSociosView({
         subtituloArchivoActual={`${dateText(period?.desde)} al ${dateText(period?.hasta)}`}
         subtituloArchivoTodos={`${dateText(period?.desde)} al ${dateText(period?.hasta)}`}
         nombreArchivo={exportConfig.fileName}
+        logoPdfUrl={logoRhPdf}
+        pdfVariant={activeTab === "detail"
+          ? "rh-contable-detalle"
+          : activeTab === "partners"
+          ? "rh-contable-socios"
+          : activeTab === "collection"
+            ? "rh-contable-cobranza"
+            : ""}
         seccionesActuales={exportConfig.sections || []}
         obtenerSeccionesTodos={activeTab === "detail" ? obtainAllExportSections : undefined}
         cantidadActual={Number(exportConfig.count || 0)}

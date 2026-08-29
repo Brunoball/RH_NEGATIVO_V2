@@ -96,7 +96,7 @@ function resolverPublicBaseUrl() {
   return String(window.location.origin || "").replace(/\/+$/, "");
 }
 
-function normalizarLogoPdfUrl(url) {
+function normalizarLogoPdfUrl(url, usarOrigenFrontend = false) {
   const value = String(url || "").trim();
 
   if (
@@ -113,6 +113,10 @@ function normalizarLogoPdfUrl(url) {
   }
 
   const clean = value.replace(/\\/g, "/");
+  if (usarOrigenFrontend && !/^(https?:)?\/\//i.test(clean)) {
+    const frontendBase = String(window.location.origin || "").replace(/\/+$/, "");
+    return clean.startsWith("/") ? `${frontendBase}${clean}` : `${frontendBase}/${clean}`;
+  }
   const publicBase = resolverPublicBaseUrl();
   return clean.startsWith("/") ? `${publicBase}${clean}` : `${publicBase}/${clean}`;
 }
@@ -155,9 +159,9 @@ function calcularCajaImagen(asset, maxWidth, maxHeight) {
   };
 }
 
-function cargarImagenComoJpegAsset(url, name = "ImLogoExport") {
+function cargarImagenComoJpegAsset(url, name = "ImLogoExport", usarOrigenFrontend = false) {
   return new Promise((resolve) => {
-    const logoUrl = normalizarLogoPdfUrl(url);
+    const logoUrl = normalizarLogoPdfUrl(url, usarOrigenFrontend);
 
     if (!logoUrl || typeof document === "undefined") {
       resolve(null);
@@ -240,10 +244,14 @@ function obtenerDatosInstitucionalesLocales() {
   return { logoUrl, nombre };
 }
 
-async function obtenerDatosInstitucionalesExportacion() {
+async function obtenerDatosInstitucionalesExportacion(logoPdfUrl = "") {
   const locales = obtenerDatosInstitucionalesLocales();
   return {
-    logoAsset: await cargarImagenComoJpegAsset(locales.logoUrl),
+    logoAsset: await cargarImagenComoJpegAsset(
+      logoPdfUrl || locales.logoUrl,
+      "ImLogoExport",
+      Boolean(logoPdfUrl),
+    ),
     institucionNombre: locales.nombre || "RH Negativo",
   };
 }
@@ -922,7 +930,8 @@ function pdfString(value) {
   const text = normalizarTexto(value)
     .replace(/\t/g, " ")
     .replace(/\u2026/g, "...")
-    .replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+    .replace(/\u2022/g, "\x95")
+    .replace(/[^\x20-\xFF]/g, "?");
 
   let out = "";
   for (let i = 0; i < text.length; i += 1) {
@@ -1022,6 +1031,320 @@ function estiloFilaPdf(registro) {
     inscripcion: { fill: "0.961 0.937 1", bold: true },
   };
   return estilos[estilo] || { fill: null, bold: false };
+}
+
+function prepararSeccionesPdfRhClasico(secciones, variante) {
+  const normalizadas = normalizarSecciones(secciones);
+
+  if (variante === "rh-contable-socios") {
+    const detalle = normalizadas.find((seccion) =>
+      normalizarTexto(seccion.titulo).toLowerCase().includes("estado y categoría")
+    );
+    const resumen = normalizadas.find((seccion) =>
+      normalizarTexto(seccion.titulo).toLowerCase().includes("resumen de socios")
+    );
+    const registros = Array.isArray(detalle?.registros) ? detalle.registros : [];
+    const estados = ["ACTIVO", "PASIVO", "SIN ESTADO"];
+    const resultado = estados.flatMap((estado) => {
+      const filas = registros.filter((registro) =>
+        normalizarTexto(registro?.estado || "SIN ESTADO").toUpperCase() === estado
+      );
+      if (filas.length === 0) return [];
+
+      const total = filas.reduce((acc, fila) => {
+        const numero = Number(String(fila?.cantidad ?? 0).replace(/[^0-9-]/g, ""));
+        return acc + (Number.isFinite(numero) ? numero : 0);
+      }, 0);
+
+      return [{
+        titulo: `Servicio: ${estado}`,
+        subtitulo: detalle?.subtitulo || "",
+        columnas: [
+          { label: "Categoría", key: "categoria" },
+          { label: "Cantidad", key: "cantidad" },
+        ],
+        registros: [
+          ...filas.map((fila) => ({ ...fila, __estilo: estado === "ACTIVO" ? "activo" : estado === "PASIVO" ? "pasivo" : "neutral" })),
+          { categoria: `TOTAL ${estado}`, cantidad: total.toLocaleString("es-AR"), __estilo: estado === "ACTIVO" ? "total-activo" : estado === "PASIVO" ? "total-pasivo" : "total" },
+        ],
+      }];
+    });
+
+    const totalGeneral = (resumen?.registros || []).find((registro) =>
+      normalizarTexto(registro?.estado).toUpperCase() === "TOTAL GENERAL"
+    );
+    if (totalGeneral) {
+      resultado.push({
+        titulo: "Total general",
+        subtitulo: "",
+        columnas: [
+          { label: "Concepto", key: "estado" },
+          { label: "Cantidad", key: "cantidad" },
+        ],
+        registros: [{ ...totalGeneral, __estilo: "total-general" }],
+      });
+    }
+    return resultado.length > 0 ? resultado : normalizadas;
+  }
+
+  if (variante === "rh-contable-cobranza") {
+    const categorias = normalizadas.find((seccion) =>
+      normalizarTexto(seccion.titulo).toLowerCase().includes("montos por categoría")
+    );
+    const detalle = normalizadas.find((seccion) =>
+      normalizarTexto(seccion.titulo).toLowerCase().includes("esperado vs recaudado")
+    );
+    return [categorias, detalle].filter(Boolean);
+  }
+
+  return normalizadas;
+}
+
+function crearPaginasPdfRhClasico({ titulo, subtitulo, secciones, logoAsset = null, variante = "" }) {
+  const landscape = variante === "rh-contable-detalle";
+  const pageWidth = landscape ? 841.89 : 595.28;
+  const pageHeight = landscape ? 595.28 : 841.89;
+  const headerMargin = landscape ? 30 : variante === "rh-contable-cobranza" ? 40 : 50;
+  const tableMargin = landscape ? 24 : variante === "rh-contable-cobranza" ? 18 : 50;
+  const bottomMargin = 64;
+  const usableWidth = pageWidth - tableMargin * 2;
+  const pages = [];
+  const seccionesPdf = prepararSeccionesPdfRhClasico(secciones, variante);
+  let commands = [];
+  let y = 0;
+  let pageNumber = 0;
+
+  const setTextColor = (rgb = "0 0 0") => commands.push(`${rgb} rg`);
+  const addText = (text, x, currentY, size = 9, bold = false, italic = false) => {
+    commands.push(`BT /${italic ? "F3" : bold ? "F2" : "F1"} ${size} Tf ${x.toFixed(2)} ${currentY.toFixed(2)} Td (${pdfString(text)}) Tj ET`);
+  };
+  const textWidth = (text, size, bold = false) => normalizarTexto(text).length * size * (bold ? 0.53 : 0.49);
+  const centeredX = (text, size, bold = false) => Math.max(headerMargin, (pageWidth - textWidth(text, size, bold)) / 2);
+  const addLine = (x1, y1, x2, y2, color = "0.71 0.71 0.71", width = 0.6) => {
+    commands.push(`${color} RG ${width} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  };
+  const drawRect = (x, topY, width, height, fill = null, border = "0.78 0.81 0.86") => {
+    if (fill) commands.push(`${fill} rg ${x.toFixed(2)} ${(topY - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`);
+    commands.push(`${border} RG 0.35 w ${x.toFixed(2)} ${(topY - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S`);
+  };
+  const addImage = (asset, x, currentY, width, height) => {
+    if (!asset?.name) return;
+    commands.push("q");
+    commands.push(`${width.toFixed(2)} 0 0 ${height.toFixed(2)} ${x.toFixed(2)} ${currentY.toFixed(2)} cm`);
+    commands.push(`/${asset.name} Do`);
+    commands.push("Q");
+  };
+
+  const finishPage = () => {
+    addLine(headerMargin, 54, pageWidth - headerMargin, 54);
+    const footer = "Documento generado automáticamente por el sistema contable de RH Negativo";
+    setTextColor("0.39 0.39 0.39");
+    addText(footer, centeredX(footer, 8), 38, 8, false, true);
+    setTextColor();
+    pages.push(commands.join("\n"));
+  };
+
+  const startPage = (continuacion = false) => {
+    commands = [];
+    pageNumber += 1;
+    const topTitleY = landscape ? 548 : 782;
+    const locationY = landscape ? 532 : 764;
+    const dividerY = landscape ? 518 : 747;
+    const reportTitleY = landscape ? 492 : 716;
+    const printDateY = landscape ? 466 : 686;
+    const subtitleY = landscape ? 451 : 670;
+    const logoBottomY = landscape ? 511 : 755;
+    const nombre = "Círculo RH Negativo";
+    setTextColor();
+    addText(nombre, headerMargin, topTitleY, 18, true);
+    setTextColor("0.31 0.31 0.31");
+    addText("San Francisco, Córdoba", headerMargin, locationY, 11, false);
+    if (logoAsset) {
+      const caja = calcularCajaImagen(logoAsset, 50, 50);
+      addImage(logoAsset, pageWidth - headerMargin - 50 + caja.offsetX, logoBottomY + caja.offsetY, caja.width, caja.height);
+    }
+    addLine(headerMargin, dividerY, pageWidth - headerMargin, dividerY);
+    setTextColor();
+    const encabezado = continuacion ? `${titulo} (continuación)` : titulo;
+    addText(encabezado, centeredX(encabezado, 15, true), reportTitleY, 15, true);
+    setTextColor("0.16 0.16 0.16");
+    addText(`Fecha de impresión: ${new Date().toLocaleDateString("es-AR")}`, headerMargin, printDateY, 9.5, false);
+    if (subtitulo) addText(subtitulo, headerMargin, subtitleY, 9.5, false);
+    setTextColor();
+    y = landscape ? (subtitulo ? 429 : 444) : (subtitulo ? 646 : 660);
+  };
+
+  const ensureSpace = (height) => {
+    if (y - height >= bottomMargin) return false;
+    finishPage();
+    startPage(true);
+    return true;
+  };
+
+  startPage(false);
+
+  seccionesPdf.forEach((seccion, sectionIndex) => {
+    const columnas = normalizarColumnas(seccion.columnas);
+    const registros = Array.isArray(seccion.registros) ? seccion.registros : [];
+    const esCategoriasCobranza = variante === "rh-contable-cobranza"
+      && normalizarTexto(seccion.titulo).toLowerCase().includes("montos por categoría");
+    const esTotalGeneralSocios = variante === "rh-contable-socios"
+      && normalizarTexto(seccion.titulo).toLowerCase() === "total general";
+    const esTablaCobranza = variante === "rh-contable-cobranza" && columnas.length === 5;
+    const widths = esTablaCobranza
+      ? [220, 90, 90, 65, 94].map((width) => width * (usableWidth / 559))
+      : calcularAnchosPdf(columnas, registros, usableWidth);
+    const cantidadCols = Math.max(1, columnas.length);
+    const fontSize = cantidadCols >= 11 ? 5.1 : cantidadCols >= 8 ? 5.7 : cantidadCols >= 5 ? 7.4 : 9;
+    const lineHeight = fontSize + 2;
+    const headerHeight = 23;
+
+    if (esCategoriasCobranza) {
+      ensureSpace(34 + registros.length * 13);
+      addText("Montos por categoría (monto por período):", headerMargin, y, 10.5, true);
+      y -= 16;
+      registros.forEach((registro) => {
+        const linea = `\x95 ${normalizarTexto(registro?.categoria || "Sin categoría")}: ${normalizarTexto(registro?.periodo || "-")}`;
+        addText(linea, headerMargin + 8, y, 9, false);
+        y -= 13;
+      });
+      y -= 8;
+      return;
+    }
+
+    if (esTotalGeneralSocios) {
+      const registro = registros[0] || {};
+      const cantidad = normalizarTexto(registro?.cantidad || "0");
+      ensureSpace(42);
+      drawRect(tableMargin, y, usableWidth, 28, "0.941 0.976 1", "0.145 0.388 0.922");
+      setTextColor("0.08 0.08 0.08");
+      addText("TOTAL GENERAL:", tableMargin + 14, y - 18, 12, true);
+      addText(cantidad, tableMargin + usableWidth - 14 - textWidth(cantidad, 12, true), y - 18, 12, true);
+      setTextColor();
+      y -= 42;
+      return;
+    }
+
+    const drawHeader = () => {
+      let x = tableMargin;
+      const headerFill = variante === "rh-contable-socios"
+        && normalizarTexto(seccion.titulo).toUpperCase().includes("PASIVO")
+        ? "0.486 0.227 0.929"
+        : "0.145 0.388 0.922";
+      columnas.forEach((columna, colIndex) => {
+        const width = widths[colIndex];
+        drawRect(x, y, width, headerHeight, headerFill, headerFill);
+        setTextColor("1 1 1");
+        const lineas = dividirTextoPdf(columna.label, Math.max(5, Math.floor((width - 8) / (fontSize * 0.5))), 2);
+        lineas.forEach((linea, lineIndex) => addText(linea, x + 4, y - 10 - lineIndex * (fontSize + 1), fontSize, true));
+        x += width;
+      });
+      setTextColor();
+      y -= headerHeight;
+    };
+
+    ensureSpace(48);
+    if (sectionIndex > 0) y -= 6;
+    const tituloDuplicado = normalizarTexto(seccion.titulo).toLowerCase() === normalizarTexto(titulo).toLowerCase();
+    if (!tituloDuplicado) {
+      addText(seccion.titulo, headerMargin, y, 11.5, true);
+      y -= 16;
+    }
+    drawHeader();
+
+    if (registros.length === 0) {
+      drawRect(tableMargin, y, usableWidth, 20, "0.973 0.980 0.988");
+      addText("Sin registros para exportar.", tableMargin + 5, y - 13, 8, false);
+      y -= 20;
+      return;
+    }
+
+    registros.forEach((registro, rowIndex) => {
+      const rowStyle = estiloFilaPdf(registro);
+      const estilo = normalizarTexto(registro?.__estilo).toLowerCase();
+      const lineasPorCelda = columnas.map((columna, colIndex) => {
+        const maxChars = Math.max(4, Math.floor((widths[colIndex] - 8) / (fontSize * 0.49)));
+        const label = normalizarTexto(columna?.label).toLowerCase();
+        let valor = resolverValor(columna, registro, rowIndex);
+        if (variante === "rh-contable-cobranza" && label.includes("dif.")) {
+          valor = normalizarTexto(valor).replace(/\s+(FALTANTE|SUPERÁVIT)$/i, "");
+        }
+        return dividirTextoPdf(valor, maxChars, 3);
+      });
+      const maxLineas = Math.max(1, ...lineasPorCelda.map((lineas) => lineas.length));
+      const rowHeight = Math.max(19, maxLineas * lineHeight + 8);
+      if (ensureSpace(rowHeight + 27)) {
+        addText(`${seccion.titulo} (continuación)`, headerMargin, y, 10.5, true);
+        y -= 15;
+        drawHeader();
+      }
+
+      let fill = rowStyle.fill;
+      if (!fill && rowIndex % 2 === 1) fill = "0.961 0.969 1";
+      if (variante === "rh-contable-socios") {
+        if (estilo === "activo") fill = rowIndex % 2 === 1 ? "0.961 0.969 1" : null;
+        if (estilo === "pasivo") fill = rowIndex % 2 === 1 ? "0.980 0.961 1" : null;
+        if (estilo === "total-activo") fill = "0.941 0.976 1";
+        if (estilo === "total-pasivo") fill = "0.980 0.961 1";
+        if (estilo === "total-general") fill = "0.941 0.976 1";
+      }
+      let x = tableMargin;
+      lineasPorCelda.forEach((lineas, colIndex) => {
+        const width = widths[colIndex];
+        if (estilo === "total-general" && variante !== "rh-contable-socios") fill = "0.145 0.388 0.922";
+        else if (estilo === "total") fill = "0.859 0.918 0.996";
+        else if (estilo === "inscripcion") fill = "0.929 0.914 0.996";
+        else if (estilo === "periodo") fill = "0.941 0.976 1";
+        drawRect(x, y, width, rowHeight, fill);
+
+        const label = normalizarTexto(columnas[colIndex]?.label).toLowerCase();
+        const alinearDerecha = /esperado|recaudado|socios|cantidad|monto|importe|dif\./.test(label);
+        const valorCompleto = normalizarTexto(resolverValor(columnas[colIndex], registro, rowIndex));
+        const esDiferencia = label.includes("dif.");
+        if (estilo === "total-general" && variante !== "rh-contable-socios") setTextColor("1 1 1");
+        else if (estilo === "total-activo") setTextColor("0.118 0.251 0.686");
+        else if (estilo === "total-pasivo") setTextColor("0.427 0.157 0.851");
+        else if (estilo === "inscripcion") setTextColor("0.427 0.157 0.851");
+        else if (esDiferencia && valorCompleto.includes("SUPERÁVIT")) setTextColor("0.157 0.655 0.271");
+        else if (esDiferencia && valorCompleto !== "-" && valorCompleto !== "—") setTextColor("0.863 0.208 0.271");
+        else setTextColor();
+
+        const prefijo = colIndex === 0 && estilo === "cobrador"
+          ? "\x95 "
+          : colIndex === 0 && estilo === "estado"
+            ? "- "
+            : colIndex === 0 && estilo === "medio"
+              ? "% "
+              : "";
+        lineas.forEach((linea, lineIndex) => {
+          const texto = lineIndex === 0 ? `${prefijo}${linea}` : linea;
+          const indent = colIndex === 0
+            ? estilo === "medio" ? 30 : estilo === "estado" ? 18 : estilo === "cobrador" ? 8 : 0
+            : 0;
+          const tx = alinearDerecha
+            ? x + width - 4 - textWidth(texto, fontSize, rowStyle.bold)
+            : x + 4 + indent;
+          addText(
+            texto,
+            Math.max(x + 3, tx),
+            y - 12 - lineIndex * lineHeight,
+            fontSize,
+            (rowStyle.bold || estilo.startsWith("total-")) && estilo !== "estado"
+              && !(variante === "rh-contable-socios" && (estilo === "activo" || estilo === "pasivo")),
+            colIndex === 0 && estilo === "estado",
+          );
+        });
+        x += width;
+      });
+      setTextColor();
+      y -= rowHeight;
+    });
+
+    y -= 14;
+  });
+
+  finishPage();
+  return { pages, pageWidth, pageHeight };
 }
 
 function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, institucionNombre = "Institución" }) {
@@ -1197,16 +1520,19 @@ function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, insti
   return { pages, pageWidth, pageHeight };
 }
 
-function construirPdf({ titulo, subtitulo, secciones, logoAsset = null, institucionNombre = "Institución" }) {
-  const { pages, pageWidth, pageHeight } = crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset, institucionNombre });
+function construirPdf({ titulo, subtitulo, secciones, logoAsset = null, institucionNombre = "Institución", pdfVariant = "" }) {
+  const { pages, pageWidth, pageHeight } = pdfVariant.startsWith("rh-contable-")
+    ? crearPaginasPdfRhClasico({ titulo, subtitulo, secciones, logoAsset, institucionNombre, variante: pdfVariant })
+    : crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset, institucionNombre });
   const objects = [];
   const pageObjectNumbers = [];
 
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
   objects[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+  objects[5] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>";
 
-  let nextObject = 5;
+  let nextObject = 6;
   let logoObjectNumber = null;
 
   if (logoAsset?.bytes?.length) {
@@ -1226,7 +1552,7 @@ endstream`;
     const contentObj = nextObject + 1;
     nextObject += 2;
     pageObjectNumbers.push(pageObj);
-    objects[pageObj] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth.toFixed(2)} ${pageHeight.toFixed(2)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> ${xObjectResource}>> /Contents ${contentObj} 0 R >>`;
+    objects[pageObj] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth.toFixed(2)} ${pageHeight.toFixed(2)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> ${xObjectResource}>> /Contents ${contentObj} 0 R >>`;
     objects[contentObj] = `<< /Length ${stream.length} >>
 stream
 ${stream}
@@ -1256,9 +1582,20 @@ endstream`;
   return pdf;
 }
 
-async function exportarPdf({ titulo, subtitulo, secciones, nombreArchivo }) {
-  const datosInstitucionales = await obtenerDatosInstitucionalesExportacion();
-  const pdf = construirPdf({ titulo, subtitulo, secciones, ...datosInstitucionales });
+async function exportarPdf({ titulo, subtitulo, secciones, nombreArchivo, pdfVariant = "", logoPdfUrl = "" }) {
+  const datosInstitucionales = await obtenerDatosInstitucionalesExportacion(logoPdfUrl);
+  const titulosClasicos = {
+    "rh-contable-detalle": "Detalle de cobros recibidos",
+    "rh-contable-socios": "Detalle de socios por tipo de servicio",
+    "rh-contable-cobranza": "Detalle de cobranza (Esperado vs Recaudado)",
+  };
+  const pdf = construirPdf({
+    titulo: titulosClasicos[pdfVariant] || titulo,
+    subtitulo,
+    secciones,
+    pdfVariant,
+    ...datosInstitucionales,
+  });
   const bytes = new Uint8Array(pdf.length);
   for (let i = 0; i < pdf.length; i += 1) {
     bytes[i] = pdf.charCodeAt(i) & 0xff;
@@ -1267,7 +1604,7 @@ async function exportarPdf({ titulo, subtitulo, secciones, nombreArchivo }) {
   descargarBlob(blob, `${slugify(nombreArchivo || titulo)}_${fechaArchivo()}.pdf`);
 }
 
-async function exportarDesdeModalGlobal({ formato, titulo, subtitulo, secciones, nombreArchivo }) {
+async function exportarDesdeModalGlobal({ formato, titulo, subtitulo, secciones, nombreArchivo, pdfVariant = "", logoPdfUrl = "" }) {
   const seccionesNormalizadas = normalizarSecciones(secciones);
   const totalRegistros = contarRegistrosSecciones(seccionesNormalizadas);
 
@@ -1280,7 +1617,7 @@ async function exportarDesdeModalGlobal({ formato, titulo, subtitulo, secciones,
   }
 
   if (formato === "pdf") {
-    await exportarPdf({ titulo, subtitulo, secciones: seccionesNormalizadas, nombreArchivo });
+    await exportarPdf({ titulo, subtitulo, secciones: seccionesNormalizadas, nombreArchivo, pdfVariant, logoPdfUrl });
     return;
   }
 
@@ -1328,6 +1665,8 @@ const ModalExportarGlobal = ({
   cancelLabel = "Cancelar",
   loadingLabel = "Exportando...",
   note = "",
+  pdfVariant = "",
+  logoPdfUrl = "",
   importLabel = "Importar",
   importTitle = "Abrir importación",
   importDisabled = false,
@@ -1475,6 +1814,8 @@ const ModalExportarGlobal = ({
         subtitulo,
         secciones,
         nombreArchivo: `${nombreArchivo}_${sufijoNombre}`,
+        pdfVariant,
+        logoPdfUrl,
       });
 
       onSuccess?.(

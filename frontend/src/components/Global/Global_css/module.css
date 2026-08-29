@@ -1486,7 +1486,6 @@
 }
 
 .module-card .global-divTable > .mov-tableWrap {
-  min-height: 280px;
   height: calc(100vh - 240px);
 }
 

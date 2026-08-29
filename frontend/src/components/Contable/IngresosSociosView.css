@@ -709,7 +709,7 @@
 /* Detalle de cobranza usa la misma estructura global; sólo cambia la altura
    disponible de esta pestaña para dejar lugar al resumen y al footer. */
 .ct-collection-table {
-  max-height: calc(100vh - 360px);
+  max-height: calc(100vh - 350px);
   flex: 0 0 auto;
 }
 
