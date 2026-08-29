@@ -6,6 +6,7 @@ import "../Global_css/Global_Modals.css";
 import useAnimatedModalSize from "./useAnimatedModalSize";
 import "../Global_css/Global_Exportar.css";
 import { getSession } from "../../_shared/auth/session";
+import BASE_URL from "../../../config/config";
 
 const FORMATOS_EXPORTAR = [
   {
@@ -83,17 +84,12 @@ function resolverPublicBaseUrl() {
   ).trim();
   if (publicEnvUrl) return publicEnvUrl.replace(/\/+$/, "");
 
-  const apiEnvUrl = String(
-    process.env.REACT_APP_API_URL ||
-      process.env.REACT_APP_API_BASE_URL ||
-      process.env.REACT_APP_BASE_URL ||
-      ""
-  ).trim();
-  if (apiEnvUrl) {
+  const apiBaseUrl = String(BASE_URL || "").trim();
+  if (apiBaseUrl) {
     try {
-      return new URL(apiEnvUrl, window.location.origin).origin.replace(/\/+$/, "");
+      return new URL(apiBaseUrl, window.location.origin).origin.replace(/\/+$/, "");
     } catch {
-      // Si la variable no es una URL válida, la exportación sigue sin logo.
+      // Si la URL central de la API no es válida, la exportación sigue sin logo.
     }
   }
 
@@ -285,6 +281,8 @@ function normalizarSecciones(secciones = []) {
     .map((seccion) => ({
       titulo: normalizarTexto(seccion?.titulo || seccion?.title || "Registros"),
       subtitulo: normalizarTexto(seccion?.subtitulo || seccion?.subtitle || ""),
+      hoja: normalizarTexto(seccion?.hoja || seccion?.sheet || ""),
+      estilo: normalizarTexto(seccion?.estilo || seccion?.style || ""),
       columnas: normalizarColumnas(seccion?.columnas || seccion?.columns || []),
       registros: Array.isArray(seccion?.registros || seccion?.rows) ? (seccion.registros || seccion.rows) : [],
     }))
@@ -478,6 +476,41 @@ function nombresHojasUnicos(secciones) {
   });
 }
 
+function agruparSeccionesPorHoja(secciones = []) {
+  const grupos = [];
+  const indices = new Map();
+
+  (Array.isArray(secciones) ? secciones : []).forEach((seccion, index) => {
+    const hojaIndicada = limpiarNombreHoja(seccion?.hoja || "", "");
+
+    // Compatibilidad total: si una exportación no indica `hoja`, conserva el
+    // comportamiento histórico del modal global (una sección = una hoja).
+    if (!hojaIndicada) {
+      grupos.push({
+        clave: `__seccion_${index}`,
+        nombre: limpiarNombreHoja(seccion?.titulo, `Hoja ${index + 1}`),
+        secciones: [seccion],
+      });
+      return;
+    }
+
+    const clave = hojaIndicada.toLowerCase();
+    const existente = indices.get(clave);
+    if (existente === undefined) {
+      indices.set(clave, grupos.length);
+      grupos.push({ clave, nombre: hojaIndicada, secciones: [seccion] });
+      return;
+    }
+
+    grupos[existente].secciones.push(seccion);
+  });
+
+  // Excel no admite dos pestañas con el mismo nombre. La deduplicación se
+  // realiza al final para contemplar también las secciones sin `hoja`.
+  const nombres = nombresHojasUnicos(grupos.map((grupo) => ({ titulo: grupo.nombre })));
+  return grupos.map((grupo, index) => ({ ...grupo, nombre: nombres[index] }));
+}
+
 function valorCeldaXml(value) {
   return `<is><t>${escapeXml(value || "-")}</t></is>`;
 }
@@ -495,6 +528,40 @@ function estimarAnchosExcel(columnas, registros) {
     });
     return Math.max(10, Math.min(42, maxLen + (colIndex === 0 ? 4 : 2)));
   });
+}
+
+function estimarAnchosExcelCompuesto(secciones = []) {
+  const maxColumns = Math.max(
+    1,
+    ...(Array.isArray(secciones) ? secciones : []).map((seccion) => seccion.columnas.length),
+  );
+  const widths = Array.from({ length: maxColumns }, () => 10);
+
+  (Array.isArray(secciones) ? secciones : []).forEach((seccion) => {
+    estimarAnchosExcel(seccion.columnas, seccion.registros).forEach((width, index) => {
+      widths[index] = Math.max(widths[index], width);
+    });
+  });
+
+  return widths;
+}
+
+function estiloFilaExcel(registro, fallback = 4) {
+  const estilo = normalizarTexto(registro?.__estilo || registro?.__style || "").toLowerCase();
+  const estilos = {
+    resumen: 6,
+    total: 7,
+    "total-general": 8,
+    activo: 9,
+    pasivo: 10,
+    neutral: 11,
+    periodo: 12,
+    cobrador: 13,
+    estado: 14,
+    medio: 15,
+    inscripcion: 16,
+  };
+  return estilos[estilo] || fallback;
 }
 
 function crearDrawingLogoXml(logoAsset, name = "Logo institucional") {
@@ -613,17 +680,98 @@ function crearWorksheetXml({ titulo, subtitulo, columnas, registros, logoAsset =
 </worksheet>`;
 }
 
+function crearWorksheetCompuestoXml({ titulo, subtitulo, secciones, logoAsset = null }) {
+  const sections = normalizarSecciones(secciones);
+  const cantidadColumnas = Math.max(1, ...sections.map((seccion) => seccion.columnas.length));
+  const conLogo = Boolean(logoAsset?.bytes?.length);
+  const anchos = estimarAnchosExcelCompuesto(sections);
+  const sheetRows = [];
+  const merges = [];
+  let fila = 1;
+
+  const agregarFila = (values, style = 4, options = {}) => {
+    const startCol = Number(options.startCol || 0);
+    const celdas = values
+      .map((value, index) => crearCeldaXml(fila, index + startCol, value, style))
+      .join("");
+    const heightAttrs = options.height ? ` ht="${options.height}" customHeight="1"` : "";
+    sheetRows.push(`<row r="${fila}"${heightAttrs}>${celdas}</row>`);
+    fila += 1;
+  };
+
+  const mergeAcross = (rowNumber, startCol = 0) => {
+    const lastCol = cantidadColumnas - 1;
+    if (lastCol > startCol) {
+      merges.push(`<mergeCell ref="${celdaExcel(rowNumber, startCol)}:${celdaExcel(rowNumber, lastCol)}"/>`);
+    }
+  };
+
+  const tituloStartCol = conLogo && cantidadColumnas > 1 ? 1 : 0;
+  agregarFila([titulo || "Registros"], 1, { startCol: tituloStartCol, height: conLogo ? 30 : null });
+  mergeAcross(1, tituloStartCol);
+
+  if (subtitulo) {
+    agregarFila([subtitulo], 2, { startCol: tituloStartCol });
+    mergeAcross(2, tituloStartCol);
+  }
+
+  fila += 1;
+
+  sections.forEach((seccion, sectionIndex) => {
+    if (sectionIndex > 0) fila += 1;
+
+    const sectionTitleRow = fila;
+    agregarFila([seccion.titulo || "Detalle"], 5);
+    mergeAcross(sectionTitleRow, 0);
+
+    if (seccion.subtitulo && seccion.subtitulo !== subtitulo) {
+      const sectionSubtitleRow = fila;
+      agregarFila([seccion.subtitulo], 2);
+      mergeAcross(sectionSubtitleRow, 0);
+    }
+
+    agregarFila(seccion.columnas.map((columna) => columna.label), 3);
+
+    if (seccion.registros.length === 0) {
+      agregarFila(["Sin registros para exportar."], 4);
+      return;
+    }
+
+    seccion.registros.forEach((registro, index) => {
+      const style = estiloFilaExcel(registro, 4);
+      agregarFila(
+        seccion.columnas.map((columna) => normalizarTexto(resolverValor(columna, registro, index))),
+        style,
+      );
+    });
+  });
+
+  const colsXml = anchos
+    .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
+    .join("");
+  const drawingXml = conLogo ? `<drawing r:id="rIdLogo"/>` : "";
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <cols>${colsXml}</cols>
+  <sheetData>${sheetRows.join("")}</sheetData>
+  ${merges.length ? `<mergeCells count="${merges.length}">${merges.join("")}</mergeCells>` : ""}
+  ${drawingXml}
+</worksheet>`;
+}
+
 function crearXlsxBlob({ titulo, subtitulo, secciones, logoAsset = null }) {
   const seccionesNormalizadas = normalizarSecciones(secciones);
-  const nombres = nombresHojasUnicos(seccionesNormalizadas);
+  const gruposHojas = agruparSeccionesPorHoja(seccionesNormalizadas);
+  const nombres = gruposHojas.map((grupo) => grupo.nombre);
   const archivos = {};
   const conLogo = Boolean(logoAsset?.bytes?.length);
 
-  const overridesHojas = seccionesNormalizadas
+  const overridesHojas = gruposHojas
     .map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
     .join("");
   const overridesDrawings = conLogo
-    ? seccionesNormalizadas
+    ? gruposHojas
       .map((_, index) => `<Override PartName="/xl/drawings/drawing${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`)
       .join("")
     : "";
@@ -663,7 +811,7 @@ function crearXlsxBlob({ titulo, subtitulo, secciones, logoAsset = null }) {
   <Application>RH Negativo</Application>
   <DocSecurity>0</DocSecurity>
   <ScaleCrop>false</ScaleCrop>
-  <HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>${seccionesNormalizadas.length}</vt:i4></vt:variant></vt:vector></HeadingPairs>
+  <HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>${gruposHojas.length}</vt:i4></vt:variant></vt:vector></HeadingPairs>
   <TitlesOfParts><vt:vector size="${nombres.length}" baseType="lpstr">${nombres.map((nombre) => `<vt:lpstr>${escapeXml(nombre)}</vt:lpstr>`).join("")}</vt:vector></TitlesOfParts>
 </Properties>`;
 
@@ -674,34 +822,56 @@ function crearXlsxBlob({ titulo, subtitulo, secciones, logoAsset = null }) {
 
   archivos["xl/_rels/workbook.xml.rels"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  ${seccionesNormalizadas.map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}
-  <Relationship Id="rId${seccionesNormalizadas.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  ${gruposHojas.map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}
+  <Relationship Id="rId${gruposHojas.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
 
   archivos["xl/styles.xml"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="4">
+  <fonts count="6">
     <font><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="15"/><name val="Calibri"/><color rgb="FF1F2937"/></font>
     <font><sz val="10"/><name val="Calibri"/><color rgb="FF4B5563"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FFFFFFFF"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF334155"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF1D4ED8"/></font>
   </fonts>
-  <fills count="3">
+  <fills count="11">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF3A2E2B"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF3F6FA"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF0F6FF"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE8F0FF"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEAFAF3"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF9E9"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEDF3FF"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF5EFFF"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
   <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
     <border><left style="thin"><color rgb="FFD0D7DE"/></left><right style="thin"><color rgb="FFD0D7DE"/></right><top style="thin"><color rgb="FFD0D7DE"/></top><bottom style="thin"><color rgb="FFD0D7DE"/></bottom><diagonal/></border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="5">
+  <cellXfs count="17">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
     <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
     <xf numFmtId="49" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+    <xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="5" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="0" fillId="8" borderId="1" xfId="0" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="0" fillId="9" borderId="1" xfId="0" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="49" fontId="4" fillId="10" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -710,15 +880,23 @@ function crearXlsxBlob({ titulo, subtitulo, secciones, logoAsset = null }) {
     archivos["xl/media/logo_exportacion.jpeg"] = logoAsset.bytes;
   }
 
-  seccionesNormalizadas.forEach((seccion, index) => {
+  gruposHojas.forEach((grupo, index) => {
     const sheetIndex = index + 1;
-    archivos[`xl/worksheets/sheet${sheetIndex}.xml`] = crearWorksheetXml({
-      titulo: seccion.titulo || titulo,
-      subtitulo: seccion.subtitulo || subtitulo,
-      columnas: seccion.columnas,
-      registros: seccion.registros,
-      logoAsset,
-    });
+    const usarCompuesto = grupo.secciones.length > 1 || Boolean(grupo.secciones[0]?.hoja);
+    archivos[`xl/worksheets/sheet${sheetIndex}.xml`] = usarCompuesto
+      ? crearWorksheetCompuestoXml({
+        titulo: titulo || grupo.nombre,
+        subtitulo,
+        secciones: grupo.secciones,
+        logoAsset,
+      })
+      : crearWorksheetXml({
+        titulo: grupo.secciones[0]?.titulo || titulo,
+        subtitulo: grupo.secciones[0]?.subtitulo || subtitulo,
+        columnas: grupo.secciones[0]?.columnas || [],
+        registros: grupo.secciones[0]?.registros || [],
+        logoAsset,
+      });
 
     if (conLogo) {
       archivos[`xl/worksheets/_rels/sheet${sheetIndex}.xml.rels`] = crearWorksheetRelsLogoXml(sheetIndex);
@@ -828,6 +1006,24 @@ function calcularAnchosPdf(columnas, registros, usableWidth) {
   return desired.map((width) => (width / totalDesired) * usableWidth);
 }
 
+function estiloFilaPdf(registro) {
+  const estilo = normalizarTexto(registro?.__estilo || registro?.__style || "").toLowerCase();
+  const estilos = {
+    resumen: { fill: "0.953 0.965 0.980", bold: true },
+    total: { fill: "0.941 0.965 1", bold: true },
+    "total-general": { fill: "0.910 0.941 1", bold: true },
+    activo: { fill: "0.918 0.980 0.953", bold: true },
+    pasivo: { fill: "1 0.976 0.914", bold: true },
+    neutral: { fill: "0.973 0.980 0.988", bold: false },
+    periodo: { fill: "0.973 0.980 0.988", bold: true },
+    cobrador: { fill: "0.918 0.980 0.953", bold: true },
+    estado: { fill: "0.929 0.992 0.957", bold: true },
+    medio: { fill: "0.929 0.953 1", bold: false },
+    inscripcion: { fill: "0.961 0.937 1", bold: true },
+  };
+  return estilos[estilo] || { fill: null, bold: false };
+}
+
 function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, institucionNombre = "Institución" }) {
   const pageWidth = 841.89;
   const pageHeight = 595.28;
@@ -849,7 +1045,8 @@ function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, insti
 
   const drawRect = (x, topY, width, height, fill = false) => {
     if (fill) {
-      commands.push(`0.23 0.18 0.17 rg ${x.toFixed(2)} ${(topY - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`);
+      const fillRgb = typeof fill === "string" ? fill : "0.23 0.18 0.17";
+      commands.push(`${fillRgb} rg ${x.toFixed(2)} ${(topY - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`);
     }
     commands.push(`0.72 0.76 0.82 RG ${x.toFixed(2)} ${(topY - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S`);
   };
@@ -945,7 +1142,8 @@ function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, insti
       y -= 12;
     }
 
-    if (seccion.subtitulo) {
+    const subtituloSeccionDuplicado = normalizarTexto(seccion.subtitulo).toLowerCase() === normalizarTexto(subtitulo).toLowerCase();
+    if (seccion.subtitulo && !subtituloSeccionDuplicado) {
       addText(seccion.subtitulo, margin, y, 7.5, false);
       y -= 11;
     }
@@ -961,6 +1159,7 @@ function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, insti
     }
 
     registros.forEach((registro, rowIndex) => {
+      const rowStyle = estiloFilaPdf(registro);
       const lineasPorCelda = columnas.map((columna, colIndex) => {
         const width = widths[colIndex];
         const maxChars = Math.max(4, Math.floor((width - 7) / (fontSize * 0.48)));
@@ -979,9 +1178,10 @@ function crearPaginasPdf({ titulo, subtitulo, secciones, logoAsset = null, insti
       let x = margin;
       lineasPorCelda.forEach((lineas, colIndex) => {
         const width = widths[colIndex];
-        drawRect(x, y, width, rowHeight, false);
+        drawRect(x, y, width, rowHeight, rowStyle.fill);
+        commands.push("0 0 0 rg");
         lineas.forEach((linea, lineIndex) => {
-          addText(linea, x + 3, y - 10 - lineIndex * lineHeight, fontSize, false);
+          addText(linea, x + 3, y - 10 - lineIndex * lineHeight, fontSize, rowStyle.bold);
         });
         x += width;
       });

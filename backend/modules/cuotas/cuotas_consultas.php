@@ -839,6 +839,12 @@ abstract class CuotasConsultas extends CuotasSoporte
             ),
             'fecha_pago' => $payment['fecha_pago'] ?? null,
             'monto' => $payment ? number_format((float)($payment['monto'] ?? 0), 2, '.', '') : null,
+            'tipo_pago' => $payment['tipo_pago'] ?? null,
+            'porcentaje_descuento_familiar_pago' => $payment !== null
+                && array_key_exists('porcentaje_descuento_familiar', $payment)
+                && $payment['porcentaje_descuento_familiar'] !== null
+                    ? number_format((float)$payment['porcentaje_descuento_familiar'], 2, '.', '')
+                    : null,
             'id_medio_pago' => isset($payment['id_medio_pago']) && $payment['id_medio_pago'] !== null
                 ? (int)$payment['id_medio_pago'] : null,
             'medio_pago' => $payment['medio_pago'] ?? null,

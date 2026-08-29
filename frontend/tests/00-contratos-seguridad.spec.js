@@ -1,5 +1,5 @@
 const { test, expect, request: playwrightRequest } = require('@playwright/test');
-const { apiResult, expectApiError } = require('./helpers/api.helper');
+const { actionUrl, apiResult, expectApiError } = require('./helpers/api.helper');
 
 const protectedActions = [
   ['auth_usuario_actual', 'GET'],
@@ -39,6 +39,31 @@ test.describe('Contratos, routing y seguridad transversal', () => {
       await expectApiError(api, 'auth_login', {
         method: 'POST', data: {}, session: null,
       }, { status: 422, code: 'VALIDATION_ERROR' });
+    } finally {
+      await api.dispose();
+    }
+  });
+
+
+  test('CORS permite frontend local normal contra la API seleccionada sin exigir cabecera E2E', async () => {
+    const api = await playwrightRequest.newContext({
+      ignoreHTTPSErrors: false,
+      extraHTTPHeaders: {
+        Origin: 'http://localhost:3000',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type,authorization',
+      },
+    });
+    try {
+      const response = await api.fetch(actionUrl('auth_login'), {
+        method: 'OPTIONS',
+        failOnStatusCode: false,
+      });
+      const headers = response.headers();
+      expect(response.status()).toBe(204);
+      expect(headers['access-control-allow-origin']).toBe('http://localhost:3000');
+      expect(String(headers['access-control-allow-methods'] || '')).toContain('POST');
+      expect(String(headers['access-control-allow-headers'] || '').toLowerCase()).toContain('authorization');
     } finally {
       await api.dispose();
     }

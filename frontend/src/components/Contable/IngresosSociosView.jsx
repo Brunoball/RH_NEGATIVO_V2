@@ -664,6 +664,285 @@ function CollectionDetail({ actions, section, period, loading }) {
   );
 }
 
+function collectionPeriodLabel(period) {
+  const id = Number(period?.id_periodo || 0);
+  if (id === 7) return `CONTADO ANUAL ${period?.anio || ""}`.trim();
+  if (id >= 1 && id <= 6) {
+    return `PERÍODO ${id * 2 - 1} Y ${id * 2} ${period?.anio || ""}`.trim();
+  }
+  return [period?.etiqueta, period?.anio].filter(Boolean).join(" ") || "PERÍODO";
+}
+
+function collectionDifferenceText(value) {
+  const amount = Number(value || 0);
+  if (amount > 0) return `${collectionMoney(amount)} FALTANTE`;
+  if (amount < 0) return `${collectionMoney(Math.abs(amount))} SUPERÁVIT`;
+  return collectionMoney(0);
+}
+
+function collectionExportRows(section, period) {
+  const summary = section?.resumen || {};
+  const rows = [{
+    detalle: collectionPeriodLabel(period),
+    esperado: collectionMoney(summary.cuotas_esperadas),
+    recaudado: collectionMoney(summary.cuotas_recaudadas),
+    socios: Number(summary.socios_esperados || 0).toLocaleString("es-AR"),
+    diferencia: collectionDifferenceText(summary.diferencia_cuotas),
+    __estilo: "periodo",
+  }];
+
+  (section?.items || []).forEach((collector) => {
+    const office = normalize(collector.nombre).includes("oficina");
+    rows.push({
+      detalle: collector.nombre || "SIN COBRADOR",
+      esperado: collector.esperado === null ? "—" : collectionMoney(collector.esperado),
+      recaudado: collectionMoney(collector.recaudado),
+      socios: Number(collector.socios || 0).toLocaleString("es-AR"),
+      diferencia: collector.diferencia === null ? "—" : collectionDifferenceText(collector.diferencia),
+      __estilo: "cobrador",
+    });
+
+    (collector.hijos || []).forEach((state) => {
+      rows.push({
+        detalle: `   ${state.nombre || "SIN ESTADO"}`,
+        esperado: state.esperado === null ? "—" : collectionMoney(state.esperado),
+        recaudado: collectionMoney(state.recaudado),
+        socios: Number(state.socios || 0).toLocaleString("es-AR"),
+        diferencia: state.diferencia === null ? "—" : collectionDifferenceText(state.diferencia),
+        __estilo: "estado",
+      });
+
+      // Replica el informe viejo: el detalle de medios se despliega dentro de OFICINA.
+      if (office) {
+        (state.hijos || []).forEach((mean) => rows.push({
+          detalle: `      ${mean.nombre || "SIN MEDIO"}`,
+          esperado: "—",
+          recaudado: collectionMoney(mean.recaudado),
+          socios: Number(mean.socios || 0).toLocaleString("es-AR"),
+          diferencia: "—",
+          __estilo: "medio",
+        }));
+      }
+    });
+  });
+
+  rows.push(
+    {
+      detalle: "INSCRIPCIONES",
+      esperado: "—",
+      recaudado: collectionMoney(summary.inscripciones_recaudadas),
+      socios: Number(summary.inscripciones_socios || 0).toLocaleString("es-AR"),
+      diferencia: "—",
+      __estilo: "inscripcion",
+    },
+    {
+      detalle: "TOTAL CUOTAS",
+      esperado: collectionMoney(summary.cuotas_esperadas),
+      recaudado: collectionMoney(summary.cuotas_recaudadas),
+      socios: Number(summary.socios_esperados || 0).toLocaleString("es-AR"),
+      diferencia: collectionDifferenceText(summary.diferencia_cuotas),
+      __estilo: "total",
+    },
+    {
+      detalle: "TOTAL INSCRIPCIONES",
+      esperado: "—",
+      recaudado: collectionMoney(summary.inscripciones_recaudadas),
+      socios: Number(summary.inscripciones_socios || 0).toLocaleString("es-AR"),
+      diferencia: "—",
+      __estilo: "inscripcion",
+    },
+    {
+      detalle: "TOTAL INGRESADO",
+      esperado: "—",
+      recaudado: collectionMoney(summary.total_ingresado),
+      socios: "—",
+      diferencia: "—",
+      __estilo: "total-general",
+    },
+  );
+
+  return rows;
+}
+
+function incomeExportConfigForTab({ activeTab, data, period, detailRecords = null }) {
+  const rangeSubtitle = `${dateText(period?.desde)} al ${dateText(period?.hasta)}`;
+  const detailItems = Array.isArray(detailRecords) ? detailRecords : (data?.detalle?.items || []);
+
+  if (activeTab === "partners") {
+    const summary = data?.socios?.resumen || {};
+    const detail = (data?.socios?.items || []).map((item) => ({
+      estado: item.servicio || "SIN ESTADO",
+      categoria: item.categoria || "Sin categoría",
+      cantidad: Number(item.cantidad || 0).toLocaleString("es-AR"),
+      __estilo: balanceStatusTone(item.servicio).replace("is-", ""),
+    }));
+    return {
+      title: "Exportar detalle de socios",
+      fileTitle: `Detalle de socios · ${period?.etiqueta || ""}`,
+      fileName: `detalle_socios_${period?.anio || ""}_${period?.id_periodo || ""}`,
+      sections: [
+        {
+          hoja: "Detalle de socios",
+          titulo: "Resumen de socios",
+          subtitulo: rangeSubtitle,
+          columnas: [
+            { label: "Estado", key: "estado" },
+            { label: "Cantidad", key: "cantidad" },
+          ],
+          registros: [
+            { estado: "ACTIVO", cantidad: Number(summary.activos || 0).toLocaleString("es-AR"), __estilo: "activo" },
+            { estado: "PASIVO", cantidad: Number(summary.pasivos || 0).toLocaleString("es-AR"), __estilo: "pasivo" },
+            ...(Number(summary.sin_estado || 0) > 0
+              ? [{ estado: "SIN ESTADO", cantidad: Number(summary.sin_estado || 0).toLocaleString("es-AR"), __estilo: "neutral" }]
+              : []),
+            { estado: "TOTAL GENERAL", cantidad: Number(summary.total || 0).toLocaleString("es-AR"), __estilo: "total-general" },
+          ],
+        },
+        {
+          hoja: "Detalle de socios",
+          titulo: "Detalle por estado y categoría",
+          subtitulo: rangeSubtitle,
+          columnas: [
+            { label: "Estado", key: "estado" },
+            { label: "Categoría", key: "categoria" },
+            { label: "Cantidad", key: "cantidad" },
+          ],
+          registros: detail,
+        },
+      ],
+      count: detail.length,
+    };
+  }
+
+  if (activeTab === "collection") {
+    const section = data?.cobranza || {};
+    const summary = section.resumen || {};
+    const difference = Number(summary.diferencia_cuotas || 0);
+    const collectionRows = collectionExportRows(section, period);
+    const categories = (section.categorias_monto || []).map((item) => ({
+      categoria: item.nombre || "Sin categoría",
+      periodo: collectionMoney(item.mensual),
+      anual: collectionMoney(item.anual),
+    }));
+    return {
+      title: "Exportar detalle de cobranza",
+      fileTitle: `Detalle de cobranza · ${period?.etiqueta || ""}`,
+      fileName: `detalle_cobranza_${period?.anio || ""}_${period?.id_periodo || ""}`,
+      sections: [
+        {
+          hoja: "Detalle de cobranza",
+          titulo: "Resumen de cobranza",
+          subtitulo: rangeSubtitle,
+          columnas: [
+            { label: "Concepto", key: "concepto" },
+            { label: "Importe", key: "importe" },
+            { label: "Detalle", key: "detalle" },
+          ],
+          registros: [
+            { concepto: "Cuotas recaudadas", importe: collectionMoney(summary.cuotas_recaudadas), detalle: "Solo pagos de cuotas", __estilo: "resumen" },
+            { concepto: "Inscripciones recaudadas", importe: collectionMoney(summary.inscripciones_recaudadas), detalle: `${Number(summary.inscripciones_socios || 0).toLocaleString("es-AR")} socios`, __estilo: "inscripcion" },
+            { concepto: "Total ingresado", importe: collectionMoney(summary.total_ingresado), detalle: "Cuotas + inscripciones", __estilo: "total-general" },
+            { concepto: "Cuotas esperadas", importe: collectionMoney(summary.cuotas_esperadas), detalle: `${Number(summary.socios_esperados || 0).toLocaleString("es-AR")} socios esperados`, __estilo: "resumen" },
+            {
+              concepto: "Faltante / Superávit de cuotas",
+              importe: collectionMoney(Math.abs(difference)),
+              detalle: difference >= 0 ? "FALTANTE" : "SUPERÁVIT",
+              __estilo: difference >= 0 ? "pasivo" : "activo",
+            },
+          ],
+        },
+        {
+          hoja: "Detalle de cobranza",
+          titulo: "Detalle de cobranza (Esperado vs Recaudado)",
+          subtitulo: rangeSubtitle,
+          columnas: [
+            { label: "Período / Detalle", key: "detalle" },
+            { label: "Esperado", key: "esperado" },
+            { label: "Recaudado", key: "recaudado" },
+            { label: "Socios", key: "socios" },
+            { label: "Dif. (ESP-REC)", key: "diferencia" },
+          ],
+          registros: collectionRows,
+        },
+        {
+          hoja: "Detalle de cobranza",
+          titulo: "Montos por categoría",
+          subtitulo: rangeSubtitle,
+          columnas: [
+            { label: "Categoría", key: "categoria" },
+            { label: "Monto por período", key: "periodo" },
+            { label: "Contado anual", key: "anual" },
+          ],
+          registros: categories,
+        },
+      ],
+      count: (
+        (section.items || []).length > 0
+        || (section.categorias_monto || []).length > 0
+        || Number(summary.total_ingresado || 0) !== 0
+        || Number(summary.cuotas_esperadas || 0) !== 0
+      ) ? collectionRows.length : 0,
+    };
+  }
+
+  const detailSummary = data?.detalle?.resumen || {};
+  return {
+    title: "Exportar ingresos de socios",
+    fileTitle: `Ingresos de socios · ${period?.etiqueta || ""}`,
+    fileName: `ingresos_socios_${period?.anio || ""}_${period?.id_periodo || ""}`,
+    sections: [
+      {
+        hoja: "Detalle",
+        titulo: "Resumen de ingresos",
+        subtitulo: rangeSubtitle,
+        columnas: [
+          { label: "Ingresos registrados", key: "registros" },
+          { label: "Socios distintos", key: "socios" },
+          { label: "Monto cobrado", key: "importe" },
+        ],
+        registros: [{
+          registros: Number(detailSummary.registros || detailItems.length).toLocaleString("es-AR"),
+          socios: Number(detailSummary.socios_distintos || 0).toLocaleString("es-AR"),
+          importe: money(detailSummary.importe),
+          __estilo: "resumen",
+        }],
+      },
+      {
+        hoja: "Detalle",
+        titulo: "Detalle de cobros recibidos",
+        subtitulo: rangeSubtitle,
+        columnas: [
+          { label: "Socio", key: "socio" },
+          { label: "DNI", key: "dni" },
+          { label: "Tipo", key: "tipo_ingreso" },
+          { label: "Categoría", key: "categoria_etiqueta" },
+          { label: "Cobrador", key: "cobrador" },
+          { label: "Fecha de pago", value: (item) => dateText(item.fecha) },
+          { label: "Período pago", key: "periodo" },
+          { label: "Año aplicado", key: "anio_aplicado" },
+          { label: "Medio", key: "medio" },
+          {
+            label: "Tipo de pago",
+            value: (item) => item.tipo_ingreso === "INSCRIPCIÓN"
+              ? "INSCRIPCIÓN"
+              : (item.tipo_pago || "HISTÓRICO / SIN CLASIFICAR"),
+          },
+          {
+            label: "Descuento familiar %",
+            value: (item) => item.tipo_pago === "DESCUENTO_FAMILIAR"
+              ? `${Number(item.porcentaje_descuento_familiar || 0).toLocaleString("es-AR", { maximumFractionDigits: 2 })}%`
+              : "—",
+          },
+          { label: "Monto", value: (item) => money(item.monto) },
+          { label: "Detalle del monto", key: "etiqueta_monto" },
+        ],
+        registros: detailItems,
+      },
+    ],
+    count: detailItems.length,
+  };
+}
+
 function defaultBalanceRange() {
   const now = new Date();
   const year = now.getFullYear();
@@ -680,6 +959,7 @@ function balanceExportConfig(balance, tab, all) {
   const sectionsByTab = {
     inscripciones: [
       {
+        hoja: "Inscripciones",
         titulo: "Inscripciones · Resumen",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -692,9 +972,10 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Pasivos", key: "pasivos" },
           { label: "Sin estado", key: "sin_estado" },
         ],
-        registros: [balance.inscripciones?.resumen || {}],
+        registros: [{ ...(balance.inscripciones?.resumen || {}), __estilo: "resumen" }],
       },
       {
+        hoja: "Inscripciones",
         titulo: "Inscripciones · Resumen por período",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -704,9 +985,10 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Sin importe", key: "sin_importe" }, { label: "Sin registro", key: "sin_registro" },
           { label: "Total cobrado", key: "total_cobrado" },
         ],
-        registros: balance.inscripciones?.por_periodo || [],
+        registros: (balance.inscripciones?.por_periodo || []).map((item) => ({ ...item, __estilo: "periodo" })),
       },
       {
+        hoja: "Inscripciones",
         titulo: "Inscripciones · Detalle completo",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -714,11 +996,15 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Fecha alta", key: "fecha_alta" }, { label: "Período", key: "periodo" }, { label: "Fecha pago", key: "fecha_pago" },
           { label: "Medio", key: "medio" }, { label: "Monto", key: "monto" }, { label: "Tipo", key: "tipo" },
         ],
-        registros: balance.inscripciones?.items || [],
+        registros: (balance.inscripciones?.items || []).map((item) => ({
+          ...item,
+          __estilo: balanceStatusTone(item.estado).replace("is-", ""),
+        })),
       },
     ],
     bajas: [
       {
+        hoja: "Bajas",
         titulo: "Bajas · Resumen",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -726,9 +1012,10 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Sin estado", key: "sin_estado" }, { label: "Pagos", key: "pagos" }, { label: "Condonaciones", key: "condonaciones" },
           { label: "Total pagado", key: "total_pagado" },
         ],
-        registros: [balance.bajas?.resumen || {}],
+        registros: [{ ...(balance.bajas?.resumen || {}), __estilo: "resumen" }],
       },
       {
+        hoja: "Bajas",
         titulo: "Bajas · Resumen por período",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -736,9 +1023,10 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Bajas", key: "bajas" }, { label: "Pagos", key: "pagos" }, { label: "Condonaciones", key: "condonaciones" },
           { label: "Monto pagado", key: "monto_pagado" },
         ],
-        registros: balance.bajas?.por_periodo || [],
+        registros: (balance.bajas?.por_periodo || []).map((item) => ({ ...item, __estilo: "periodo" })),
       },
       {
+        hoja: "Bajas",
         titulo: "Bajas · Detalle completo",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -746,29 +1034,35 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Período baja", key: "periodo_baja" }, { label: "Períodos cubiertos", value: (item) => (item.periodos_cubiertos || []).join(", ") },
           { label: "Pagos", key: "pagos" }, { label: "Condonaciones", key: "condonaciones" }, { label: "Total pagado", key: "total_pagado" }, { label: "Motivo", key: "motivo" },
         ],
-        registros: balance.bajas?.items || [],
+        registros: (balance.bajas?.items || []).map((item) => ({
+          ...item,
+          __estilo: balanceStatusTone(item.estado).replace("is-", ""),
+        })),
       },
     ],
     deudores: [
       {
+        hoja: "Deudores",
         titulo: "Deudores · Resumen",
         subtitulo: rangeSubtitle,
         columnas: [
           { label: "Total deudas", key: "total_deudas" }, { label: "Activos", key: "activos" }, { label: "Pasivos", key: "pasivos" },
           { label: "Sin estado", key: "sin_estado" }, { label: "Períodos analizados", key: "periodos_analizados" }, { label: "Total adeudado", key: "total_adeudado" },
         ],
-        registros: [balance.deudores?.resumen || {}],
+        registros: [{ ...(balance.deudores?.resumen || {}), __estilo: "resumen" }],
       },
       {
+        hoja: "Deudores",
         titulo: "Deudores · Resumen por período",
         subtitulo: rangeSubtitle,
         columnas: [
           { label: "Período", key: "periodo" }, { label: "Deudores", key: "deudores" }, { label: "Activos", key: "activos" },
           { label: "Pasivos", key: "pasivos" }, { label: "Sin estado", key: "sin_estado" }, { label: "Monto adeudado", key: "monto_adeudado" },
         ],
-        registros: balance.deudores?.por_periodo || [],
+        registros: (balance.deudores?.por_periodo || []).map((item) => ({ ...item, __estilo: "periodo" })),
       },
       {
+        hoja: "Deudores",
         titulo: "Deudores · Detalle completo",
         subtitulo: rangeSubtitle,
         columnas: [
@@ -777,7 +1071,10 @@ function balanceExportConfig(balance, tab, all) {
           { label: "Domicilio", key: "domicilio" }, { label: "Teléfono", key: "telefono" }, { label: "Cobrador", key: "cobrador" },
           { label: "Monto base", key: "monto_base" }, { label: "Descuento familiar %", key: "descuento_familiar" }, { label: "Monto adeudado", key: "monto" },
         ],
-        registros: balance.deudores?.items || [],
+        registros: (balance.deudores?.items || []).map((item) => ({
+          ...item,
+          __estilo: balanceStatusTone(item.estado).replace("is-", ""),
+        })),
       },
     ],
   };
@@ -1299,19 +1596,25 @@ export default function IngresosSociosView({
     return all;
   }, [detailSearch, detailIdSearch, period?.anio, period?.id_periodo]);
 
-  const exportConfig = useMemo(() => {
-    const items = data?.detalle?.items || [];
-    return {
-      title: "Exportar ingresos de socios",
-      fileTitle: `Ingresos de socios · ${period?.etiqueta || ""}`,
-      fileName: `ingresos_socios_${period?.anio || ""}_${period?.id_periodo || ""}`,
-      columns: [
-        { label: "Socio", key: "socio" }, { label: "DNI", key: "dni" }, { label: "Tipo", key: "tipo_ingreso" }, { label: "Categoría", key: "categoria_etiqueta" },
-        { label: "Cobrador", key: "cobrador" }, { label: "Fecha de pago", key: "fecha" }, { label: "Período pago", key: "periodo" }, { label: "Medio", key: "medio" }, { label: "Monto", key: "monto" }, { label: "Detalle del monto", key: "etiqueta_monto" },
-      ],
-      records: items,
-    };
-  }, [data?.detalle?.items, period]);
+  const exportConfig = useMemo(
+    () => incomeExportConfigForTab({ activeTab, data, period }),
+    [activeTab, data, period],
+  );
+
+  const obtainAllExportSections = useCallback(async () => {
+    if (activeTab !== "detail") return exportConfig.sections || [];
+    const records = await obtainAllDetailRecords();
+    return incomeExportConfigForTab({
+      activeTab,
+      data,
+      period,
+      detailRecords: records,
+    }).sections;
+  }, [activeTab, data, exportConfig.sections, obtainAllDetailRecords, period]);
+
+  const totalExportable = activeTab === "detail"
+    ? Number(detailPagination.total || exportConfig.count || 0)
+    : Number(exportConfig.count || 0);
 
   const tableActions = (
     <>
@@ -1319,8 +1622,8 @@ export default function IngresosSociosView({
         label="Exportar"
         className="ct-income-lower-action mov-btn--compact"
         onClick={() => setExportOpen(true)}
-        disabled={loading || !Number(detailPagination.total || data?.detalle?.items?.length || 0)}
-        title="Exportar detalle de ingresos de socios"
+        disabled={loading || totalExportable <= 0}
+        title={exportConfig.title}
       />
       <button
         type="button"
@@ -1362,17 +1665,19 @@ export default function IngresosSociosView({
         title={exportConfig.title}
         tituloArchivo={exportConfig.fileTitle}
         subtituloArchivoActual={`${dateText(period?.desde)} al ${dateText(period?.hasta)}`}
+        subtituloArchivoTodos={`${dateText(period?.desde)} al ${dateText(period?.hasta)}`}
         nombreArchivo={exportConfig.fileName}
-        columnas={exportConfig.columns}
-        registrosActuales={exportConfig.records}
-        obtenerRegistrosTodos={obtainAllDetailRecords}
-        cantidadActual={exportConfig.records.length}
-        cantidadTodos={Number(detailPagination.total || exportConfig.records.length)}
-        mostrarAlcanceTodos={Number(detailPagination.total || 0) > exportConfig.records.length}
-        alcanceActualLabel={Number(detailPagination.total_paginas || 0) > 1 ? "Exportar esta página" : "Exportar registros visibles"}
-        alcanceActualDescription="Exporta los pagos visibles con la búsqueda actual."
+        seccionesActuales={exportConfig.sections || []}
+        obtenerSeccionesTodos={activeTab === "detail" ? obtainAllExportSections : undefined}
+        cantidadActual={Number(exportConfig.count || 0)}
+        cantidadTodos={activeTab === "detail" ? Number(detailPagination.total || exportConfig.count || 0) : Number(exportConfig.count || 0)}
+        mostrarAlcanceTodos={activeTab === "detail" && Number(detailPagination.total || 0) > Number(exportConfig.count || 0)}
+        alcanceActualLabel={activeTab === "detail" && Number(detailPagination.total_paginas || 0) > 1 ? "Exportar esta página" : "Exportar registros visibles"}
+        alcanceActualDescription={activeTab === "detail"
+          ? "Exporta el resumen y los pagos visibles con la búsqueda actual."
+          : "Exporta el resumen, la tabla principal y todos sus detalles en el mismo informe."}
         alcanceTodosLabel="Exportar detalle completo"
-        alcanceTodosDescription="Exporta todas las páginas de 100 registros que coinciden con la búsqueda y el período seleccionados."
+        alcanceTodosDescription="Exporta el resumen y todas las páginas de 100 registros que coinciden con la búsqueda y el período seleccionados."
         onClose={() => setExportOpen(false)}
         onSuccess={(message) => onFeedback?.({ type: "success", message })}
         onError={(message) => onFeedback?.({ type: "error", message })}

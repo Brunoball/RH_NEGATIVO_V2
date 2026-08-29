@@ -9,6 +9,12 @@ const E2E_HEADERS = process.env.REACT_APP_E2E === "1"
   ? { "X-RH-E2E": "PLAYWRIGHT" }
   : {};
 
+// La autenticación de RH usa exclusivamente el token Bearer guardado por
+// pestaña. No dependemos de cookies para ninguna llamada API. Evitar
+// `credentials: "include"` hace que localhost -> Hostinger no quede sujeto a
+// las restricciones adicionales de CORS/cookies de terceros del navegador y
+// mantiene intacto el testing LOCAL/HOSTINGER por REACT_APP_API_URL.
+
 function buildUrl(action, params = {}) {
   const url = new URL(API_URL, window.location.origin);
   url.searchParams.set("action", action);
@@ -30,7 +36,7 @@ async function request(action, { method = "GET", params, body, signal } = {}) {
   const response = await fetch(buildUrl(action, params), {
     method,
     signal,
-    credentials: "include",
+    credentials: "omit",
     headers: {
       Accept: "application/json",
       ...(body ? { "Content-Type": "application/json" } : {}),
@@ -86,7 +92,7 @@ export async function apiFormPost(action, formData, options = {}) {
   const response = await fetch(buildUrl(action, options.params || {}), {
     method: "POST",
     signal: options.signal,
-    credentials: "include",
+    credentials: "omit",
     headers: {
       Accept: "application/json",
       ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
@@ -123,7 +129,7 @@ export async function apiDownload(action, params = {}, options = {}) {
   const response = await fetch(buildUrl(action, params), {
     method: "GET",
     signal: options.signal,
-    credentials: "include",
+    credentials: "omit",
     headers: {
       ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
       ...E2E_HEADERS,

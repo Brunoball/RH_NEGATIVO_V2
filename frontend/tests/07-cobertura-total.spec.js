@@ -141,6 +141,10 @@ const UI_COVERAGE_EVIDENCE = {
       'Descuento vigente 0.00%',
       'cuotas_contextos_pago',
       'porcentaje_descuento_familiar',
+      'tipo_pago',
+      'porcentaje_descuento_familiar_pago',
+      'MONTO_PERSONALIZADO',
+      'DESCUENTO_FAMILIAR',
       'expectedDiscountedAmount',
       'regresión UI: pago familiar omite integrantes ya pagados y registra solamente los pendientes',
       'Hay cuotas ya pagadas en la selección.',
@@ -523,7 +527,6 @@ test.describe('Release gate · cobertura funcional total', () => {
       contable: [
         'CONTABLE_DESCUADRE_INGRESOS',
         'CONTABLE_DESCUADRE_COBRANZA',
-        'CONTABLE_DESCUADRE_DETALLE_COBROS',
         'CONTABLE_DESCUADRE_PADRON',
         'CONTABLE_DESCUADRE_JERARQUIA',
         'CONTABLE_DESCUADRE_ESTADOS',
@@ -551,6 +554,15 @@ test.describe('Release gate · cobertura funcional total', () => {
         expect(source, `Falta la guarda defensiva ${code} en ${moduleName}`).toContain(`'${code}'`);
       }
     }
+
+    // Detalle y Detalle de Cobranza responden preguntas contables distintas:
+    // - Detalle = caja por fecha real de pago.
+    // - Cobranza = cuota aplicada al año/período económico.
+    // No deben volver a forzarse a tener el mismo total.
+    const contableSource = backendModuleSources('contable');
+    expect(contableSource).toContain("p.anio_aplicado = ?");
+    expect(contableSource).toContain("p.id_periodo = ?");
+    expect(contableSource).toContain("'criterio_cuotas_recaudadas' => 'PERIODO_APLICADO'");
   });
 
   test('los traits de Familias declaran sus dependencias cruzadas sin métodos indefinidos', async () => {
@@ -596,6 +608,18 @@ test.describe('Release gate · cobertura funcional total', () => {
     const modalSource = read(path.join(frontendRoot(), 'src', 'components', 'Global', 'Modales', 'ModalExportarGlobal.jsx'));
     expect(modalSource).toContain('value: "excel"');
     expect(modalSource).toContain('value: "pdf"');
+    expect(modalSource, 'Excel debe poder agrupar varias tablas contables dentro de una misma hoja').toContain('agruparSeccionesPorHoja');
+    expect(modalSource, 'PDF debe conservar los tonos jerárquicos del diseño contable histórico').toContain('estiloFilaPdf');
+
+    const ingresosSociosSource = read(path.join(frontendRoot(), 'src', 'components', 'Contable', 'IngresosSociosView.jsx'));
+    expect(ingresosSociosSource).toContain('hoja: "Detalle de socios"');
+    expect(ingresosSociosSource).toContain('hoja: "Detalle de cobranza"');
+    expect(ingresosSociosSource).toContain('hoja: "Inscripciones"');
+    expect(ingresosSociosSource).toContain('hoja: "Bajas"');
+    expect(ingresosSociosSource).toContain('hoja: "Deudores"');
+    expect(ingresosSociosSource, 'Detalle contable debe conservar el año real al que se aplicó el pago').toContain('{ label: "Año aplicado", key: "anio_aplicado" }');
+    expect(ingresosSociosSource, 'Cobranza debe exportar resumen antes del desglose jerárquico').toContain('titulo: "Resumen de cobranza"');
+    expect(ingresosSociosSource).toContain('titulo: "Detalle de cobranza (Esperado vs Recaudado)"');
 
     const sociosSpec = read(path.join(__dirname, '02-socios.spec.js'));
     const cuotasSpec = read(path.join(__dirname, '05-cuotas.spec.js'));
@@ -704,6 +728,45 @@ test.describe('Release gate · cobertura funcional total', () => {
     const regressionSpec = read(path.join(__dirname, '13-regresiones-20260825.spec.js'));
     expect(regressionSpec).toContain('useSmartScrollRefresh conserva scroll vertical, horizontal y de ventana');
     expect(regressionSpec).toContain('Contabilidad conserva posición al eliminar y recargar Otros ingresos');
+  });
+
+
+  test('Playwright toma LOCAL/HOSTINGER exclusivamente del .env y no depende de la URL fija del config', async () => {
+    const configSource = read(path.join(frontendRoot(), 'src', 'config', 'config.jsx'));
+    // En modo E2E debe ganar siempre REACT_APP_API_URL. El valor fijo usado por
+    // el sistema normal puede ser LOCAL u HOSTINGER y no debe condicionar el test.
+    expect(configSource).toContain('const isE2E = process.env.REACT_APP_E2E === "1";');
+    expect(configSource).toContain('process.env.REACT_APP_API_URL');
+    expect(configSource).toContain('isE2E && configuredUrl');
+    expect(
+      configSource,
+      'El testing no debe seleccionar entorno por window.location.hostname.',
+    ).not.toContain('isRunningOnLocalhost');
+
+    const envHelperSource = read(path.join(__dirname, 'helpers', 'env.helper.js'));
+    expect(envHelperSource).toContain("process.env.REACT_APP_E2E = '1';");
+    expect(envHelperSource).toContain('process.env.REACT_APP_API_URL = apiUrl;');
+
+    // El navegador E2E debe identificarse aunque Playwright reutilice por error
+    // un frontend ya levantado en modo normal y ese bundle no tenga E2E_HEADERS.
+    const authFixtureSource = read(path.join(__dirname, 'fixtures', 'auth.fixture.js'));
+    const loginSpecSource = read(path.join(__dirname, '01-login.spec.js'));
+    expect(authFixtureSource).toContain("'x-rh-e2e': 'PLAYWRIGHT'");
+    expect(loginSpecSource).toContain("'x-rh-e2e': 'PLAYWRIGHT'");
+
+    const exportSource = read(path.join(
+      frontendRoot(),
+      'src',
+      'components',
+      'Global',
+      'Modales',
+      'ModalExportarGlobal.jsx',
+    ));
+    expect(
+      exportSource,
+      'Las exportaciones deben usar la misma URL central que el resto de la SPA.',
+    ).toContain('import BASE_URL from "../../../config/config";');
+    expect(exportSource).toContain('const apiBaseUrl = String(BASE_URL || "").trim();');
   });
 
   test('cleanup E2E queda aislado como infraestructura y no se confunde con funcionalidad del sistema', async () => {

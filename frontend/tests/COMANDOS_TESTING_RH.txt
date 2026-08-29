@@ -1,24 +1,32 @@
 RH NEGATIVO V2 · PLAYWRIGHT
 ===========================
 
-ÚNICO COMANDO:
+USO NORMAL DEL SISTEMA
+  npm start
+
+  El frontend local usa SIEMPRE:
+  https://rhnegativo.3devsnet.com/api/routes
+
+  REACT_APP_API_URL del .env NO cambia el backend del uso normal.
+  Sólo se habilita cuando Playwright arranca React con REACT_APP_E2E=1.
+
+ÚNICO COMANDO DE TESTING:
   npx playwright test --project=chromium --workers=1 --reporter=list
 
-CAMBIAR LOCAL <-> HOSTINGER:
+CAMBIAR LOCAL <-> HOSTINGER PARA EL TESTING:
   Editar SOLAMENTE frontend/.env y dejar UNA REACT_APP_API_URL activa.
 
-LOCAL:
+TESTING LOCAL:
   REACT_APP_API_URL=http://localhost:3001/routes
 
-HOSTINGER:
+TESTING HOSTINGER:
   REACT_APP_API_URL=https://rhnegativo.3devsnet.com/api/routes
 
-NO tocar PW_API_URL / PW_BASE_URL en .env.test: ya no existen como selección de entorno.
-Playwright siempre levanta el frontend actual en localhost:3000.
-Si la API es LOCAL también levanta PHP; si es HOSTINGER usa la API HTTPS remota.
+NO tocar PW_API_URL / PW_BASE_URL en .env.test: no son la selección de entorno.
+Playwright siempre levanta el frontend actual en localhost:3000 con REACT_APP_E2E=1.
+Si la API E2E es LOCAL también levanta PHP; si es HOSTINGER usa la API HTTPS remota.
 
 IMPORTANTE:
-- No dejar otro npm start ocupando el puerto 3000: Playwright levanta su propio frontend
-  con REACT_APP_E2E=1 para que la protección E2E/CORS sea determinista.
+- No dejar otro npm start ocupando el puerto 3000: Playwright levanta su propio frontend.
 - .env.test contiene credenciales reales: NO subirlo a Git.
 - Al final deben aparecer cleanup e Integridad OK. Si cambia un dato NO-E2E, la corrida falla.

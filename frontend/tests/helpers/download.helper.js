@@ -54,7 +54,25 @@ async function exportFromGlobalModal(page, {
   }
 
   if (scope) {
-    const scopeRadio = dialog.getByRole('radio', { name: new RegExp(scope, 'i') });
+    const scopeRegex = new RegExp(scope, 'i');
+    let scopeRadio = dialog.getByRole('radio', { name: scopeRegex });
+
+    // Si el informe solo tiene un alcance posible, el modal muestra unicamente
+    // `actual`. Validamos ese contrato en vez de consumir todo el timeout por copy.
+    if (await scopeRadio.count() === 0) {
+      const scopeRadios = dialog.locator('input[name="alcance_exportar_global"]');
+      const scopeCount = await scopeRadios.count();
+      if (scopeCount === 1) {
+        scopeRadio = scopeRadios.first();
+        await expect(scopeRadio).toHaveValue('actual');
+      } else {
+        await expect(
+          dialog.getByRole('radio', { name: scopeRegex }),
+          `No se encontro el alcance solicitado: ${scope}`,
+        ).toBeVisible({ timeout: 3000 });
+      }
+    }
+
     await scopeRadio.locator('xpath=ancestor::label').click();
     await expect(scopeRadio).toBeChecked();
   }

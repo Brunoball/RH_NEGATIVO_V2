@@ -33,6 +33,20 @@ const privateRoutes = [
 ];
 
 test.describe('Login y sesión', () => {
+  test.beforeEach(async ({ page }) => {
+    // Los tests de login no usan auth.fixture porque necesitan empezar sin sesión.
+    // Igual deben identificarse como E2E aunque Playwright reutilice un frontend
+    // que haya sido levantado normalmente sin REACT_APP_E2E=1.
+    await page.route(/\/(?:api\/)?routes\/api\.php(?:\?|$)/, async (route) => {
+      await route.continue({
+        headers: {
+          ...route.request().headers(),
+          'x-rh-e2e': 'PLAYWRIGHT',
+        },
+      });
+    });
+  });
+
   test('protege todas las rutas que se prueban en esta etapa', async ({ page }) => {
     for (const route of privateRoutes) {
       await page.goto(route);

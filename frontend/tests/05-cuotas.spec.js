@@ -237,12 +237,16 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     const payment = success.body.items[0];
     expect(payment.estado).toBe('PAGADO');
     expect(Number(payment.monto)).toBeCloseTo(4321.25, 2);
+    expect(payment.tipo_pago).toBe('NORMAL');
+    expect(payment.porcentaje_descuento_familiar_pago).toBeNull();
 
     const paid = await apiCall(request, 'cuotas_listar', {
       params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },
     });
     expect(paid.items).toHaveLength(1);
     expect(paid.items[0].id_pago).toBe(payment.id_pago);
+    expect(paid.items[0].tipo_pago).toBe('NORMAL');
+    expect(paid.items[0].porcentaje_descuento_familiar_pago).toBeNull();
 
     await deletePayment(request, payment.id_pago);
     const debt = await apiCall(request, 'cuotas_listar', {
@@ -260,6 +264,8 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     const first = await apiCall(request, 'cuotas_registrar_pago', {
       method: 'POST', data: paymentPayload({ ...base, periodId: p1 }),
     });
+    expect(first.items[0].tipo_pago).toBe('NORMAL');
+    expect(first.items[0].porcentaje_descuento_familiar_pago).toBeNull();
     await expectApiError(request, 'cuotas_registrar_pagos', {
       method: 'POST',
       data: {
@@ -271,6 +277,13 @@ test.describe('Cuotas · API y reglas de negocio', () => {
         ],
       },
     }, { status: 409, code: 'CUOTA_YA_REGISTRADA' });
+
+    const persistedNormal = await apiCall(request, 'cuotas_listar', {
+      params: { estado: 'PAGADOS', anio: currentYear(), mes: p1, id_socio: socio.item.id_socio },
+    });
+    expect(persistedNormal.items).toHaveLength(1);
+    expect(persistedNormal.items[0].tipo_pago).toBe('NORMAL');
+    expect(persistedNormal.items[0].porcentaje_descuento_familiar_pago).toBeNull();
 
     const p2Context = await apiCall(request, 'cuotas_contexto_pago', {
       params: { id_socio: socio.item.id_socio, anio: currentYear(), mes: p2 },
@@ -1366,7 +1379,9 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     });
     expect(paid.items).toHaveLength(memberCount);
     for (const item of paid.items) {
+      expect(item.tipo_pago).toBe('DESCUENTO_FAMILIAR');
       expect(Number(item.porcentaje_descuento_familiar)).toBeCloseTo(expectedDiscount, 2);
+      expect(Number(item.porcentaje_descuento_familiar_pago)).toBeCloseTo(expectedDiscount, 2);
       expect(Number(item.monto)).toBeCloseTo(expectedAmount, 2);
     }
 
@@ -1381,6 +1396,8 @@ test.describe('Cuotas · API y reglas de negocio', () => {
     const contablePayment = contable.detalle.items.find(
       (item) => Number(item.id_pago) === Number(paid.items[0].id_pago),
     );
+    expect(contablePayment?.tipo_pago).toBe('DESCUENTO_FAMILIAR');
+    expect(Number(contablePayment?.porcentaje_descuento_familiar)).toBeCloseTo(expectedDiscount, 2);
     expect(contablePayment?.tipo_ajuste_monto).toBe('DESCUENTO_FAMILIAR');
     expect(contablePayment?.etiqueta_monto).toBe(
       `Descuento familiar ${String(expectedDiscount).replace(/\.0+$/, '')}%`,
@@ -1840,6 +1857,8 @@ test.describe('Cuotas · UI', () => {
       });
       expect(paid.items).toHaveLength(1);
       expect(Number(paid.items[0].monto)).toBeCloseTo(customAmount, 2);
+      expect(paid.items[0].tipo_pago).toBe('MONTO_PERSONALIZADO');
+      expect(paid.items[0].porcentaje_descuento_familiar_pago).toBeNull();
       customPaymentIds.push(paid.items[0].id_pago);
     }
 
@@ -1854,6 +1873,7 @@ test.describe('Cuotas · UI', () => {
     const contablePayment = contable.detalle.items.find(
       (item) => Number(item.id_pago) === Number(customPaymentIds[0]),
     );
+    expect(contablePayment?.tipo_pago).toBe('MONTO_PERSONALIZADO');
     expect(contablePayment?.tipo_ajuste_monto).toBe('MONTO_PERSONALIZADO');
     expect(contablePayment?.etiqueta_monto).toBe('Monto personalizado');
 

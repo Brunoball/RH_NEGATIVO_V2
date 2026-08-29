@@ -1,4 +1,4 @@
-﻿const HOSTINGER_URL = "https://rhnegativo.3devsnet.com/api/routes";
+﻿const HOSTINGER_URL = "http://localhost:3001/routes";
 
 const configuredUrl = String(
   process.env.REACT_APP_API_URL || ""
@@ -6,17 +6,17 @@ const configuredUrl = String(
   .trim()
   .replace(/\/+$/, "");
 
-const isRunningOnLocalhost =
-  typeof window !== "undefined" &&
-  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const isE2E = process.env.REACT_APP_E2E === "1";
 
+// Uso normal (npm start / build): siempre usa Hostinger.
+// Playwright: REACT_APP_E2E=1 habilita la URL seleccionada por el testing
+// mediante REACT_APP_API_URL, ya sea LOCAL o HOSTINGER.
 const BASE_URL =
-  isRunningOnLocalhost && configuredUrl
+  isE2E && configuredUrl
     ? configuredUrl
     : HOSTINGER_URL;
 
 export default BASE_URL;
-
 
 // Desarrollo local:
 // php -c "C:\\php\\php.ini" -S localhost:3001

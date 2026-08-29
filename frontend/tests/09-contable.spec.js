@@ -139,8 +139,8 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
       expect(Number(searched.detalle.resumen.registros)).toBeLessThanOrEqual(Number(detail.resumen_general.registros));
       expectMoneyIdentity(
         searched.detalle.resumen_general.importe,
-        report.cobranza.resumen.total_ingresado,
-        'Buscar/paginar no debe romper la conciliación general de caja',
+        report.detalle.resumen_general.importe,
+        'Buscar/paginar no debe alterar el total general de caja por fecha real',
       );
     }
 
@@ -160,11 +160,8 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
       collection.diferencia_cuotas,
       'Esperado - recaudado debe ser faltante/superávit',
     );
-    expectMoneyIdentity(
-      detail.resumen_general.importe,
-      collection.total_ingresado,
-      'El detalle completo debe sumar exactamente cuotas + inscripciones',
-    );
+    expect(collection.criterio_cuotas_recaudadas).toBe('PERIODO_APLICADO');
+    expect(collection.criterio_inscripciones).toBe('FECHA_PAGO');
 
     const annual = await apiCall(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: 7, pagina: 1 },
@@ -176,6 +173,89 @@ test.describe('Contabilidad · informes de socios y conciliaciones', () => {
     await expectApiError(request, 'contable_ingresos_socios', {
       params: { anio: year, periodo: period, pagina: 0 },
     }, { status: 422, code: 'PAGINA_INVALIDA' });
+  });
+
+
+  test('Detalle de Cobranza atribuye anticipos al período aplicado aunque la fecha de pago caiga en otro bimestre', async ({ request }) => {
+    const { today, year, period: currentPeriod } = dateParts();
+    const category = await createQuotaCategory(request);
+    const catalogs = await quotaCatalogs(request, year);
+
+    // Preferimos el período siguiente para cubrir exactamente el caso real
+    // 9/10 pagado antes de septiembre. En fin de año usamos otro bimestre
+    // distinto al actual para conservar la misma propiedad: fecha != período.
+    const candidateIds = catalogs.bimonthly
+      .map((item) => Number(item.id_periodo ?? item.id_mes))
+      .filter((id) => id >= 1 && id <= 6);
+    const targetPeriod = candidateIds.includes(currentPeriod + 1)
+      ? currentPeriod + 1
+      : candidateIds.find((id) => id !== currentPeriod);
+    expect(targetPeriod).toBeTruthy();
+
+    const targetStartMonth = targetPeriod * 2 - 1;
+    const paymentMonth = Number(today.slice(5, 7));
+    expect(
+      paymentMonth < targetStartMonth || paymentMonth > targetStartMonth + 1,
+      'La regresión necesita que la fecha real quede fuera del bimestre aplicado',
+    ).toBe(true);
+
+    const before = await apiCall(request, 'contable_ingresos_socios', {
+      params: { anio: year, periodo: targetPeriod, pagina: 1 },
+    });
+
+    const socio = await createQuotaSocio(
+      request,
+      'CONTABLE ANTICIPO PERIODO',
+      category.item.id_categoria,
+      { fecha_ingreso: `${year}-01-01` },
+    );
+
+    const afterPartner = await apiCall(request, 'contable_ingresos_socios', {
+      params: { anio: year, periodo: targetPeriod, pagina: 1 },
+    });
+
+    // El esperado del período nace aunque todavía no haya llegado el bimestre.
+    expectMoneyIdentity(
+      Number(afterPartner.cobranza.resumen.cuotas_esperadas)
+        - Number(before.cobranza.resumen.cuotas_esperadas),
+      category.mensual,
+      'Un socio elegible debe incrementar el esperado del período futuro',
+    );
+
+    const paid = await apiCall(request, 'cuotas_registrar_pago', {
+      method: 'POST',
+      data: paymentPayload({
+        socioId: socio.item.id_socio,
+        periodId: targetPeriod,
+        mediumId: catalogs.medium.id_medio_pago,
+        year,
+        date: today,
+      }),
+    });
+
+    try {
+      const afterPayment = await apiCall(request, 'contable_ingresos_socios', {
+        params: { anio: year, periodo: targetPeriod, pagina: 1 },
+      });
+
+      expectMoneyIdentity(
+        Number(afterPayment.cobranza.resumen.cuotas_recaudadas)
+          - Number(afterPartner.cobranza.resumen.cuotas_recaudadas),
+        category.mensual,
+        'El anticipo debe contabilizarse como recaudado en el período que cancela',
+      );
+      expect(afterPayment.cobranza.resumen.criterio_cuotas_recaudadas).toBe('PERIODO_APLICADO');
+
+      // El libro Detalle sigue siendo caja: como el dinero entró fuera del
+      // bimestre objetivo, no debe aparecer falsamente dentro de esa ventana.
+      expectMoneyIdentity(
+        afterPayment.detalle.resumen_general.importe,
+        afterPartner.detalle.resumen_general.importe,
+        'Detalle debe seguir ubicando el ingreso por fecha real de pago',
+      );
+    } finally {
+      await deletePayment(request, paid.items?.[0]?.id_pago);
+    }
   });
 
   test('estados auxiliares del catálogo no rompen Contabilidad y se clasifican como SIN ESTADO', async ({ request }) => {
@@ -809,6 +889,7 @@ test.describe('Contabilidad · UI completa', () => {
     const customFeeRow = e2eIncomeRows.find(
       (item) => Number(item.id_pago) === Number(guaranteedPayment.items[0].id_pago),
     );
+    expect(customFeeRow?.tipo_pago).toBe('MONTO_PERSONALIZADO');
     expect(customFeeRow?.tipo_ajuste_monto).toBe('DESCUENTO_PERSONALIZADO');
     expect(customFeeRow?.etiqueta_monto).toBe('Descuento personalizado');
     expect(cents(customFeeRow?.monto_referencia)).toBe(cents(quotaCategory.mensual));

@@ -373,6 +373,9 @@ abstract class CuotasRegistros extends CuotasConsultas
                         'id_familia_contexto' => $family['id_familia'] ?? null,
                         // El pago familiar calcula el monto histórico de cada socio.
                         'monto' => $applyFamily ? null : ($body['monto'] ?? null),
+                        'monto_personalizado' => $applyFamily
+                            ? false
+                            : ($body['monto_personalizado'] ?? false),
                     ];
                 }
             }
@@ -412,12 +415,13 @@ abstract class CuotasRegistros extends CuotasConsultas
                     ? null
                     : decimal_amount($rawQuotedAmount, 'monto esperado', 0.01, 9999999999.99);
             }
-            $customFamilyAmount = null;
-            $hasCustomFamilyAmount = $familyBatch && in_array(
+            $explicitCustomAmount = in_array(
                 $item['monto_personalizado'] ?? false,
                 [true, 1, '1'],
                 true
             );
+            $customFamilyAmount = null;
+            $hasCustomFamilyAmount = $familyBatch && $explicitCustomAmount;
             if ($hasCustomFamilyAmount) {
                 $rawCustomAmount = $item['monto'] ?? null;
                 if ($rawCustomAmount === null || $rawCustomAmount === '') {
@@ -444,6 +448,9 @@ abstract class CuotasRegistros extends CuotasConsultas
             $amount = $amount === null || $amount === ''
                 ? null
                 : decimal_amount($amount, 'monto', 0.01, 9999999999.99);
+            if ($explicitCustomAmount && !$familyBatch && $amount === null) {
+                api_error('Ingresá un monto personalizado válido.', 'MONTO_INVALIDO');
+            }
             $key = $partnerId . '-' . $year . '-' . $periodId;
             $normalized[$key] = [
                 'id_socio' => $partnerId,
@@ -451,6 +458,7 @@ abstract class CuotasRegistros extends CuotasConsultas
                 'id_periodo' => $periodId,
                 'monto' => $amount,
                 'monto_esperado' => $quotedAmount,
+                'monto_personalizado' => $explicitCustomAmount,
                 'id_familia_contexto' => $familyId,
             ];
         }
@@ -708,8 +716,9 @@ abstract class CuotasRegistros extends CuotasConsultas
             $state = $condoned ? 'CONDONADO' : 'PAGADO';
             $insert = $db->prepare(
                 'INSERT INTO pagos
-                 (id_socio, id_periodo, anio_aplicado, fecha_pago, estado, monto, id_medio_pago)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+                 (id_socio, id_periodo, anio_aplicado, fecha_pago, estado, monto, id_medio_pago,
+                  tipo_pago, porcentaje_descuento_familiar)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
 
             foreach ($targets as $target) {
@@ -786,8 +795,26 @@ abstract class CuotasRegistros extends CuotasConsultas
                         : $calculatedAmount);
                 if (!$condoned && $amount <= 0) api_error('El monto debe ser mayor a cero.', 'MONTO_INVALIDO');
                 $customAmount = !$condoned
-                    && $target['monto'] !== null
-                    && abs($amount - $calculatedAmount) >= 0.005;
+                    && (
+                        !empty($target['monto_personalizado'])
+                        || ($target['monto'] !== null && abs($amount - $calculatedAmount) >= 0.005)
+                    );
+
+                // La modalidad económica queda persistida en la propia fila.
+                // Contabilidad no debe reconstruir un pago nuevo comparando
+                // importes o reglas familiares que podrían cambiar después.
+                $paymentType = null;
+                $storedFamilyDiscount = null;
+                if (!$condoned) {
+                    if ($customAmount) {
+                        $paymentType = 'MONTO_PERSONALIZADO';
+                    } elseif ($discount > 0) {
+                        $paymentType = 'DESCUENTO_FAMILIAR';
+                        $storedFamilyDiscount = number_format($discount, 2, '.', '');
+                    } else {
+                        $paymentType = 'NORMAL';
+                    }
+                }
 
                 $insert->execute([
                     $partnerId,
@@ -797,6 +824,8 @@ abstract class CuotasRegistros extends CuotasConsultas
                     $state,
                     number_format($amount, 2, '.', ''),
                     $condoned ? null : $medium['id_medio_pago'],
+                    $paymentType,
+                    $storedFamilyDiscount,
                 ]);
                 $paymentId = (int)$db->lastInsertId();
                 $ids[] = $paymentId;
@@ -821,7 +850,12 @@ abstract class CuotasRegistros extends CuotasConsultas
                     'fecha_pago' => $date,
                     'estado' => $state,
                     'monto_base' => number_format($base, 2, '.', ''),
+                    'tipo_pago' => $paymentType,
+                    // Compatibilidad UI/comprobante: conserva el descuento de
+                    // contexto aunque el usuario haya elegido un monto manual.
                     'porcentaje_descuento_familiar' => number_format($discount, 2, '.', ''),
+                    // Este campo refleja exactamente lo persistido en pagos.
+                    'porcentaje_descuento_familiar_pago' => $storedFamilyDiscount,
                     'monto_esperado' => number_format($calculatedAmount, 2, '.', ''),
                     'monto_personalizado' => $customAmount,
                     'monto' => number_format($amount, 2, '.', ''),
@@ -919,6 +953,10 @@ abstract class CuotasRegistros extends CuotasConsultas
             'fecha_pago' => (string)$row['fecha_pago'],
             'estado' => (string)$row['estado'],
             'monto' => number_format((float)($row['monto'] ?? 0), 2, '.', ''),
+            'tipo_pago' => $row['tipo_pago'] ?? null,
+            'porcentaje_descuento_familiar' => $row['porcentaje_descuento_familiar'] === null
+                ? null
+                : number_format((float)$row['porcentaje_descuento_familiar'], 2, '.', ''),
             'id_medio_pago' => $row['id_medio_pago'] === null ? null : (int)$row['id_medio_pago'],
             'medio_pago' => $row['medio_pago'],
         ];

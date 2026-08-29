@@ -5,7 +5,8 @@ declare(strict_types=1);
  * Informes de socios usados por Contabilidad.
  *
  * Regla de oro:
- * - Caja / ingresos => fecha real del movimiento (`fecha_pago`).
+ * - Detalle / caja => fecha real del movimiento (`fecha_pago`).
+ * - Detalle de Cobranza => año aplicado + período (`anio_aplicado`, `id_periodo`).
  * - Obligaciones / deuda => año aplicado + período.
  * Nunca se usa `creado_en` para decidir a qué período pertenece un importe.
  */
@@ -106,9 +107,11 @@ trait ContableSocios
         if ($expected - $fees !== $difference) {
             api_error('La conciliación interna de cobranza no coincide.', 'CONTABLE_DESCUADRE_COBRANZA', 500);
         }
-        if (self::centavos($detail['resumen_general']['importe'] ?? 0) !== $totalIncome) {
-            api_error('El detalle de ingresos de socios no coincide con cuotas + inscripciones.', 'CONTABLE_DESCUADRE_DETALLE_COBROS', 500);
-        }
+        // `detalle` y `cobranza` responden preguntas distintas:
+        // - detalle = caja por fecha real del movimiento;
+        // - cobranza = cuota efectivamente aplicada al período seleccionado.
+        // Un pago anticipado/atrasado puede pertenecer a otra ventana de caja,
+        // por lo que no deben forzarse a tener el mismo total.
         $partnerSummary = $partners['resumen'] ?? [];
         $classifiedPartners = (int)($partnerSummary['activos'] ?? 0)
             + (int)($partnerSummary['pasivos'] ?? 0)
@@ -166,7 +169,8 @@ trait ContableSocios
             "SELECT 'CUOTA' AS tipo_ingreso,
                     p.id_pago AS id_movimiento, p.id_pago, NULL AS id_inscripcion,
                     p.id_socio, p.id_periodo, p.anio_aplicado, p.fecha_pago,
-                    p.id_medio_pago, p.monto, p.creado_en,
+                    p.id_medio_pago, p.monto, p.tipo_pago,
+                    p.porcentaje_descuento_familiar, p.creado_en,
                     s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni,
                     COALESCE(NULLIF(mp.nombre,''), 'SIN MEDIO ESPECIFICADO') AS medio,
                     COALESCE(NULLIF(pe.nombre,''), '') AS periodo_nombre
@@ -218,6 +222,11 @@ trait ContableSocios
         // importes ya existentes sin hacer una consulta por cada fila.
         $fallbackPartnerIdsByReference = [];
         foreach ($paymentRows as $paymentRow) {
+            // Las filas creadas desde esta versión ya son autosuficientes:
+            // tipo_pago + porcentaje_descuento_familiar son la fuente de verdad.
+            // Sólo los históricos previos a la migración necesitan fallback.
+            if (trim((string)($paymentRow['tipo_pago'] ?? '')) !== '') continue;
+
             $paymentAudit = json_decode((string)($paymentRow['datos_pago_auditoria'] ?? ''), true);
             $hasPaymentSnapshot = is_array($paymentAudit)
                 && isset($paymentAudit['monto_base'])
@@ -353,7 +362,47 @@ trait ContableSocios
                     ? self::centavos($historicalCategoryAmount)
                     : self::centavos($row['monto']);
 
-                if ($hasPaymentSnapshot) {
+                $storedPaymentType = strtoupper(trim((string)($row['tipo_pago'] ?? '')));
+                if (!in_array($storedPaymentType, ['NORMAL', 'MONTO_PERSONALIZADO', 'DESCUENTO_FAMILIAR'], true)) {
+                    $storedPaymentType = '';
+                }
+                $storedFamilyDiscount = $row['porcentaje_descuento_familiar'] === null
+                    ? null
+                    : max(0.0, min(100.0, (float)$row['porcentaje_descuento_familiar']));
+
+                if ($storedPaymentType !== '') {
+                    // Fuente de verdad persistida. No inferimos la modalidad de
+                    // pagos nuevos comparando montos ni reglas familiares.
+                    if ($storedPaymentType === 'MONTO_PERSONALIZADO') {
+                        $customAmount = true;
+                        // El TIPO ya viene de la DB. Esta comparación sólo
+                        // conserva la etiqueta visual histórica cuando el monto
+                        // manual fue inferior al precio base de la categoría.
+                        if ($amount < self::centavos($historicalCategoryAmount)) {
+                            $amountAdjustmentType = 'DESCUENTO_PERSONALIZADO';
+                            $amountLabel = 'Descuento personalizado';
+                        } else {
+                            $amountAdjustmentType = 'MONTO_PERSONALIZADO';
+                            $amountLabel = 'Monto personalizado';
+                        }
+                        $referenceAmount = $hasPaymentSnapshot
+                            && isset($paymentAudit['monto_esperado'])
+                            && is_numeric($paymentAudit['monto_esperado'])
+                                ? (float)$paymentAudit['monto_esperado']
+                                : $historicalCategoryAmount;
+                    } elseif ($storedPaymentType === 'DESCUENTO_FAMILIAR') {
+                        $familyDiscount = $storedFamilyDiscount ?? 0.0;
+                        $referenceAmount = round(
+                            $historicalCategoryAmount * (1 - $familyDiscount / 100),
+                            2
+                        );
+                        $discountLabel = rtrim(rtrim(number_format($familyDiscount, 2, '.', ''), '0'), '.');
+                        $amountAdjustmentType = 'DESCUENTO_FAMILIAR';
+                        $amountLabel = 'Descuento familiar ' . $discountLabel . '%';
+                    } else {
+                        $referenceAmount = $historicalCategoryAmount;
+                    }
+                } elseif ($hasPaymentSnapshot) {
                     $familyDiscount = max(0.0, min(
                         100.0,
                         (float)($paymentAudit['porcentaje_descuento_familiar'] ?? 0)
@@ -469,6 +518,9 @@ trait ContableSocios
                 'monto_referencia' => $referenceAmount === null
                     ? null
                     : number_format($referenceAmount, 2, '.', ''),
+                'tipo_pago' => $isRegistration
+                    ? null
+                    : (trim((string)($row['tipo_pago'] ?? '')) ?: null),
                 'porcentaje_descuento_familiar' => $isRegistration
                     ? null
                     : number_format($familyDiscount, 2, '.', ''),
@@ -598,18 +650,31 @@ trait ContableSocios
         }
 
         $paymentAmount = self::importePagoSql();
-        $paymentWhere = "p.estado = 'PAGADO' AND p.fecha_pago >= ? AND p.fecha_pago < ?";
-        if ($periodId === 7) $paymentWhere .= ' AND p.id_periodo = 7';
+
+        // Detalle de Cobranza concilia la obligación del período con los pagos
+        // APLICADOS a ese mismo período, sin importar cuándo entró el dinero.
+        //
+        // Ejemplo: una cuota 9/10 pagada anticipadamente en agosto:
+        // - aparece en Detalle/caja de agosto por `fecha_pago`;
+        // - aparece como Recaudado de 9/10 por `anio_aplicado + id_periodo`.
+        //
+        // Esta separación evita que períodos futuros queden falsamente en $0
+        // cuando ya existen anticipos y también evita llevar pagos atrasados al
+        // período de caja en lugar del período que realmente cancelaron.
         $statement = $db->prepare(
-            "SELECT p.id_pago, p.id_socio, p.id_medio_pago, {$paymentAmount} AS monto,
+            "SELECT p.id_pago, p.id_socio, p.id_medio_pago, p.fecha_pago,
+                    p.anio_aplicado, p.id_periodo,
+                    {$paymentAmount} AS monto,
                     COALESCE(NULLIF(mp.nombre,''), 'SIN MEDIO ESPECIFICADO') AS medio
              FROM pagos p
              INNER JOIN socios s ON s.id_socio = p.id_socio
              LEFT JOIN categoria c ON c.id_categoria = s.id_categoria
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = p.id_medio_pago
-             WHERE {$paymentWhere}"
+             WHERE p.estado = 'PAGADO'
+               AND p.anio_aplicado = ?
+               AND p.id_periodo = ?"
         );
-        $statement->execute([$start, $endExclusive]);
+        $statement->execute([$year, $periodId]);
         $payments = $statement->fetchAll(PDO::FETCH_ASSOC);
 
         $collectedTotal = 0;
@@ -764,6 +829,8 @@ trait ContableSocios
                 'diferencia_cuotas' => self::importeDesdeCentavos($expectedTotal - $collectedTotal),
                 'total_ingresado' => self::importeDesdeCentavos($totalIncome),
                 'socios_esperados' => count($partners),
+                'criterio_cuotas_recaudadas' => 'PERIODO_APLICADO',
+                'criterio_inscripciones' => 'FECHA_PAGO',
                 'desde' => $start,
                 'hasta' => $endInclusive,
             ],

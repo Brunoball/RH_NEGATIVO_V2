@@ -19,7 +19,10 @@ function ensure_cuotas_schema(PDO $db): void
         'categoria' => ['id_categoria', 'nombre', 'monto_mensual', 'monto_anual', 'activo'],
         'precios_historicos' => ['id_historial', 'id_categoria', 'tipo', 'precio_viejo', 'precio_nuevo', 'fecha_cambio'],
         'periodo' => ['id_periodo', 'nombre', 'meses', 'activo'],
-        'pagos' => ['id_pago', 'id_socio', 'id_periodo', 'anio_aplicado', 'fecha_pago', 'estado', 'monto', 'id_medio_pago'],
+        'pagos' => [
+            'id_pago', 'id_socio', 'id_periodo', 'anio_aplicado', 'fecha_pago', 'estado',
+            'monto', 'id_medio_pago', 'tipo_pago', 'porcentaje_descuento_familiar',
+        ],
         'pagos_inscripcion' => ['id_inscripcion', 'id_socio', 'monto', 'fecha_pago', 'id_medio_pago', 'creado_en'],
         'medios_pago' => ['id_medio_pago', 'nombre', 'activo'],
         'cobrador' => ['id_cobrador', 'nombre'],

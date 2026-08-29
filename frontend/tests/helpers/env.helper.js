@@ -105,7 +105,9 @@ function loadTestEnv(rootDir = path.resolve(__dirname, '..', '..')) {
   // .env.test contiene solamente credenciales/comandos fijos.
   loadEnvFile(path.join(rootDir, '.env.test'));
 
-  // Igual que LALCEC: frontend/.env es la ÚNICA selección LOCAL <-> HOSTINGER.
+  // Selección EXCLUSIVA del testing: frontend/.env elige LOCAL <-> HOSTINGER.
+  // El uso normal de la SPA no depende de esta variable: config.jsx usa Hostinger
+  // salvo cuando REACT_APP_E2E=1, valor que este helper activa para Playwright.
   const appEnvPath = path.join(rootDir, '.env');
   if (!fs.existsSync(appEnvPath)) {
     throw new Error(`No existe ${appEnvPath}.`);

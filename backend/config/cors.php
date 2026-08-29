@@ -6,17 +6,35 @@ $origin = trim((string)($_SERVER['HTTP_ORIGIN'] ?? ''));
 $isProduction = strtolower((string)env_value('APP_ENV', 'production')) === 'production';
 $defaultOrigins = $isProduction ? '' : 'http://localhost:3000';
 $allowed = array_values(array_filter(array_map('trim', explode(',', (string)env_value('ALLOWED_ORIGINS', $defaultOrigins)))));
-$isLocalOrigin = preg_match('#^http://(localhost|127\.0\.0\.1):\d+$#', $origin) === 1;
-$isLocal = !$isProduction && $isLocalOrigin;
 
-// En producción NO abrimos localhost de forma general. Sólo permitimos el
-// frontend local de Playwright cuando la solicitud/preflight declara X-RH-E2E.
+$isLoopbackOrigin = preg_match(
+    '#^http://(?:localhost|127\.0\.0\.1|\[::1\]):\d+$#',
+    $origin
+) === 1;
+
+// El frontend local normal de RH se desarrolla en :3000 y debe poder consumir
+// la API real de Hostinger sin activar el modo E2E.
+$isLocalFrontendOrigin = in_array(
+    $origin,
+    ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000'],
+    true
+);
+
+$isLocalDevelopmentOrigin = !$isProduction && $isLoopbackOrigin;
+
+// Playwright conserva su permiso explícito para cualquier puerto loopback,
+// porque el runner envía X-RH-E2E y el backend aplica además sus guardas E2E.
 $requestedHeaders = strtolower((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ?? ''));
 $isE2ERequest = strtoupper(trim((string)($_SERVER['HTTP_X_RH_E2E'] ?? ''))) === 'PLAYWRIGHT'
     || str_contains($requestedHeaders, 'x-rh-e2e');
-$isPlaywrightLocalOrigin = $isProduction && $isLocalOrigin && $isE2ERequest;
+$isPlaywrightLocalOrigin = $isProduction && $isLoopbackOrigin && $isE2ERequest;
 
-$isAllowed = $origin !== '' && ($isLocal || $isPlaywrightLocalOrigin || in_array($origin, $allowed, true));
+$isAllowed = $origin !== '' && (
+    $isLocalFrontendOrigin
+    || $isLocalDevelopmentOrigin
+    || $isPlaywrightLocalOrigin
+    || in_array($origin, $allowed, true)
+);
 
 if (!headers_sent()) {
     if ($isAllowed) {

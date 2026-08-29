@@ -2101,6 +2101,9 @@ export default function Cuotas() {
                   0,
                 ),
               ),
+              monto_personalizado: Boolean(
+                paymentForm.montos_por_mes?.[monthId]?.personalizado,
+              ),
             };
           }),
         });
@@ -2115,6 +2118,9 @@ export default function Cuotas() {
               paymentForm.montos_por_mes?.[selectedMonthIds[0]]?.monto ||
                 paymentForm.monto,
             ),
+          ),
+          monto_personalizado: Boolean(
+            paymentForm.montos_por_mes?.[selectedMonthIds[0]]?.personalizado,
           ),
           id_medio_pago: Number(paymentForm.id_medio_pago),
           aplicar_familia: false,

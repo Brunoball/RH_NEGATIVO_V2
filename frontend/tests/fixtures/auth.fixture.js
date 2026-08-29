@@ -44,26 +44,38 @@ const test = base.test.extend({
       { origin: appOrigin, key: SESSION_KEY, value: session },
     );
 
-    // El hosting compartido no necesita retries: necesita evitar que Playwright
-    // dispare una ráfaga artificial de varias requests de la SPA en el mismo
-    // milisegundo. Espaciamos sólo el INICIO de requests reales a la API remota.
-    // La respuesta no se altera: cualquier HTTP 500 sigue llegando y falla.
-    if (isHostinger()) {
-      const configured = Number(process.env.PW_HOSTINGER_BROWSER_API_GAP_MS || 120);
-      const gapMs = Number.isFinite(configured) ? Math.max(0, Math.min(1000, configured)) : 120;
-      let nextSlotAt = 0;
+    // El header E2E se inyecta también desde Playwright y no sólo desde el bundle
+    // de React. Esto evita que una corrida reutilice accidentalmente un `npm start`
+    // normal (compilado sin REACT_APP_E2E=1) y termine autenticando al runner
+    // temporal sin X-RH-E2E. La URL de API sigue viniendo del .env del testing.
+    //
+    // En Hostinger conservamos además el espaciado de requests para no generar
+    // ráfagas artificiales contra el hosting compartido.
+    const hostinger = isHostinger();
+    const configured = Number(process.env.PW_HOSTINGER_BROWSER_API_GAP_MS || 120);
+    const gapMs = hostinger && Number.isFinite(configured)
+      ? Math.max(0, Math.min(1000, configured))
+      : 0;
+    let nextSlotAt = 0;
 
-      await page.route(/\/api\/routes\/api\.php(?:\?|$)/, async (route) => {
-        if (gapMs > 0) {
-          const now = Date.now();
-          const scheduled = Math.max(now, nextSlotAt);
-          nextSlotAt = scheduled + gapMs;
-          const delay = scheduled - now;
-          if (delay > 0) await sleep(delay);
-        }
-        await route.continue();
+    await page.route(/\/(?:api\/)?routes\/api\.php(?:\?|$)/, async (route) => {
+      if (gapMs > 0) {
+        const now = Date.now();
+        const scheduled = Math.max(now, nextSlotAt);
+        nextSlotAt = scheduled + gapMs;
+        const delay = scheduled - now;
+        if (delay > 0) await sleep(delay);
+      }
+
+      await route.continue({
+        headers: {
+          ...route.request().headers(),
+          'x-rh-e2e': 'PLAYWRIGHT',
+        },
       });
+    });
 
+    if (hostinger) {
       // También dejamos un margen pequeño entre casos para que el shared hosting
       // libere PHP/MySQL antes de iniciar el siguiente flujo E2E.
       const testGapConfigured = Number(process.env.PW_HOSTINGER_TEST_GAP_MS || 220);
