@@ -14,6 +14,8 @@ import ModalEliminarGlobal from "../../Global/Modales/ModalEliminarGlobal";
 import { cuotasApi } from "../api/cuotasApi";
 import "./ModalCodigoBarras.css";
 
+const SCAN_DEBOUNCE_MS = 280;
+
 const localToday = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
@@ -44,7 +46,6 @@ export const parsePaymentBarcode = (value) => {
   if (digits.length < 4) {
     return { valid: false, message: "El código debe tener período, año e ID del socio." };
   }
-
   const periodId = Number(digits.slice(0, 1));
   const year = 2000 + Number(digits.slice(1, 3));
   const partnerId = Number(digits.slice(3));
@@ -163,6 +164,7 @@ export default function ModalCodigoBarras({
     // lento nunca puede reemplazar en pantalla al último código ingresado.
     const requestId = ++requestIdRef.current;
     if (!open) return undefined;
+
     const normalized = code.replace(/\D/g, "");
     if (!normalized) {
       setParsed(null);
@@ -172,11 +174,20 @@ export default function ModalCodigoBarras({
     }
 
     const decoded = parsePaymentBarcode(normalized);
+
+    // Un lector USB escribe el código carácter por carácter. Antes se mostraba
+    // un error con los primeros 1/2/3 dígitos y desaparecía enseguida, por eso
+    // al escanear se veía un mensaje rojo fugaz aunque el código final fuera
+    // correcto. Esperamos el mismo debounce de la lectura antes de publicar un
+    // error; si llega otro carácter, React cancela este timeout.
     if (!decoded.valid) {
       setParsed(null);
       setContext(null);
-      setError(decoded.message);
-      return undefined;
+      setError("");
+      const invalidTimeout = window.setTimeout(() => {
+        if (requestId === requestIdRef.current) setError(decoded.message);
+      }, SCAN_DEBOUNCE_MS);
+      return () => window.clearTimeout(invalidTimeout);
     }
 
     const timeout = window.setTimeout(async () => {
@@ -211,7 +222,7 @@ export default function ModalCodigoBarras({
       } finally {
         if (requestId === requestIdRef.current) setLoading(false);
       }
-    }, 280);
+    }, SCAN_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeout);
   }, [code, open]);
@@ -305,6 +316,15 @@ export default function ModalCodigoBarras({
     if (!saving) onClose?.();
   };
 
+  // Los lectores USB/HID se comportan como un teclado y normalmente terminan
+  // cada lectura enviando Enter. CrudModal monta el contenido dentro de un
+  // <form>; sin este bloqueo, ese Enter hacía un submit HTML nativo y podía
+  // recargar/navegar la página antes de que terminara la consulta de contexto.
+  const preventScannerFormSubmit = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
     <>
       <CrudModal
@@ -312,6 +332,7 @@ export default function ModalCodigoBarras({
         title="Registro por código de barras"
         subtitle="Escaneá el comprobante o ingresá P + AA + ID del socio."
         onClose={close}
+        onSubmit={preventScannerFormSubmit}
         hideCancel
         hideSubmit
         closeOnBackdrop={false}
@@ -333,6 +354,9 @@ export default function ModalCodigoBarras({
               onChange={(event) =>
                 setCode(event.target.value.replace(/[^0-9-]/g, ""))
               }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") preventScannerFormSubmit(event);
+              }}
               placeholder="Ej.: 126-1393"
               aria-label="Código de barras"
               disabled={saving}
