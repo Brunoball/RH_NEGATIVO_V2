@@ -1,6 +1,7 @@
 const { test, expect } = require('./fixtures/auth.fixture');
 const { apiCall, apiResult, expectApiError, readAuthSession } = require('./helpers/api.helper');
 const { exportFromGlobalModal } = require('./helpers/download.helper');
+const { receiptDownload, receiptPopupDownload } = require('./helpers/receipt.helper');
 const { SESSION_KEY } = require('./helpers/auth.helper');
 const { addDaysIso, todayIso } = require('./helpers/data.helper');
 const { cuotaCategoryData, cuotaFamilyData } = require('./fixtures/cuotas.fixture');
@@ -1753,6 +1754,11 @@ test.describe('Cuotas · UI', () => {
     const receipt = page.getByRole('dialog', { name: 'Registro de pagos' });
     await expect(receipt).toContainText(members[0].data.nombre);
     await expect(receipt).toContainText(members[1].data.nombre);
+    await receiptDownload(
+      page,
+      () => receipt.getByRole('button', { name: 'PDF', exact: true }).click(),
+      [members[0].data.nombre, members[1].data.nombre],
+    );
     await receipt.locator('.payment-receipt-actions__close').click();
 
     for (let index = 0; index < members.length; index += 1) {
@@ -2134,29 +2140,18 @@ test.describe('Cuotas · UI', () => {
 
     const receipt = page.getByRole('dialog', { name: 'Registro de pagos' });
     await expect(receipt).toContainText('Pago realizado con éxito');
-    const downloadPromise = page.waitForEvent('download');
-    await receipt.getByRole('button', { name: 'PDF', exact: true }).click();
-    const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^Comprobante-.*\.pdf$/i);
-
-    // Evitamos abrir el diálogo nativo de impresión y comprobamos igualmente que
-    // el botón genera el HTML del comprobante y solicita impresión.
-    await page.evaluate(() => {
-      window.__pwReceiptHtml = '';
-      window.__pwReceiptPrint = false;
-      window.open = () => ({
-        document: {
-          open() {},
-          write(html) { window.__pwReceiptHtml = String(html || ''); },
-          close() {},
-        },
-        focus() {},
-        print() { window.__pwReceiptPrint = true; },
-      });
-    });
-    await receipt.getByRole('button', { name: 'Imprimir', exact: true }).click();
-    await expect.poll(() => page.evaluate(() => window.__pwReceiptHtml.length)).toBeGreaterThan(100);
-    await expect.poll(() => page.evaluate(() => window.__pwReceiptPrint)).toBe(true);
+    const directPdf = await receiptDownload(
+      page,
+      () => receipt.getByRole('button', { name: 'PDF', exact: true }).click(),
+      [socio.data.nombre],
+    );
+    const printPdf = await receiptPopupDownload(
+      page,
+      () => receipt.getByRole('button', { name: 'Imprimir', exact: true }).click(),
+      [socio.data.nombre],
+    );
+    expect(printPdf.suggestedFilename).toBe(directPdf.suggestedFilename);
+    expect(printPdf.content.equals(directPdf.content)).toBe(true);
     await receipt.locator('.payment-receipt-actions__close').click();
 
     const paid = await apiCall(request, 'cuotas_listar', {
@@ -2183,22 +2178,12 @@ test.describe('Cuotas · UI', () => {
     await page.getByRole('textbox', { name: 'ID', exact: true }).fill(String(socio.item.id_socio));
     const row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
-    await page.evaluate(() => {
-      window.__pwRowReceiptHtml = '';
-      window.__pwRowReceiptPrint = false;
-      window.open = () => ({
-        document: {
-          open() {},
-          write(html) { window.__pwRowReceiptHtml = String(html || ''); },
-          close() {},
-        },
-        focus() {},
-        print() { window.__pwRowReceiptPrint = true; },
-      });
-    });
-    await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
-    await expect.poll(() => page.evaluate(() => window.__pwRowReceiptHtml.length)).toBeGreaterThan(100);
-    await expect.poll(() => page.evaluate(() => window.__pwRowReceiptPrint)).toBe(true);
+    const downloaded = await receiptPopupDownload(
+      page,
+      () => row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click(),
+      [socio.data.nombre],
+    );
+    expect(downloaded.suggestedFilename).toContain(`PAGO-${paid.items[0].id_pago}`);
 
     const stillPaid = await apiCall(request, 'cuotas_listar', {
       params: { estado: 'PAGADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },

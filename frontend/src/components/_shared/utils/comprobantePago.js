@@ -37,6 +37,16 @@ const date = (value) => {
 const firstValue = (...values) =>
   values.find((value) => String(value ?? "").trim() !== "") ?? "";
 
+// Campos de identidad usados por RH nuevo y por el generador de RH viejo.
+const receiptPartnerName = (value = {}) =>
+  firstValue(
+    value.socio,
+    value.denominacion,
+    [value.apellido, value.nombre].filter(Boolean).join(" "),
+    value.nombre_socio,
+    value.persona,
+  );
+
 const uniqueValues = (values) =>
   Array.from(
     new Set(
@@ -154,10 +164,10 @@ export const normalizePaymentReceipt = (source = {}) => {
       barcode:
         line.codigo_barra || buildPaymentBarcode({ periodId, year, partnerId }),
       socio:
-        line.socio ||
-        line.denominacion ||
+        receiptPartnerName(line) ||
         operation.socios_label ||
-        operation.socio ||
+        receiptPartnerName(operation) ||
+        receiptPartnerName(safeSource) ||
         "—",
       categoria:
         line.categoria || operation.categorias_label || operation.categoria || "—",
@@ -198,8 +208,9 @@ export const normalizePaymentReceipt = (source = {}) => {
     fecha: operation.fecha_pago || operation.fecha || "",
     socios:
       operation.socios_label ||
-      operation.socio ||
+      receiptPartnerName(operation) ||
       safeSource.socios ||
+      receiptPartnerName(safeSource) ||
       uniqueValues(lines.map((line) => line.socio)).join(" · ") ||
       "—",
     modalidad:
@@ -325,6 +336,27 @@ const receiptStyles = `
   .legacy-receipt-amount { width:100%; margin-right:.5rem; font-size:8pt; font-weight:bold; text-align:right; }
 `;
 
+// Un único nombre para el botón PDF y para Imprimir → Guardar como PDF.
+export const paymentReceiptFileName = (source) => {
+  const receipt = normalizePaymentReceipt(source);
+  const safeCode = String(receipt.codigo || receipt.fecha || "pago")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  // Recuperar el nombre del socio, como en RH viejo, conservando el código.
+  // Las líneas permiten identificar también pagos familiares y varios períodos.
+  const names = uniqueValues(receipt.lineas.map((line) => line.socio))
+    .filter((name) => name !== "—");
+  const safeNames = String(names.join(" · ") || receipt.socios || "")
+    .normalize("NFC")
+    .replace(/[\/\\:*?"<>|\u0000-\u001f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120)
+    .replace(/[ .]+$/g, "");
+  const namePart = safeNames && safeNames !== "—" ? ` - ${safeNames}` : "";
+  return `Comprobante${namePart} - ${safeCode || "pago"}.pdf`;
+};
+
 export const paymentReceiptHtml = (source) => {
   const entries = receiptLegacyEntries(source);
   const pages = Array.from(
@@ -341,7 +373,12 @@ export const paymentReceiptHtml = (source) => {
         .join("")}</div>`;
     },
   ).join("");
-  const title = entries[0]?.receipt?.titulo || "Comprobante de pago";
+  const fileName = paymentReceiptFileName(source);
+  const title = fileName.replace(/\.pdf$/i, "");
+  // El atributo download fija el nombre real; no depende del diálogo de imprimir.
+  const pdfDataUrl = `data:application/pdf;base64,${btoa(
+    Array.from(paymentReceiptPdfBytes(source), (byte) => String.fromCharCode(byte)).join(""),
+  )}`;
   return `<!doctype html>
   <html lang="es">
     <head>
@@ -357,13 +394,13 @@ export const paymentReceiptHtml = (source) => {
         .legacy-receipt-area--original { left:5mm; }
         .legacy-receipt-area--copy { left:110mm; }
         ${receiptStyles}
-        .print-actions { position:fixed; top:8mm; right:8mm; z-index:10; }
-        .print-actions button { min-height:40px; padding:0 16px; border:0; border-radius:8px; color:#fff; background:#2563eb; font-weight:700; cursor:pointer; }
+        .print-actions { position:fixed; top:8mm; right:8mm; z-index:10; display:flex; gap:8px; }
+        .print-actions button, .print-actions a { display:inline-flex; align-items:center; text-decoration:none; font-family:Arial,sans-serif; font-size:14px; min-height:40px; padding:0 16px; border:0; border-radius:8px; color:#fff; background:#2563eb; font-weight:700; cursor:pointer; }
         @media print { .print-actions { display:none !important; } }
       </style>
     </head>
     <body>
-      <div class="print-actions"><button type="button" onclick="window.print()">Imprimir comprobante</button></div>
+      <div class="print-actions"><a href="${pdfDataUrl}" download="${htmlEscape(fileName)}">Descargar PDF</a><button type="button" onclick="window.print()">Imprimir comprobante</button></div>
       ${pages}
     </body>
   </html>`;
@@ -450,46 +487,47 @@ const paymentReceiptPdfContent = (data) => {
   return commands.join("\n");
 };
 
+// Compartido por el modal de pagos y la ventana de impresión.
+const paymentReceiptPdfBytes = (source) => {
+  const entries = receiptLegacyEntries(source);
+  const pageCount = Math.max(1, entries.length);
+  const firstPageId = 5;
+  const firstContentId = firstPageId + pageCount;
+  const pageIds = Array.from(
+    { length: pageCount },
+    (_, index) => firstPageId + index,
+  );
+  const objects = [
+    null,
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pageIds
+      .map((id) => `${id} 0 R`)
+      .join(" ")}] /Count ${pageCount} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+  ];
+  entries.forEach((entry, index) => {
+    const contentId = firstContentId + index;
+    objects[firstPageId + index] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] ` +
+      `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> ` +
+      `/Contents ${contentId} 0 R >>`;
+  });
+  entries.forEach((entry, index) => {
+    const content = paymentReceiptPdfContent(entry);
+    objects[firstContentId + index] =
+      `<< /Length ${pdfByteLength(content)} >>\nstream\n${content}\nendstream`;
+  });
+  return pdfBinary(objects);
+};
+
 export const downloadPaymentReceiptPdf = async (source) => {
   try {
-    const receipt = normalizePaymentReceipt(source);
-    const entries = receiptLegacyEntries(source);
-    const pageCount = Math.max(1, entries.length);
-    const firstPageId = 5;
-    const firstContentId = firstPageId + pageCount;
-    const pageIds = Array.from(
-      { length: pageCount },
-      (_, index) => firstPageId + index,
-    );
-    const objects = [
-      null,
-      "<< /Type /Catalog /Pages 2 0 R >>",
-      `<< /Type /Pages /Kids [${pageIds
-        .map((id) => `${id} 0 R`)
-        .join(" ")}] /Count ${pageCount} >>`,
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
-    ];
-    entries.forEach((entry, index) => {
-      const contentId = firstContentId + index;
-      objects[firstPageId + index] =
-        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] ` +
-        `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> ` +
-        `/Contents ${contentId} 0 R >>`;
-    });
-    entries.forEach((entry, index) => {
-      const content = paymentReceiptPdfContent(entry);
-      objects[firstContentId + index] =
-        `<< /Length ${pdfByteLength(content)} >>\nstream\n${content}\nendstream`;
-    });
-    const blob = new Blob([pdfBinary(objects)], { type: "application/pdf" });
+    const blob = new Blob([paymentReceiptPdfBytes(source)], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    const safeCode = String(receipt.codigo || receipt.fecha || "pago")
-      .replace(/[^a-zA-Z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
     anchor.href = url;
-    anchor.download = `Comprobante-${safeCode || "pago"}.pdf`;
+    anchor.download = paymentReceiptFileName(source);
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();

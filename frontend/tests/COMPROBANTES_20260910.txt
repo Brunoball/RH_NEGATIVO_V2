@@ -1,0 +1,37 @@
+ACTUALIZACION DE TESTS - COMPROBANTES RH
+
+Instalación: copiar la carpeta tests sobre frontend/tests.
+Usar junto al src actualizado que incluye Descargar PDF en la ventana de impresión.
+No se modificó src ni backend en esta revisión.
+
+Cambios:
+- 05-cuotas.spec.js: reemplaza la expectativa del nombre viejo por nombre del socio
+  y código de operación; verifica PDF real desde modal y ventana de impresión.
+- Comprueba igualdad del nombre y de los bytes entre ambas descargas.
+- Comprueba descarga de fila pagada sin eliminar/modificar su pago.
+- Comprueba nombres de dos miembros en un comprobante familiar.
+- helpers/receipt.helper.js: abre una ventana real y captura su descarga;
+  sustituye únicamente window.print para evitar el diálogo nativo.
+- unit/comprobante-pago.node.cjs: 9 regresiones sin servidor ni base de datos.
+  El sufijo .node.cjs evita que Playwright lo confunda con sus propios specs.
+
+RESULTADOS EN EL ENTORNO DE REVISION
+9 pruebas Node aprobadas, 0 fallidas.
+Sintaxis de los 35 archivos JavaScript/CJS de tests verificada.
+E2E de navegador NO ejecutados: no hay Chromium, PHP, package.json ni
+playwright.config en los archivos suministrados. No se validó toda la aplicación
+ni se hicieron escrituras sobre el backend remoto.
+
+COMANDOS DESDE FRONTEND
+
+Regresiones del generador (sin servidor):
+node --test tests/unit/comprobante-pago.node.cjs
+
+Tests E2E de Cuotas:
+npx playwright test tests/05-cuotas.spec.js --project=chromium --workers=1 --reporter=list
+
+Suite E2E completa:
+npx playwright test --project=chromium --workers=1 --reporter=list
+
+La suite E2E necesita la configuración, el backend y la sesión de testing
+habituales de tu proyecto. Las 9 pruebas Node se ejecutan por separado.
