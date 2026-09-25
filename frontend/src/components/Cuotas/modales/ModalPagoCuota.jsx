@@ -668,7 +668,11 @@ export default function ModalPagoCuota({
                         ))}
                       </select>
                     </FloatingField> : (
-                      <FloatingField label="Motivo de condonación" active={Boolean(paymentForm.motivo_inscripcion)}>
+                      <FloatingField
+                        label="Motivo de condonación"
+                        active={Boolean(paymentForm.motivo_inscripcion)}
+                        placeholderOnFloat
+                      >
                         <input
                           type="text"
                           maxLength={500}

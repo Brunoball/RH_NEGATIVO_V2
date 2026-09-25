@@ -765,6 +765,7 @@
 
 .socios-form__identityRow {
   min-width: 0;
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px;
