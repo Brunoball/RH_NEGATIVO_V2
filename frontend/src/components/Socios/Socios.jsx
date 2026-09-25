@@ -242,7 +242,6 @@ function emptyForm(catalogs = {}) {
   return {
     id_socio: "",
     nombre: "",
-    apellido: "",
     dni: "",
     fecha_nacimiento: "",
     id_grupo_sanguineo: "",
@@ -259,31 +258,10 @@ function emptyForm(catalogs = {}) {
   };
 }
 
-function splitPersonFullName(item) {
-  const rawName = String(item?.nombre || "").trim();
-  const rawLastName = String(item?.apellido || "").trim();
-
-  if (rawLastName) {
-    return { nombre: rawName, apellido: rawLastName };
-  }
-
-  const parts = rawName.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) {
-    return { nombre: rawName, apellido: "" };
-  }
-
-  return {
-    nombre: parts.slice(0, -1).join(" "),
-    apellido: parts.at(-1) || "",
-  };
-}
-
 function formFromItem(item) {
-  const personName = splitPersonFullName(item);
   return {
     id_socio: item.id_socio,
-    nombre: personName.nombre,
-    apellido: personName.apellido,
+    nombre: String(item.nombre || ""),
     dni: item.dni || "",
     fecha_nacimiento: item.fecha_nacimiento || "",
     id_grupo_sanguineo: item.id_grupo_sanguineo
@@ -848,27 +826,17 @@ function PartnerForm({ form, setForm, catalogs, activeTab, onTabChange, mode }) 
                 title={mode === "edit" ? "ID actual del socio" : "ID reservado para el nuevo socio"}
               />
             </FloatingField>
-            <FloatingField label="Nombre *" active={activeValue("nombre")}>
+            <FloatingField label="Nombre completo *" active={activeValue("nombre")}>
               <input
                 value={form.nombre}
-                maxLength={50}
-                onChange={(event) => set("nombre", personNameInput(event.target.value, 50))}
+                maxLength={100}
+                onChange={(event) => set("nombre", personNameInput(event.target.value, 100))}
                 required
                 placeholder=" "
-                autoComplete="given-name"
+                autoComplete="name"
               />
             </FloatingField>
           </div>
-          <FloatingField label="Apellido *" active={activeValue("apellido")}>
-            <input
-              value={form.apellido}
-              maxLength={50}
-              onChange={(event) => set("apellido", personNameInput(event.target.value, 50))}
-              required
-              placeholder=" "
-              autoComplete="family-name"
-            />
-          </FloatingField>
           <FloatingField label="DNI" active={activeValue("dni")}>
             <input
               value={form.dni}
@@ -1081,7 +1049,7 @@ function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
             tone: Number(item?.meses_adeudados) ? "warning" : "success",
           },
           { label: "Pagos de cuota", value: payments.length, icon: faReceipt },
-          { label: "Pagos de inscripción", value: registrationPayments.length, icon: faIdCard },
+          { label: "Inscripciones registradas", value: registrationPayments.length, icon: faIdCard },
           { label: "Cuota mensual", value: formatMoney(item?.categoria_monto_mensual), icon: faTags },
         ]}
       />
@@ -1101,10 +1069,12 @@ function PaymentsPanel({ item, payments = [], registrationPayments = [] }) {
           {registrationPayments.length ? registrationPayments.map((payment) => (
             <InfoRow
               key={payment.id_inscripcion}
-              title={formatMoney(payment.monto)}
-              detail={payment.medio_pago || "MEDIO SIN INFORMAR"}
+              title={payment.estado === "CONDONADO" ? "INSCRIPCIÓN CONDONADA · $0" : formatMoney(payment.monto)}
+              detail={payment.estado === "CONDONADO"
+                ? payment.motivo_condonacion || "Sin ingreso de dinero"
+                : payment.medio_pago || "MEDIO SIN INFORMAR"}
               meta={formatDate(payment.fecha_pago)}
-              tone="success"
+              tone={payment.estado === "CONDONADO" ? "warning" : "success"}
             />
           )) : <InfoEmpty>No hay pagos de inscripción registrados.</InfoEmpty>}
         </InfoSection>
@@ -1296,11 +1266,11 @@ export default function Socios() {
 
   const save = async (event) => {
     event.preventDefault();
-    if (!form.nombre.trim() || !form.apellido.trim()) {
+    if (!form.nombre.trim()) {
       setFormTab(FORM_TAB_PERSONAL);
       setFeedback({
         type: "warning",
-        message: "Completá nombre y apellido del socio. Los datos cargados se conservaron.",
+        message: "Completá el nombre completo del socio. Los datos cargados se conservaron.",
       });
       return;
     }
@@ -1321,11 +1291,8 @@ export default function Socios() {
     }
     setSaving(true);
     try {
-      const { apellido, id_socio: memberId, ...payload } = form;
-      payload.nombre = [form.nombre, apellido]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean)
-        .join(" ");
+      const { id_socio: memberId, ...payload } = form;
+      payload.nombre = form.nombre.trim();
       if (formMode === "edit") {
         payload.id_socio = memberId;
       } else {

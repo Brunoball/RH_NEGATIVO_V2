@@ -233,6 +233,8 @@ const emptyForm = () => ({
   fecha_pago: localToday(),
   monto: "",
   monto_inscripcion: "",
+  condonar_inscripcion: false,
+  motivo_inscripcion: "",
   montos_por_mes: {},
   id_medio_pago: "",
   aplicar_familia: false,
@@ -1852,7 +1854,7 @@ export default function Cuotas() {
       setFeedback({ type: "error", message: "Seleccioná un socio." });
       return;
     }
-    if (registrationContext?.pagada) {
+    if (registrationContext?.registrada || registrationContext?.pagada) {
       setFeedback({
         type: "warning",
         message: "Este socio ya tiene la inscripción registrada.",
@@ -1863,7 +1865,8 @@ export default function Cuotas() {
       setFeedback({ type: "error", message: "Completá la fecha de pago." });
       return;
     }
-    if (!paymentForm.id_medio_pago) {
+    const condoned = Boolean(paymentForm.condonar_inscripcion);
+    if (!condoned && !paymentForm.id_medio_pago) {
       setFeedback({ type: "error", message: "Seleccioná el medio de pago." });
       return;
     }
@@ -1872,7 +1875,7 @@ export default function Cuotas() {
       (item) => String(item.id_medio_pago) === String(paymentForm.id_medio_pago),
     );
     const mediumName = String(selectedMedium?.nombre || "").toLocaleUpperCase("es-AR");
-    if (!mediumName.includes("EFECTIVO") && !mediumName.includes("TRANSFERENCIA")) {
+    if (!condoned && !mediumName.includes("EFECTIVO") && !mediumName.includes("TRANSFERENCIA")) {
       setFeedback({
         type: "error",
         message: "La inscripción se registra en efectivo o transferencia.",
@@ -1881,7 +1884,7 @@ export default function Cuotas() {
     }
 
     const registrationAmount = Number(integerInput(paymentForm.monto_inscripcion));
-    if (!(registrationAmount > 0)) {
+    if (!condoned && !(registrationAmount > 0)) {
       setFeedback({
         type: "error",
         message: "Ingresá un monto de inscripción mayor a cero.",
@@ -1891,18 +1894,28 @@ export default function Cuotas() {
 
     setSaving(true);
     try {
-      await cuotasApi.registrarInscripcion({
+      const payload = {
         id_socio: Number(paymentForm.id_socio),
         fecha_pago: paymentForm.fecha_pago,
-        monto: registrationAmount,
-        id_medio_pago: Number(paymentForm.id_medio_pago),
-      });
+      };
+      if (condoned) {
+        await cuotasApi.condonarInscripcion({
+          ...payload,
+          motivo: String(paymentForm.motivo_inscripcion || "").trim(),
+        });
+      } else {
+        await cuotasApi.registrarInscripcion({
+          ...payload,
+          monto: registrationAmount,
+          id_medio_pago: Number(paymentForm.id_medio_pago),
+        });
+      }
 
       setPaymentOpen(false);
       setRegistrationContext(null);
       setFeedback({
         type: "success",
-        message: "Inscripción pagada correctamente.",
+        message: condoned ? "Inscripción condonada correctamente." : "Inscripción pagada correctamente.",
       });
     } catch (err) {
       setFeedback({
@@ -1919,6 +1932,7 @@ export default function Cuotas() {
     if (!payment?.id_inscripcion || !paymentForm.id_socio) return;
 
     setRegistrationDeleteRow({
+      estado: payment.estado,
       id_inscripcion: Number(payment.id_inscripcion),
       id_socio: Number(paymentForm.id_socio),
       denominacion:
@@ -1928,7 +1942,7 @@ export default function Cuotas() {
         `ID ${paymentForm.id_socio}`,
       fecha_pago: payment.fecha_pago || "",
       monto: Number(payment.monto || 0),
-      medio_pago: payment.medio_pago || "—",
+      medio_pago: payment.estado === "CONDONADO" ? "CONDONADA · SIN COBRO" : payment.medio_pago || "—",
     });
     setPaymentOpen(false);
   };
@@ -1953,13 +1967,12 @@ export default function Cuotas() {
 
     setFeedback({
       type: "success",
-      message: "Pago de inscripción eliminado correctamente.",
+      message: response.mensaje || "Inscripción eliminada correctamente.",
     });
 
     return {
       ...response,
-      mensaje:
-        "Pago de inscripción eliminado correctamente. La inscripción volvió a quedar pendiente.",
+      mensaje: response.mensaje || "Inscripción eliminada correctamente. La inscripción volvió a quedar pendiente.",
     };
   };
 
@@ -2960,12 +2973,12 @@ export default function Cuotas() {
           setPaymentOpen(true);
         }}
         onConfirm={deleteRegistrationPayment}
-        title="Eliminar pago de inscripción"
-        message="¿Deseás eliminar este pago de inscripción?"
+        title={registrationDeleteRow?.estado === "CONDONADO" ? "Eliminar condonación de inscripción" : "Eliminar pago de inscripción"}
+        message={registrationDeleteRow?.estado === "CONDONADO" ? "¿Deseás eliminar esta condonación de inscripción?" : "¿Deseás eliminar este pago de inscripción?"}
         warning="La inscripción volverá a quedar pendiente y podrá registrarse nuevamente con otro monto, fecha o medio de pago."
-        confirmLabel="Eliminar pago"
-        loadingMessage="Eliminando pago de inscripción…"
-        successMessage="Pago de inscripción eliminado correctamente."
+        confirmLabel={registrationDeleteRow?.estado === "CONDONADO" ? "Eliminar condonación" : "Eliminar pago"}
+        loadingMessage="Eliminando inscripción…"
+        successMessage={registrationDeleteRow?.estado === "CONDONADO" ? "Condonación de inscripción eliminada correctamente." : "Pago de inscripción eliminado correctamente."}
         errorMessage="No se pudo eliminar el pago de inscripción."
         details={[
           {

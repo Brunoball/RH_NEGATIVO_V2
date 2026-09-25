@@ -15,34 +15,44 @@ abstract class CuotasRegistros extends CuotasConsultas
         return self::guardarObjetivos($auth, $targets, $date, $medium, false, null);
     }
 
-    protected static function registrarInscripcionDatos(array $auth, array $body): array
+    protected static function registrarInscripcionDatos(array $auth, array $body, bool $condoned = false): array
     {
         $db = $auth['db'];
         self::validarEsquema($db);
         $partnerId = positive_id($body['id_socio'] ?? null, 'socio');
-        $date = self::fechaPago($body['fecha_pago'] ?? date('Y-m-d'));
-        $medium = self::medioPago($db, $body['id_medio_pago'] ?? null);
+        $date = self::fechaPago(
+            ($condoned ? ($body['fecha_condonacion'] ?? $body['fecha_pago'] ?? null) : ($body['fecha_pago'] ?? null)) ?? date('Y-m-d'),
+            $condoned ? 'condonación' : 'pago'
+        );
+        $reason = $condoned ? optional_text($body['motivo'] ?? null, 500) : null;
+        $medium = null;
+        $amount = 0;
+        // La condonación nunca cobra dinero, aunque el cliente envíe monto/medio.
+        // El endpoint de cobro mantiene sus validaciones y no acepta importe cero.
+        if (!$condoned) {
+            $medium = self::medioPago($db, $body['id_medio_pago'] ?? null);
 
-        $mediumName = function_exists('mb_strtoupper')
-            ? mb_strtoupper(trim((string)$medium['nombre']), 'UTF-8')
-            : strtoupper(trim((string)$medium['nombre']));
-        if (!str_contains($mediumName, 'EFECTIVO') && !str_contains($mediumName, 'TRANSFERENCIA')) {
-            api_error(
-                'La inscripción sólo puede registrarse en efectivo o transferencia.',
-                'MEDIO_PAGO_INSCRIPCION_INVALIDO'
-            );
-        }
+            $mediumName = function_exists('mb_strtoupper')
+                ? mb_strtoupper(trim((string)$medium['nombre']), 'UTF-8')
+                : strtoupper(trim((string)$medium['nombre']));
+            if (!str_contains($mediumName, 'EFECTIVO') && !str_contains($mediumName, 'TRANSFERENCIA')) {
+                api_error(
+                    'La inscripción sólo puede registrarse en efectivo o transferencia.',
+                    'MEDIO_PAGO_INSCRIPCION_INVALIDO'
+                );
+            }
 
-        $rawAmount = trim((string)($body['monto'] ?? ''));
-        if ($rawAmount === '' || !preg_match('/^[0-9]{1,10}$/', $rawAmount)) {
-            api_error('Ingresá un monto de inscripción válido, sin decimales.', 'MONTO_INSCRIPCION_INVALIDO');
-        }
-        $amount = (int)$rawAmount;
-        if ($amount <= 0) {
-            api_error('El monto de inscripción debe ser mayor a cero.', 'MONTO_INSCRIPCION_INVALIDO');
-        }
-        if ($amount > 2147483647) {
-            api_error('El monto de inscripción supera el máximo permitido.', 'MONTO_INSCRIPCION_INVALIDO');
+            $rawAmount = trim((string)($body['monto'] ?? ''));
+            if ($rawAmount === '' || !preg_match('/^[0-9]{1,10}$/', $rawAmount)) {
+                api_error('Ingresá un monto de inscripción válido, sin decimales.', 'MONTO_INSCRIPCION_INVALIDO');
+            }
+            $amount = (int)$rawAmount;
+            if ($amount <= 0) {
+                api_error('El monto de inscripción debe ser mayor a cero.', 'MONTO_INSCRIPCION_INVALIDO');
+            }
+            if ($amount > 2147483647) {
+                api_error('El monto de inscripción supera el máximo permitido.', 'MONTO_INSCRIPCION_INVALIDO');
+            }
         }
 
         return transaction($db, static function () use (
@@ -51,7 +61,9 @@ abstract class CuotasRegistros extends CuotasConsultas
             $partnerId,
             $date,
             $medium,
-            $amount
+            $amount,
+            $condoned,
+            $reason
         ): array {
             // Bloquear la fila del socio serializa dos intentos simultáneos de
             // inscripción aun en bases históricas que no tengan UNIQUE por socio.
@@ -98,14 +110,16 @@ abstract class CuotasRegistros extends CuotasConsultas
 
             $insert = $db->prepare(
                 'INSERT INTO pagos_inscripcion
-                 (id_socio, monto, fecha_pago, id_medio_pago)
-                 VALUES (?, ?, ?, ?)'
+                 (id_socio, monto, fecha_pago, id_medio_pago, estado, motivo_condonacion)
+                 VALUES (?, ?, ?, ?, ?, ?)'
             );
             $insert->execute([
                 $partnerId,
                 $amount,
                 $date,
-                (int)$medium['id_medio_pago'],
+                $medium === null ? null : (int)$medium['id_medio_pago'],
+                $condoned ? 'CONDONADO' : 'PAGADO',
+                $reason,
             ]);
             $registrationId = (int)$db->lastInsertId();
 
@@ -116,8 +130,10 @@ abstract class CuotasRegistros extends CuotasConsultas
                 'documento' => $partner['dni'],
                 'fecha_pago' => $date,
                 'monto' => $amount,
-                'id_medio_pago' => (int)$medium['id_medio_pago'],
-                'medio_pago' => (string)$medium['nombre'],
+                'id_medio_pago' => $medium === null ? null : (int)$medium['id_medio_pago'],
+                'medio_pago' => $medium['nombre'] ?? null,
+                'estado' => $condoned ? 'CONDONADO' : 'PAGADO',
+                'motivo_condonacion' => $reason,
                 'domicilio' => trim((string)$partner['domicilio'] . ' ' . (string)$partner['numero']),
                 'domicilio_cobro' => $partner['domicilio_cobro'],
                 'telefono_fijo' => $partner['telefono_fijo'],
@@ -132,7 +148,7 @@ abstract class CuotasRegistros extends CuotasConsultas
                 'INSERT',
                 'pagos_inscripcion',
                 $registrationId,
-                sprintf('Se registró la inscripción de %s.', (string)$partner['nombre']),
+                sprintf($condoned ? 'Se condonó la inscripción de %s.' : 'Se registró la inscripción de %s.', (string)$partner['nombre']),
                 null,
                 $item
             );
@@ -157,7 +173,7 @@ abstract class CuotasRegistros extends CuotasConsultas
         ): array {
             $statement = $db->prepare(
                 'SELECT pi.id_inscripcion, pi.id_socio, pi.monto, pi.fecha_pago,
-                        pi.id_medio_pago, pi.creado_en,
+                        pi.id_medio_pago, pi.creado_en, pi.estado, pi.motivo_condonacion,
                         s.nombre AS socio, s.dni,
                         mp.nombre AS medio_pago
                  FROM pagos_inscripcion pi
@@ -208,6 +224,8 @@ abstract class CuotasRegistros extends CuotasConsultas
                     : (int)$row['id_medio_pago'],
                 'medio_pago' => $row['medio_pago'],
                 'creado_en' => $row['creado_en'],
+                'estado' => (string)$row['estado'],
+                'motivo_condonacion' => $row['motivo_condonacion'],
             ];
 
             audit_change(
@@ -218,7 +236,9 @@ abstract class CuotasRegistros extends CuotasConsultas
                 'pagos_inscripcion',
                 $registrationId,
                 sprintf(
-                    'Se eliminó el pago de inscripción de %s.',
+                    $row['estado'] === 'CONDONADO'
+                        ? 'Se eliminó la condonación de inscripción de %s.'
+                        : 'Se eliminó el pago de inscripción de %s.',
                     (string)$row['socio']
                 ),
                 $item,

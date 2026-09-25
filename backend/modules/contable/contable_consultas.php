@@ -428,7 +428,7 @@ trait ContableConsultas
             $db,
             "SELECT COALESCE(NULLIF(mp.nombre, ''), 'SIN MEDIO ESPECIFICADO') AS nombre, SUM(pi.monto) AS total
              FROM pagos_inscripcion pi LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
-             WHERE pi.fecha_pago >= ? AND pi.fecha_pago < ?
+             WHERE pi.fecha_pago >= ? AND pi.fecha_pago < ? AND pi.estado = 'PAGADO'
              GROUP BY mp.id_medio_pago, mp.nombre",
             [$start, $end], $totals
         );

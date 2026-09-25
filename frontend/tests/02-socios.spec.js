@@ -13,18 +13,9 @@ function rowByText(page, text) {
   return page.getByRole('row').filter({ hasText: text }).last();
 }
 
-function splitFullName(value) {
-  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
-  return {
-    nombre: parts.slice(0, -1).join(' ') || parts[0] || '',
-    apellido: parts.length > 1 ? parts.at(-1) : 'PLAYWRIGHT',
-  };
-}
-
 async function fillSocioForm(dialog, data, catalogs, { birthday = false } = {}) {
-  const person = splitFullName(data.nombre);
-  await dialog.getByLabel('Nombre *', { exact: true }).fill(person.nombre);
-  await dialog.getByLabel('Apellido *', { exact: true }).fill(person.apellido);
+  await dialog.getByLabel('Nombre completo *', { exact: true }).fill(data.nombre);
+  await expect(dialog.getByLabel('Apellido *', { exact: true })).toHaveCount(0);
   await dialog.getByLabel('DNI').fill(data.dni);
   await dialog.getByLabel('Fecha de nacimiento').fill(birthday ? '2008-01-01' : '1999-05-15');
   await dialog.getByLabel('Domicilio', { exact: true }).fill('CALLE PLAYWRIGHT');
@@ -124,17 +115,14 @@ test.describe('Socios', () => {
       // Los campos required usan validación nativa del navegador.
       // Antes se esperaba un toast que nunca podía ejecutarse porque el submit
       // queda bloqueado por HTML5 antes de entrar al handler de React.
-      const validationName = dialog.getByLabel('Nombre *', { exact: true });
-      const validationLastName = dialog.getByLabel('Apellido *', { exact: true });
+      const validationName = dialog.getByLabel('Nombre completo *', { exact: true });
+      await expect(dialog.getByLabel('Apellido *', { exact: true })).toHaveCount(0);
       await validationName.fill('');
-      await validationLastName.fill('');
       await dialog.getByRole('button', { name: 'Crear socio' }).click();
       expect(await validationName.evaluate((element) => element.checkValidity())).toBe(false);
 
       await validationName.fill('PW EEE SOCIO');
-      await dialog.getByRole('button', { name: 'Crear socio' }).click();
-      expect(await validationLastName.evaluate((element) => element.checkValidity())).toBe(false);
-      await validationLastName.fill('VALIDACION');
+      expect(await validationName.evaluate((element) => element.checkValidity())).toBe(true);
       await dialog.getByRole('tab', { name: 'Gestión' }).click();
       const validationCategory = dialog.getByLabel('Categoría *');
       const validationCollector = dialog.getByLabel('Cobrador *');
@@ -322,9 +310,8 @@ test.describe('Socios', () => {
       await expect(editIdField).toHaveAttribute('readonly', '');
       await expect(editIdField).toHaveAttribute('title', 'ID actual del socio');
       await expect(editIdField).toHaveValue(String(createdId));
-      const editedPerson = splitFullName(data.nombreEditado);
-      await dialog.getByLabel('Nombre *', { exact: true }).fill(editedPerson.nombre);
-      await dialog.getByLabel('Apellido *', { exact: true }).fill(editedPerson.apellido);
+      await expect(dialog.getByLabel('Nombre completo *', { exact: true })).toHaveValue(data.nombre);
+      await dialog.getByLabel('Nombre completo *', { exact: true }).fill(data.nombreEditado);
       const editedMobile = `351${data.dni}`.slice(0, 10);
       await dialog.getByLabel('Teléfono móvil').fill(editedMobile);
 

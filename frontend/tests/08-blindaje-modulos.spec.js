@@ -108,15 +108,15 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     const dialog = page.getByRole('dialog', { name: 'Nuevo socio' });
     await expect(dialog).toBeVisible();
 
-    const name = dialog.getByLabel('Nombre *', { exact: true });
-    const lastName = dialog.getByLabel('Apellido *', { exact: true });
+    const name = dialog.getByLabel('Nombre completo *', { exact: true });
+    await expect(dialog.getByLabel('Apellido *', { exact: true })).toHaveCount(0);
+    await expect(name).toHaveAttribute('maxlength', '100');
     const dni = dialog.getByLabel('DNI');
     const number = dialog.getByRole('textbox', { name: 'Número', exact: true });
     const mobile = dialog.getByLabel('Teléfono móvil');
     const address = dialog.getByLabel('Domicilio', { exact: true });
 
-    await name.fill('Bruno123_!?');
-    await lastName.fill('Playwright456');
+    await name.fill('De la Cruz123_!? María456 José');
     // Con maxlength=8 el navegador trunca antes del onChange; primero probamos
     // saneo dentro de ocho caracteres y luego el límite con sólo números.
     await dni.fill('12AB3456');
@@ -130,8 +130,7 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     await mobile.fill('351123456789012345');
     await address.fill('calle test @@@ 123 # 4');
 
-    await expect(name).toHaveValue('BRUNO');
-    await expect(lastName).toHaveValue('PLAYWRIGHT');
+    await expect(name).toHaveValue('DE LA CRUZ MARÍA JOSÉ');
     await expect(dni).toHaveValue('12345678');
     await expect(number).toHaveValue('123456');
     await expect(mobile).toHaveValue('351123456789012');
@@ -143,8 +142,7 @@ test.describe('Blindaje adicional · Socios y familias', () => {
     await expect(observations).toHaveValue('DATO DE GESTIÓN QUE NO DEBE PERDERSE');
 
     await dialog.getByRole('tab', { name: 'Datos personales' }).click();
-    await expect(name).toHaveValue('BRUNO');
-    await expect(lastName).toHaveValue('PLAYWRIGHT');
+    await expect(name).toHaveValue('DE LA CRUZ MARÍA JOSÉ');
     await expect(dni).toHaveValue('12345678');
     await expect(number).toHaveValue('123456');
     await expect(mobile).toHaveValue('351123456789012');

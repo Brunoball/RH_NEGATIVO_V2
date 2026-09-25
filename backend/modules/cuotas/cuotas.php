@@ -63,13 +63,22 @@ final class Cuotas extends CuotasRegistros
         api_success(['item' => $item], 'Inscripción pagada correctamente.');
     }
 
+    public static function condonarInscripcion(): never
+    {
+        $auth = require_admin();
+        $item = self::registrarInscripcionDatos($auth, request_body(), true);
+        api_success(['item' => $item], 'Inscripción condonada correctamente.');
+    }
+
     public static function eliminarInscripcion(): never
     {
         $auth = require_admin();
         $item = self::eliminarInscripcionDatos($auth, request_body());
         api_success(
             ['item' => $item],
-            'Pago de inscripción eliminado correctamente. La inscripción volvió a quedar pendiente.'
+            $item['estado'] === 'CONDONADO'
+                ? 'Condonación de inscripción eliminada correctamente. La inscripción volvió a quedar pendiente.'
+                : 'Pago de inscripción eliminado correctamente. La inscripción volvió a quedar pendiente.'
         );
     }
 

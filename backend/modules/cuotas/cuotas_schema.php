@@ -23,7 +23,7 @@ function ensure_cuotas_schema(PDO $db): void
             'id_pago', 'id_socio', 'id_periodo', 'anio_aplicado', 'fecha_pago', 'estado',
             'monto', 'id_medio_pago', 'tipo_pago', 'porcentaje_descuento_familiar',
         ],
-        'pagos_inscripcion' => ['id_inscripcion', 'id_socio', 'monto', 'fecha_pago', 'id_medio_pago', 'creado_en'],
+        'pagos_inscripcion' => ['id_inscripcion', 'id_socio', 'monto', 'fecha_pago', 'id_medio_pago', 'creado_en', 'estado', 'motivo_condonacion'],
         'medios_pago' => ['id_medio_pago', 'nombre', 'activo'],
         'cobrador' => ['id_cobrador', 'nombre'],
         'familias' => ['id_familia', 'nombre_familia', 'activo'],

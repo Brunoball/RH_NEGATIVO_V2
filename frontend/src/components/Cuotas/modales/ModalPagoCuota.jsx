@@ -229,7 +229,11 @@ export default function ModalPagoCuota({
 
   const registrationTabActive =
     paymentMode === "single" && activePaymentTab === "registration";
-  const registrationPaid = Boolean(registrationContext?.pagada);
+  const registrationPaid = Boolean(registrationContext?.registrada || registrationContext?.pagada);
+  const registrationCondoned = Boolean(registrationContext?.condonada);
+  const condoningRegistration = Boolean(paymentForm.condonar_inscripcion);
+  const registrationDeleteLabel = registrationCondoned
+    ? "Eliminar condonación de inscripción" : "Eliminar pago de inscripción";
   const registrationPayment = registrationContext?.pago || null;
   const registrationAmount = Number(
     paymentForm.monto_inscripcion || registrationContext?.monto_sugerido || 0,
@@ -248,7 +252,7 @@ export default function ModalPagoCuota({
   const registrationReady = Boolean(registrationContext);
   const registrationFooterAmount = registrationPaid
     ? Number(registrationPayment?.monto || 0)
-    : registrationAmount;
+    : condoningRegistration ? 0 : registrationAmount;
   const footerAmount = registrationTabActive
     ? registrationFooterAmount
     : paymentTotal;
@@ -296,8 +300,8 @@ export default function ModalPagoCuota({
           ? `Registrar ${paymentForm.pagos.length} pagos`
           : registrationTabActive
             ? registrationPaid
-              ? "Inscripción ya registrada"
-              : "Registrar inscripción"
+              ? registrationCondoned ? "Inscripción condonada" : "Inscripción ya registrada"
+              : condoningRegistration ? "Condonar inscripción" : "Registrar inscripción"
             : paymentForm.aplicar_familia && family
               ? `Registrar pago familiar (${familyPaymentCount} ${familyPaymentCount === 1 ? "cuota" : "cuotas"})`
               : selectedMonthIds.length > 1
@@ -309,9 +313,9 @@ export default function ModalPagoCuota({
         (registrationTabActive
           ? !registrationReady ||
             registrationPaid ||
-            !(registrationAmount > 0) ||
+            (!condoningRegistration && !(registrationAmount > 0)) ||
             !paymentForm.fecha_pago ||
-            !registrationMediumSelected
+            (!condoningRegistration && !registrationMediumSelected)
           : paymentMode === "single"
             ? !selectedMonthIds.length || !(paymentTotal > 0)
             : !(paymentTotal > 0))
@@ -331,8 +335,8 @@ export default function ModalPagoCuota({
               ? `${paymentForm.pagos.length} cuotas seleccionadas`
               : registrationTabActive
                 ? registrationPaid
-                  ? `Pagada el ${formatOptionDate(registrationPayment?.fecha_pago)}`
-                  : "Pago único de inscripción"
+                  ? `${registrationCondoned ? "Condonada" : "Pagada"} el ${formatOptionDate(registrationPayment?.fecha_pago)}`
+                  : condoningRegistration ? "Condonación sin ingreso de dinero" : "Pago único de inscripción"
                 : annualSelected
                   ? "Contado anual seleccionado"
                   : `${selectedMonthIds.length} ${selectedMonthIds.length === 1 ? "período seleccionado" : "períodos seleccionados"}`}
@@ -548,8 +552,9 @@ export default function ModalPagoCuota({
                     type="button"
                     className="cuotas-registration-paid__delete"
                     onClick={requestDeleteRegistration}
-                    aria-label="Eliminar pago de inscripción"
-                    title="Eliminar pago de inscripción"
+                    aria-label={registrationDeleteLabel}
+                    title={registrationDeleteLabel}
+                    disabled={saving || contextLoading}
                   >
                     <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
                   </button>
@@ -558,14 +563,19 @@ export default function ModalPagoCuota({
                     <FontAwesomeIcon icon={faIdCard} />
                   </span>
                   <div className="cuotas-registration-paid__content">
-                    <span>Inscripción ya registrada</span>
+                    <span>{registrationCondoned ? "Inscripción condonada" : "Inscripción ya registrada"}</span>
                     <strong>{money(registrationPayment?.monto || 0)}</strong>
                     <small>
-                      Se pagó el {formatOptionDate(registrationPayment?.fecha_pago)}
-                      {registrationPayment?.medio_pago
-                        ? ` · ${registrationPayment.medio_pago}`
-                        : " · medio no informado"}
+                      {registrationCondoned ? "Se condonó el " : "Se pagó el "}{formatOptionDate(registrationPayment?.fecha_pago)}
+                      {registrationCondoned
+                        ? " · sin ingreso de dinero"
+                        : registrationPayment?.medio_pago
+                          ? ` · ${registrationPayment.medio_pago}`
+                          : " · medio no informado"}
                     </small>
+                    {registrationCondoned && registrationPayment?.motivo_condonacion ? (
+                      <small>Motivo: {registrationPayment.motivo_condonacion}</small>
+                    ) : null}
                   </div>
                 </div>
               ) : (
@@ -580,7 +590,7 @@ export default function ModalPagoCuota({
                           <span>Inscripción</span>
                           <em>Pago único</em>
                         </div>
-                        <strong>Registrar pago de ingreso</strong>
+                        <strong>{condoningRegistration ? "Condonar inscripción de ingreso" : "Registrar pago de ingreso"}</strong>
                         <small>Este cobro se realiza una sola vez por socio.</small>
                       </div>
                     </div>
@@ -593,8 +603,19 @@ export default function ModalPagoCuota({
                   </header>
 
                   <div className="cuotas-registration-card__body">
+                    <label className="cuotas-registration-waiver">
+                      <input
+                        type="checkbox"
+                        checked={condoningRegistration}
+                        disabled={saving || contextLoading}
+                        onChange={(event) => setPaymentForm((current) => ({
+                          ...current, condonar_inscripcion: event.target.checked,
+                        }))}
+                      />
+                      <span>Condonar inscripción</span>
+                    </label>
                     <div className="cuotas-registration-fields">
-                    <FloatingField
+                    {!condoningRegistration ? <FloatingField
                       label="Monto de inscripción *"
                       active={Boolean(paymentForm.monto_inscripcion)}
                     >
@@ -610,21 +631,21 @@ export default function ModalPagoCuota({
                         aria-label="Monto de inscripción *"
                         placeholder="0"
                       />
-                    </FloatingField>
+                    </FloatingField> : null}
 
                     <FloatingField
-                      label="Fecha de pago *"
+                      label={condoningRegistration ? "Fecha de condonación *" : "Fecha de pago *"}
                       active={Boolean(paymentForm.fecha_pago)}
                     >
                       <input
                         type="date"
                         value={paymentForm.fecha_pago}
                         onChange={(event) => updatePaymentDate(event.target.value)}
-                        aria-label="Fecha de pago de inscripción *"
+                        aria-label={condoningRegistration ? "Fecha de condonación de inscripción *" : "Fecha de pago de inscripción *"}
                       />
                     </FloatingField>
 
-                    <FloatingField label="Medio de pago *" active>
+                    {!condoningRegistration ? <FloatingField label="Medio de pago *" active>
                       <select
                         value={
                           registrationMediumSelected
@@ -646,14 +667,28 @@ export default function ModalPagoCuota({
                           </option>
                         ))}
                       </select>
-                    </FloatingField>
+                    </FloatingField> : (
+                      <FloatingField label="Motivo de condonación" active={Boolean(paymentForm.motivo_inscripcion)}>
+                        <input
+                          type="text"
+                          maxLength={500}
+                          value={paymentForm.motivo_inscripcion || ""}
+                          onChange={(event) => setPaymentForm((current) => ({
+                            ...current, motivo_inscripcion: event.target.value,
+                          }))}
+                          aria-label="Motivo de condonación"
+                          placeholder="Opcional"
+                        />
+                      </FloatingField>
+                    )}
                     </div>
 
                     <div className="cuotas-registration-note" role="note">
                       <FontAwesomeIcon icon={faIdCard} aria-hidden="true" />
                       <span>
-                        El valor vigente se completa automáticamente. Si corresponde,
-                        podés ingresar otro importe antes de registrar el pago.
+                        {condoningRegistration
+                          ? "Se registrará la inscripción como condonada, con importe $0 y sin medio de pago."
+                          : "El valor vigente se completa automáticamente. Si corresponde, podés ingresar otro importe antes de registrar el pago."}
                       </span>
                     </div>
                   </div>

@@ -11,6 +11,7 @@ function register_cuotas_routes(Router $router): void
     $router->register('cuotas_contexto_pago', 'GET', [Cuotas::class, 'contextoPago'], true);
     $router->register('cuotas_contextos_pago', 'GET', [Cuotas::class, 'contextosPago'], true);
     $router->register('cuotas_registrar_inscripcion', 'POST', [Cuotas::class, 'registrarInscripcion'], true);
+    $router->register('cuotas_condonar_inscripcion', 'POST', [Cuotas::class, 'condonarInscripcion'], true);
     $router->register('cuotas_eliminar_inscripcion', 'POST', [Cuotas::class, 'eliminarInscripcion'], true);
     $router->register('cuotas_registrar_pago', 'POST', [Cuotas::class, 'registrarPago'], true);
     $router->register('cuotas_registrar_pagos', 'POST', [Cuotas::class, 'registrarPagos'], true);

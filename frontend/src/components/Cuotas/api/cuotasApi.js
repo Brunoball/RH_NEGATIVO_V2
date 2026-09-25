@@ -8,6 +8,7 @@ export const cuotasApi = {
   contextosPago: (params) => apiGet("cuotas_contextos_pago", params),
   registrarPago: (payload) => apiPost("cuotas_registrar_pago", payload),
   registrarInscripcion: (payload) => apiPost("cuotas_registrar_inscripcion", payload),
+  condonarInscripcion: (payload) => apiPost("cuotas_condonar_inscripcion", payload),
   eliminarInscripcion: (idInscripcion) =>
     apiPost("cuotas_eliminar_inscripcion", { id_inscripcion: idInscripcion }),
   registrarPagos: (payload) => apiPost("cuotas_registrar_pagos", payload),

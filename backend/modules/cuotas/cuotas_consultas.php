@@ -513,7 +513,7 @@ abstract class CuotasConsultas extends CuotasSoporte
 
         $payment = $db->prepare(
             'SELECT pi.id_inscripcion, pi.id_socio, pi.monto, pi.fecha_pago,
-                    pi.id_medio_pago, mp.nombre AS medio_pago
+                    pi.id_medio_pago, pi.estado, pi.motivo_condonacion, mp.nombre AS medio_pago
              FROM pagos_inscripcion pi
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
              WHERE pi.id_socio = ?
@@ -546,6 +546,8 @@ abstract class CuotasConsultas extends CuotasSoporte
                     ? null
                     : (int)$paymentRow['id_medio_pago'],
                 'medio_pago' => $paymentRow['medio_pago'],
+                'estado' => (string)$paymentRow['estado'],
+                'motivo_condonacion' => $paymentRow['motivo_condonacion'],
             ];
         }
 
@@ -554,7 +556,10 @@ abstract class CuotasConsultas extends CuotasSoporte
             'socio' => (string)$partnerRow['nombre'],
             'documento' => $partnerRow['dni'],
             'vigente' => (bool)$partnerRow['vigente'],
-            'pagada' => $paymentRow !== null,
+            'registrada' => $paymentRow !== null,
+            'pagada' => $paymentRow !== null && $paymentRow['estado'] === 'PAGADO',
+            'condonada' => $paymentRow !== null && $paymentRow['estado'] === 'CONDONADO',
+            'estado' => $paymentRow['estado'] ?? 'PENDIENTE',
             'monto_sugerido' => $suggestedAmount,
             'pago' => $paymentRow,
         ];

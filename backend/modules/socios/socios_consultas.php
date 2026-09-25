@@ -312,7 +312,7 @@ trait SociosConsultas
 
         $registrationPayments = $db->prepare(
             'SELECT pi.id_inscripcion, pi.monto, pi.fecha_pago, pi.id_medio_pago,
-                    mp.nombre AS medio_pago, pi.creado_en
+                    mp.nombre AS medio_pago, pi.creado_en, pi.estado, pi.motivo_condonacion
              FROM pagos_inscripcion pi
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
              WHERE pi.id_socio = ?

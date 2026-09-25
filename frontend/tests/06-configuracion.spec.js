@@ -397,7 +397,7 @@ test.describe('Configuración · usuarios y permisos', () => {
       'socios_guardar', 'socios_eliminar', 'socios_eliminar_definitivo', 'socios_reactivar', 'socios_contacto_guardar', 'socios_cumpleanios_cerrar',
       'familias_guardar', 'familias_eliminar', 'familias_eliminar_definitivo', 'familias_reactivar',
       'categorias_guardar', 'categorias_eliminar', 'categorias_reactivar', 'descuentos_familiares_guardar', 'descuentos_familiares_eliminar',
-      'cuotas_registrar_inscripcion', 'cuotas_eliminar_inscripcion',
+      'cuotas_registrar_inscripcion', 'cuotas_condonar_inscripcion', 'cuotas_eliminar_inscripcion',
       'cuotas_registrar_pago', 'cuotas_registrar_pagos', 'cuotas_condonar_pago', 'cuotas_eliminar_pago', 'cuotas_registrar_cobro', 'cuotas_anular',
       'configuracion_lista_guardar', 'configuracion_lista_eliminar', 'configuracion_lista_baja', 'configuracion_lista_reactivar', 'configuracion_lista_eliminar_definitivo',
       'usuarios_guardar', 'usuarios_cambiar_estado', 'usuarios_eliminar',

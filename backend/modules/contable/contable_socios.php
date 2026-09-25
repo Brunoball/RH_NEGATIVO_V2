@@ -265,7 +265,7 @@ trait ContableSocios
              INNER JOIN socios s ON s.id_socio = pi.id_socio
              LEFT JOIN socios_eliminados se ON se.id_socio = s.id_socio
              LEFT JOIN medios_pago mp ON mp.id_medio_pago = pi.id_medio_pago
-             WHERE pi.fecha_pago >= ? AND pi.fecha_pago < ?"
+             WHERE pi.fecha_pago >= ? AND pi.fecha_pago < ? AND pi.estado = 'PAGADO'"
         );
         $registrationStatement->execute([$start, $endExclusive]);
         $rows = array_merge($rows, $registrationStatement->fetchAll(PDO::FETCH_ASSOC));
@@ -706,7 +706,7 @@ trait ContableSocios
 
         $registrationStatement = $db->prepare(
             'SELECT COUNT(DISTINCT id_socio) AS socios, COALESCE(SUM(monto),0) AS total
-             FROM pagos_inscripcion WHERE fecha_pago >= ? AND fecha_pago < ?'
+             FROM pagos_inscripcion WHERE fecha_pago >= ? AND fecha_pago < ? AND estado = \'PAGADO\''
         );
         $registrationStatement->execute([$start, $endExclusive]);
         $registration = $registrationStatement->fetch(PDO::FETCH_ASSOC) ?: ['socios' => 0, 'total' => 0];
@@ -1264,6 +1264,7 @@ trait ContableSocios
         // Históricos migrados: pagos_inscripcion es la fuente canónica.
         $statement = $db->prepare(
             "SELECT pi.id_inscripcion, pi.id_socio, pi.monto, pi.fecha_pago, pi.id_medio_pago,
+                    pi.estado AS estado_inscripcion, pi.motivo_condonacion,
                     s.nombre AS socio, COALESCE(s.dni, se.dni) AS dni, s.fecha_ingreso,
                     COALESCE(NULLIF(e.nombre,''),'SIN ESTADO') AS estado,
                     COALESCE(NULLIF(mp.nombre,''),'SIN MEDIO ESPECIFICADO') AS medio
@@ -1289,9 +1290,11 @@ trait ContableSocios
                 'socio' => (string)$row['socio'], 'dni' => (string)($row['dni'] ?? ''),
                 'estado' => self::estadoContable($historical['estado'] ?? $row['estado'] ?? null), 'fecha_alta' => $date,
                 'periodo' => $period['etiqueta'], 'fecha_pago' => (string)$row['fecha_pago'],
-                'medio' => (string)$row['medio'],
+                'medio' => $row['estado_inscripcion'] === 'CONDONADO' ? 'CONDONADA · SIN COBRO' : (string)$row['medio'],
                 'monto' => number_format((float)$row['monto'], 2, '.', ''),
-                'tipo' => (float)$row['monto'] > 0 ? 'PAGADA' : 'SIN_IMPORTE',
+                'tipo' => $row['estado_inscripcion'] === 'CONDONADO' ? 'CONDONADA' : ((float)$row['monto'] > 0 ? 'PAGADA' : 'SIN_IMPORTE'),
+                'estado_inscripcion' => $row['estado_inscripcion'],
+                'motivo_condonacion' => $row['motivo_condonacion'],
             ];
             $seenPartners[(int)$row['id_socio']] = true;
         }
@@ -1333,7 +1336,7 @@ trait ContableSocios
         foreach ($items as $item) {
             $summary['total']++;
             if ($item['tipo'] === 'PAGADA') $summary['pagadas']++;
-            elseif ($item['tipo'] === 'SIN_IMPORTE') $summary['sin_importe']++;
+            elseif (in_array($item['tipo'], ['SIN_IMPORTE', 'CONDONADA'], true)) $summary['sin_importe']++;
             else $summary['sin_registro']++;
             $summary['importe'] += self::centavos($item['monto']);
             $state = self::estadoContable($item['estado'] ?? null);
@@ -1354,7 +1357,7 @@ trait ContableSocios
             elseif ($state === 'PASIVO') $groups[$key]['pasivos']++;
             else $groups[$key]['sin_estado']++;
             if ($item['tipo'] === 'PAGADA') $groups[$key]['pagadas']++;
-            elseif ($item['tipo'] === 'SIN_IMPORTE') $groups[$key]['sin_importe']++;
+            elseif (in_array($item['tipo'], ['SIN_IMPORTE', 'CONDONADA'], true)) $groups[$key]['sin_importe']++;
             else $groups[$key]['sin_registro']++;
             $groups[$key]['total_cobrado_cents'] += self::centavos($item['monto']);
         }

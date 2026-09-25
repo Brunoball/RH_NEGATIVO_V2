@@ -2114,3 +2114,18 @@ html[data-theme="oscuro"] .cuotas-registration-paid__delete:focus-visible {
   color: #fecaca;
   background: rgb(127 29 29 / 0.38);
 }
+
+.cuotas-registration-waiver {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.cuotas-registration-waiver input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  margin: 0;
+}

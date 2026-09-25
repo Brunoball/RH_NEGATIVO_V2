@@ -306,6 +306,7 @@ function e2e_scope_guard(string $action, array $auth): void
             e2e_scope_error($action, "La opción {$list} no tiene marcador E2E.");
 
         case 'cuotas_registrar_inscripcion':
+        case 'cuotas_condonar_inscripcion':
         case 'cuotas_registrar_pago':
         case 'cuotas_registrar_pagos':
         case 'cuotas_condonar_pago':
