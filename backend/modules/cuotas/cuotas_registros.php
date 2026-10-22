@@ -654,10 +654,14 @@ abstract class CuotasRegistros extends CuotasConsultas
                         s.domicilio_cobro, s.telefono_fijo, s.telefono_movil,
                         s.fecha_ingreso, s.vigente, s.id_categoria,
                         c.nombre AS categoria, c.monto_mensual, c.monto_anual,
-                        c.activo AS categoria_activa, co.nombre AS cobrador
+                        c.activo AS categoria_activa, co.nombre AS cobrador,
+                        es.nombre AS estado_persona,
+                        gs.nombre AS grupo_sanguineo
                  FROM socios s
                  INNER JOIN categoria c ON c.id_categoria = s.id_categoria
                  LEFT JOIN cobrador co ON co.id_cobrador = s.id_cobrador
+                 LEFT JOIN estado es ON es.id_estado = s.id_estado
+                 LEFT JOIN grupo_sanguineo gs ON gs.id_grupo_sanguineo = s.id_grupo_sanguineo
                  WHERE s.id_socio IN (' . implode(',', array_fill(0, count($partnerIds), '?')) . ')
                    AND ' . self::filtroSociosOperativos($db, 's') . '
                  ORDER BY s.id_socio ASC FOR UPDATE'
@@ -859,6 +863,9 @@ abstract class CuotasRegistros extends CuotasConsultas
                     'socio' => (string)$partner['nombre'],
                     'denominacion' => (string)$partner['nombre'],
                     'documento' => $partner['dni'],
+                    // Estado administrativo del socio, NO estado de la cuota.
+                    'estado_persona' => $partner['estado_persona'],
+                    'grupo_sanguineo' => $partner['grupo_sanguineo'],
                     'id_categoria' => $historicalCategoryId,
                     'categoria' => (string)$historicalCategory['nombre'],
                     'anio' => $year,

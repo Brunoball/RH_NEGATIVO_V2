@@ -171,6 +171,11 @@ export const normalizePaymentReceipt = (source = {}) => {
         "—",
       categoria:
         line.categoria || operation.categorias_label || operation.categoria || "—",
+      grupoSanguineo: firstValue(
+        line.grupo_sanguineo, operation.grupo_sanguineo, safeSource.grupo_sanguineo,
+      ),
+      // No confundir el estado del socio (ACTIVO/PASIVO) con el del pago.
+      estadoPersona: firstValue(line.estado_persona, line.estado_persona_nombre),
       periodo: line.periodo_pago || line.periodo || line.descripcion || "—",
       montoBase: Number(line.monto_base ?? line.monto ?? 0),
       descuento: Number(
@@ -244,7 +249,7 @@ const receiptLegacyEntries = (source) => {
     );
     const first = orderedLines[0] || {};
     const people = uniqueValues(orderedLines.map((line) => line.socio));
-    const categories = uniqueValues(orderedLines.map((line) => line.categoria));
+    const bloodGroups = uniqueValues(orderedLines.map((line) => line.grupoSanguineo));
     const periods = uniqueValues(
       orderedLines.map((line) => {
         if (Number(line.periodId) === 7) return "CONTADO ANUAL";
@@ -277,8 +282,11 @@ const receiptLegacyEntries = (source) => {
         ...orderedLines.map((line) => line.telefonoMovil),
         ...orderedLines.map((line) => line.telefonoFijo),
       ),
-      category: categories.join(" · ") || "",
-      state: String(receipt.estado || first.estado || "PAGADO").toUpperCase(),
+      bloodGroup: bloodGroups.join(" · ") || "SIN INFORMAR",
+      // La etiqueta «Estado» del cupón corresponde a la condición del SOCIO.
+      // El estado económico PENDIENTE/PAGADO/CONDONADO queda independiente.
+      state: uniqueValues(orderedLines.map((line) => line.estadoPersona))
+        .join(" · ").toUpperCase() || "—",
       periodText,
       amount: money(groupAmount, 0),
       barcode: orderedLines.length === 1 ? first.barcode : "",
@@ -298,7 +306,7 @@ const receiptPanelHtml = (data, withBarcode) => `
     <div class="legacy-receipt-row legacy-receipt-row--last">
       <div class="legacy-receipt-cell legacy-receipt-period">
         <div><strong>Período:</strong>&nbsp;${htmlEscape(data.periodText)}</div>
-        <div><strong>Grupo:</strong>&nbsp;${htmlEscape(data.category)}&nbsp;<strong>Estado:</strong>&nbsp;${htmlEscape(data.state)}</div>
+        <div><strong>Grupo:</strong>&nbsp;${htmlEscape(data.bloodGroup)}&nbsp;<strong>Estado:</strong>&nbsp;${htmlEscape(data.state)}</div>
       </div>
       <div class="legacy-receipt-cell legacy-receipt-barcode-cell">
         ${
@@ -477,7 +485,7 @@ const paymentReceiptPdfContent = (data) => {
   commands.push(pdfText(74, 666, 10, `Domicilio: ${fitted(data.address, 68)}`));
   commands.push(pdfText(74, 638, 10, `Tel: ${fitted(data.phone, 28)}`));
   commands.push(pdfText(74, 610, 10, `Periodo: ${fitted(data.periodText, 48)}`));
-  commands.push(pdfText(74, 582, 10, `Grupo: ${fitted(data.category, 28)}   Estado: ${data.state}`));
+  commands.push(pdfText(74, 582, 10, `Grupo: ${fitted(data.bloodGroup, 28)}   Estado: ${data.state}`));
   commands.push(pdfText(390, 666, 11, `Importe: ${data.amount}`, { bold: true }));
   commands.push("0.85 0.85 0.85 RG 0.7 w 382 652 m 520 652 l S");
   commands.push(pdfText(420, 590, 10, TREASURER));

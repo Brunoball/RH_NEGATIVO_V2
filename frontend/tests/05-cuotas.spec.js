@@ -2253,9 +2253,26 @@ test.describe('Cuotas · UI', () => {
   });
 
   test('tabla nueva y comprobantes cubren Deudores, Pagados y Condonados con Estado/Cobrador e impresión masiva', async ({ page, request }) => {
-    const { socio, catalogs } = await setupQuotaPartner(request, 'TABLA PRINT TODAS');
+    const { category, socio, catalogs } = await setupQuotaPartner(request, 'TABLA PRINT TODAS');
     const periodId = Number(catalogs.bimonthly[0].id_periodo ?? catalogs.bimonthly[0].id_mes);
     const expectedColumns = ['ID', 'Socio', 'Dirección', 'Estado', 'Cobrador', 'Importe', 'Acciones'];
+    const expectedSocioState = String(
+      (catalogs.catalogos.estados || []).find(
+        (value) => String(value.id_estado) === String(socio.item.id_estado),
+      )?.nombre || '—',
+    ).toUpperCase();
+    const expectedCouponState = `<strong>Estado:</strong>&nbsp;${expectedSocioState}`;
+    const expectedBloodGroup = String(socio.item.grupo_sanguineo || 'SIN INFORMAR');
+    const expectedCouponGroup = `<strong>Grupo:</strong>&nbsp;${expectedBloodGroup}`;
+    const assertCouponState = async () => {
+      await expect.poll(async () => String((await lastPopup())?.html || '')).toContain(expectedCouponState);
+      const html = String((await lastPopup())?.html || '');
+      expect(html).toContain(expectedCouponGroup);
+      expect(html).not.toContain(`<strong>Grupo:</strong>&nbsp;${category.item.nombre}`);
+      for (const paymentState of ['PENDIENTE', 'PAGADO', 'CONDONADO']) {
+        expect(html).not.toContain(`<strong>Estado:</strong>&nbsp;${paymentState}`);
+      }
+    };
 
     await page.goto('/cuotas');
     await page.getByLabel('Año').selectOption(String(currentYear()));
@@ -2339,7 +2356,9 @@ test.describe('Cuotas · UI', () => {
     await expect.poll(async () => String((await lastPopup())?.html || '')).toContain(socio.data.nombre);
     await expect.poll(async () => Boolean((await lastPopup())?.printed)).toBe(true);
     await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
-    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PENDIENTE');
+    await assertCouponState();
+    // El mismo estado del socio debe mantenerse en los cupones masivos del cobrador.
+    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain(socio.data.nombre);
 
     // PAGADOS: misma tabla, mantiene filtro de medio sólo como filtro y no como columna.
     const paid = await apiCall(request, 'cuotas_registrar_pago', {
@@ -2350,6 +2369,10 @@ test.describe('Cuotas · UI', () => {
         mediumId: catalogs.medium.id_medio_pago,
       }),
     });
+    expect(String(paid.comprobante?.lineas?.[0]?.estado_persona || '—').toUpperCase())
+      .toBe(expectedSocioState);
+    expect(String(paid.comprobante?.lineas?.[0]?.grupo_sanguineo || 'SIN INFORMAR'))
+      .toBe(expectedBloodGroup);
     await page.getByRole('tab', { name: /Pagados/ }).click();
     row = rowByText(page, socio.data.nombre);
     await expect(row).toBeVisible();
@@ -2366,9 +2389,9 @@ test.describe('Cuotas · UI', () => {
     await expect(removeMediumChip).toHaveCount(0);
     row = rowByText(page, socio.data.nombre);
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
-    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PAGADO');
+    await assertCouponState();
     await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
-    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('PAGADO');
+    await assertCouponState();
     await deletePayment(request, paid.items[0].id_pago);
 
     // CONDONADOS: impresión volvió a estar disponible y siempre conserva monto cero.
@@ -2390,10 +2413,10 @@ test.describe('Cuotas · UI', () => {
     await expect(page.getByRole('button', { name: 'Medio de pago', exact: true })).toHaveCount(0);
     await closeQuotaAdvancedFilters(page);
     await row.getByRole('button', { name: `Imprimir comprobante de ${socio.data.nombre}` }).click();
-    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('CONDONADO');
+    await assertCouponState();
     await expect.poll(async () => Boolean((await lastPopup())?.printed)).toBe(true);
     await page.getByRole('button', { name: 'Imprimir', exact: true }).click();
-    await expect.poll(async () => String((await lastPopup())?.html || '')).toContain('CONDONADO');
+    await assertCouponState();
 
     const stillWaived = await apiCall(request, 'cuotas_listar', {
       params: { estado: 'CONDONADOS', anio: currentYear(), mes: periodId, buscar: socio.data.dni },

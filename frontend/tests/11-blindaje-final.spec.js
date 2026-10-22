@@ -342,104 +342,111 @@ test.describe('Blindaje final · integridad histórica y acciones deterministas'
     expect([quotaA.item.id_socio, quotaB.item.id_socio].map(Number)).toContain(Number(cuotasPage2.items[0].id_socio));
   });
 
-  test('paginación UI ejecuta siempre Siguiente y Anterior en Socios y Cuotas', async ({ page }) => {
-    const sociosMatcher = /api\.php\?[^#]*action=socios_listar/;
-    const sociosRequestedPages = [];
-    let sociosBaseBody = null;
-    await page.route(sociosMatcher, async (route) => {
-      const requestedPage = Number(new URL(route.request().url()).searchParams.get('pagina') || 1);
-      sociosRequestedPages.push(requestedPage);
+  // Aislamiento preventivo: en suites largas de Windows un proceso nativo de
+  // Playwright puede terminar con 0xC0000409 incluso antes de iniciar la prueba.
+  // `parallel` dentro de este describe hace que use un worker separado,
+  // manteniendo las aserciones y el gate de cero reintentos.
+  test.describe('Paginación UI en worker aislado', () => {
+    test.describe.configure({ mode: 'parallel' });
+    test('paginación UI ejecuta siempre Siguiente y Anterior en Socios y Cuotas', async ({ page }) => {
+      const sociosMatcher = /api\.php\?[^#]*action=socios_listar/;
+      const sociosRequestedPages = [];
+      let sociosBaseBody = null;
+      await page.route(sociosMatcher, async (route) => {
+        const requestedPage = Number(new URL(route.request().url()).searchParams.get('pagina') || 1);
+        sociosRequestedPages.push(requestedPage);
 
-      if (!sociosBaseBody) {
-        const response = await route.fetch();
-        sociosBaseBody = await response.json();
-      }
-      const body = JSON.parse(JSON.stringify(sociosBaseBody));
-      body.paginacion = {
-        ...(body.paginacion || {}),
-        pagina: requestedPage,
-        por_pagina: 100,
-        total: 101,
-        total_paginas: 2,
-        desde: requestedPage === 1 ? 1 : 101,
-        hasta: requestedPage === 1 ? 100 : 101,
-        tiene_anterior: requestedPage > 1,
-        tiene_siguiente: requestedPage < 2,
-      };
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json; charset=utf-8',
-        body: JSON.stringify(body),
+        if (!sociosBaseBody) {
+          const response = await route.fetch();
+          sociosBaseBody = await response.json();
+        }
+        const body = JSON.parse(JSON.stringify(sociosBaseBody));
+        body.paginacion = {
+          ...(body.paginacion || {}),
+          pagina: requestedPage,
+          por_pagina: 100,
+          total: 101,
+          total_paginas: 2,
+          desde: requestedPage === 1 ? 1 : 101,
+          hasta: requestedPage === 1 ? 100 : 101,
+          tiene_anterior: requestedPage > 1,
+          tiene_siguiente: requestedPage < 2,
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(body),
+        });
       });
-    });
 
-    await page.goto('/socios/personas');
-    // Socios tiene debounce de 280 ms que ejecuta setPage(1). Si el test pulsa
-    // Siguiente antes de que termine, ese timer puede devolver la UI a página 1
-    // aunque la request de página 2 ya haya ocurrido. Esperamos ese debounce real.
-    await page.waitForTimeout(350);
-    const sociosPagination = page.getByRole('navigation', { name: 'Paginación de socios' });
-    const sociosNext = sociosPagination.getByRole('button', { name: 'Siguiente', exact: true });
-    await expect(sociosNext).toBeEnabled();
-    await sociosNext.click();
-    await expect.poll(() => sociosRequestedPages.includes(2)).toBe(true);
-    await expect(sociosPagination.getByRole('button', { name: '2', exact: true })).toHaveAttribute('aria-current', 'page');
+      await page.goto('/socios/personas');
+      // Socios tiene debounce de 280 ms que ejecuta setPage(1). Si el test pulsa
+      // Siguiente antes de que termine, ese timer puede devolver la UI a página 1
+      // aunque la request de página 2 ya haya ocurrido. Esperamos ese debounce real.
+      await page.waitForTimeout(350);
+      const sociosPagination = page.getByRole('navigation', { name: 'Paginación de socios' });
+      const sociosNext = sociosPagination.getByRole('button', { name: 'Siguiente', exact: true });
+      await expect(sociosNext).toBeEnabled();
+      await sociosNext.click();
+      await expect.poll(() => sociosRequestedPages.includes(2)).toBe(true);
+      await expect(sociosPagination.getByRole('button', { name: '2', exact: true })).toHaveAttribute('aria-current', 'page');
 
-    const sociosPrevious = sociosPagination.getByRole('button', { name: 'Anterior', exact: true });
-    await expect(sociosPrevious).toBeEnabled();
-    const pageOneRequestsBefore = sociosRequestedPages.filter((value) => value === 1).length;
-    await sociosPrevious.click();
-    await expect.poll(() => sociosRequestedPages.filter((value) => value === 1).length).toBeGreaterThan(pageOneRequestsBefore);
-    await expect(sociosPagination.getByRole('button', { name: '1', exact: true })).toHaveAttribute('aria-current', 'page');
-    await page.unroute(sociosMatcher);
+      const sociosPrevious = sociosPagination.getByRole('button', { name: 'Anterior', exact: true });
+      await expect(sociosPrevious).toBeEnabled();
+      const pageOneRequestsBefore = sociosRequestedPages.filter((value) => value === 1).length;
+      await sociosPrevious.click();
+      await expect.poll(() => sociosRequestedPages.filter((value) => value === 1).length).toBeGreaterThan(pageOneRequestsBefore);
+      await expect(sociosPagination.getByRole('button', { name: '1', exact: true })).toHaveAttribute('aria-current', 'page');
+      await page.unroute(sociosMatcher);
 
-    const cuotasMatcher = /api\.php\?[^#]*action=cuotas_listar/;
-    const cuotasRequestedPages = [];
-    let cuotasBaseBody = null;
-    await page.route(cuotasMatcher, async (route) => {
-      const requestedPage = Number(new URL(route.request().url()).searchParams.get('pagina') || 1);
-      cuotasRequestedPages.push(requestedPage);
+      const cuotasMatcher = /api\.php\?[^#]*action=cuotas_listar/;
+      const cuotasRequestedPages = [];
+      let cuotasBaseBody = null;
+      await page.route(cuotasMatcher, async (route) => {
+        const requestedPage = Number(new URL(route.request().url()).searchParams.get('pagina') || 1);
+        cuotasRequestedPages.push(requestedPage);
 
-      if (!cuotasBaseBody) {
-        const response = await route.fetch();
-        cuotasBaseBody = await response.json();
-      }
-      const body = JSON.parse(JSON.stringify(cuotasBaseBody));
-      body.paginacion = {
-        ...(body.paginacion || {}),
-        pagina: requestedPage,
-        por_pagina: 100,
-        total: 101,
-        total_paginas: 2,
-        desde: requestedPage === 1 ? 1 : 101,
-        hasta: requestedPage === 1 ? 100 : 101,
-        tiene_anterior: requestedPage > 1,
-        tiene_siguiente: requestedPage < 2,
-      };
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json; charset=utf-8',
-        body: JSON.stringify(body),
+        if (!cuotasBaseBody) {
+          const response = await route.fetch();
+          cuotasBaseBody = await response.json();
+        }
+        const body = JSON.parse(JSON.stringify(cuotasBaseBody));
+        body.paginacion = {
+          ...(body.paginacion || {}),
+          pagina: requestedPage,
+          por_pagina: 100,
+          total: 101,
+          total_paginas: 2,
+          desde: requestedPage === 1 ? 1 : 101,
+          hasta: requestedPage === 1 ? 100 : 101,
+          tiene_anterior: requestedPage > 1,
+          tiene_siguiente: requestedPage < 2,
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(body),
+        });
       });
+
+      await page.goto('/cuotas');
+      // Cuotas aplica un debounce equivalente (250 ms) y también fuerza página 1.
+      await page.waitForTimeout(320);
+      const cuotasPagination = page.getByRole('navigation', { name: 'Paginación de cuotas' });
+      const cuotasNext = cuotasPagination.getByRole('button', { name: 'Siguiente', exact: true });
+      await expect(cuotasNext).toBeEnabled();
+      await cuotasNext.click();
+      await expect.poll(() => cuotasRequestedPages.includes(2)).toBe(true);
+      await expect(cuotasPagination.getByRole('button', { name: '2', exact: true })).toHaveAttribute('aria-current', 'page');
+
+      const cuotasPrevious = cuotasPagination.getByRole('button', { name: 'Anterior', exact: true });
+      await expect(cuotasPrevious).toBeEnabled();
+      const cuotasPageOneBefore = cuotasRequestedPages.filter((value) => value === 1).length;
+      await cuotasPrevious.click();
+      await expect.poll(() => cuotasRequestedPages.filter((value) => value === 1).length).toBeGreaterThan(cuotasPageOneBefore);
+      await expect(cuotasPagination.getByRole('button', { name: '1', exact: true })).toHaveAttribute('aria-current', 'page');
+      await page.unroute(cuotasMatcher);
     });
-
-    await page.goto('/cuotas');
-    // Cuotas aplica un debounce equivalente (250 ms) y también fuerza página 1.
-    await page.waitForTimeout(320);
-    const cuotasPagination = page.getByRole('navigation', { name: 'Paginación de cuotas' });
-    const cuotasNext = cuotasPagination.getByRole('button', { name: 'Siguiente', exact: true });
-    await expect(cuotasNext).toBeEnabled();
-    await cuotasNext.click();
-    await expect.poll(() => cuotasRequestedPages.includes(2)).toBe(true);
-    await expect(cuotasPagination.getByRole('button', { name: '2', exact: true })).toHaveAttribute('aria-current', 'page');
-
-    const cuotasPrevious = cuotasPagination.getByRole('button', { name: 'Anterior', exact: true });
-    await expect(cuotasPrevious).toBeEnabled();
-    const cuotasPageOneBefore = cuotasRequestedPages.filter((value) => value === 1).length;
-    await cuotasPrevious.click();
-    await expect.poll(() => cuotasRequestedPages.filter((value) => value === 1).length).toBeGreaterThan(cuotasPageOneBefore);
-    await expect(cuotasPagination.getByRole('button', { name: '1', exact: true })).toHaveAttribute('aria-current', 'page');
-    await page.unroute(cuotasMatcher);
   });
 
   test('Balance anual: Cargar todos ejecuta la rama >100 y muestra todos los deudores', async ({ page }) => {

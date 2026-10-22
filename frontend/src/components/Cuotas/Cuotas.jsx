@@ -1397,6 +1397,7 @@ export default function Cuotas() {
           denominacion: item.denominacion,
           documento: item.documento,
           categoria: item.categoria,
+          grupo_sanguineo: item.grupo_sanguineo || "",
           familia: item.familia,
           porcentaje_descuento_familiar: item.porcentaje_descuento_familiar,
           monto_base: item.monto_base,
@@ -1474,6 +1475,8 @@ export default function Cuotas() {
               codigo_barra: item.codigo_barra || "",
               socio: item.denominacion || `ID ${item.id_socio}`,
               categoria: item.categoria || "SIN CATEGORÍA",
+              grupo_sanguineo: item.grupo_sanguineo || receiptPartner.grupo_sanguineo || "",
+              estado_persona: item.estado_persona || receiptPartner.estado_persona || "",
               periodo: item.periodo_pago || item.periodo,
               monto_base: Number(item.monto_base || amount),
               porcentaje_descuento_familiar: Number(
@@ -1555,6 +1558,8 @@ export default function Cuotas() {
           codigo_barra: item.codigo_barra || "",
           socio: item.denominacion || `ID ${item.id_socio}`,
           categoria: item.categoria || "SIN CATEGORÍA",
+          grupo_sanguineo: item.grupo_sanguineo || "",
+          estado_persona: item.estado_persona || "",
           periodo: item.periodo_pago || item.periodo,
           monto_base: Number(item.monto_base || amount),
           porcentaje_descuento_familiar: Number(
@@ -2152,6 +2157,10 @@ export default function Cuotas() {
               anio: Number(payment.anio),
               socio: payment.denominacion || `ID ${payment.id_socio}`,
               categoria: payment.categoria || "SIN CATEGORÍA",
+              grupo_sanguineo: payment.grupo_sanguineo ||
+                partners.find((partner) => Number(partner.id_socio) === Number(payment.id_socio))?.grupo_sanguineo || "",
+              estado_persona: payment.estado_persona ||
+                partners.find((partner) => Number(partner.id_socio) === Number(payment.id_socio))?.estado_persona || "",
               periodo: `${
                 monthOptions.find(
                   (monthItem) =>
@@ -2185,6 +2194,8 @@ export default function Cuotas() {
                   periodPrincipal.categoria ||
                   selectedPartner?.categoria ||
                   "SIN CATEGORÍA",
+                grupo_sanguineo: periodPrincipal.grupo_sanguineo || selectedPartner?.grupo_sanguineo || "",
+                estado_persona: periodPrincipal.estado_persona || selectedPartner?.estado_persona || "",
                 periodo: `${
                   monthOptions.find(
                     (monthItem) =>

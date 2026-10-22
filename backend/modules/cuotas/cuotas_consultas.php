@@ -453,6 +453,8 @@ abstract class CuotasConsultas extends CuotasSoporte
                 'denominacion' => (string)$row['nombre'],
                 'documento' => $row['dni'],
                 'categoria' => (string)$row['categoria'],
+                'grupo_sanguineo' => $row['grupo_sanguineo'] ?? null,
+                'estado_persona' => $row['estado_persona'] ?? null,
                 'domicilio' => trim((string)$row['domicilio'] . ' ' . (string)$row['numero']),
                 'cobrador' => $row['cobrador'],
                 'id_familia' => $row['id_familia'] === null ? null : (int)$row['id_familia'],
@@ -731,6 +733,7 @@ abstract class CuotasConsultas extends CuotasSoporte
                     c.nombre AS categoria, c.activo AS categoria_activa,
                     co.nombre AS cobrador,
                     es.nombre AS estado_persona,
+                    gs.nombre AS grupo_sanguineo,
                     f.id_familia,
                     CASE
                         WHEN LEFT(f.nombre_familia, 13) = '__ELIMINADA__'
@@ -743,6 +746,7 @@ abstract class CuotasConsultas extends CuotasSoporte
              INNER JOIN categoria c ON c.id_categoria = s.id_categoria
              LEFT JOIN cobrador co ON co.id_cobrador = s.id_cobrador
              LEFT JOIN estado es ON es.id_estado = s.id_estado
+             LEFT JOIN grupo_sanguineo gs ON gs.id_grupo_sanguineo = s.id_grupo_sanguineo
              LEFT JOIN familias_socios fs ON fs.id_familia_socio = (
                 SELECT MAX(fs2.id_familia_socio)
                 FROM familias_socios fs2
@@ -811,6 +815,7 @@ abstract class CuotasConsultas extends CuotasSoporte
             'estado_socio' => (bool)$row['vigente'] ? 'ACTIVO' : 'INACTIVO',
             'id_estado' => isset($row['id_estado']) ? (int)$row['id_estado'] : null,
             'estado_persona' => $row['estado_persona'] ?? null,
+            'grupo_sanguineo' => $row['grupo_sanguineo'] ?? null,
             'fecha_alta' => $row['fecha_ingreso'],
             'id_categoria' => (int)$row['id_categoria'],
             'denominacion' => (string)$row['nombre'],
