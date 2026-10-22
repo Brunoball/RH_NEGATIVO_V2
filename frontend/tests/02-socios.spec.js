@@ -161,7 +161,7 @@ test.describe('Socios', () => {
       await expect(discardDialog).toBeHidden();
       await expect(dialog).toBeVisible();
       await expect(validationName).toHaveValue('PW EEE SOCIO');
-      await expect(validationLastName).toHaveValue('VALIDACION');
+      await expect(dialog.getByLabel('Apellido *', { exact: true })).toHaveCount(0);
 
       // Confirmar la salida sí descarta el formulario y permite reabrir limpio.
       await dialog.getByRole('button', { name: 'Cancelar' }).click();
