@@ -18,7 +18,7 @@ function receiptModule() {
     document: { createElement() { anchor = { click() { clicks++; }, remove() {} }; return anchor; }, body: { appendChild() {} } },
     window: { setTimeout(callback) { callback(); } },
   });
-  const api = vm.runInContext(`${source}\n({ paymentReceiptFileName, paymentReceiptHtml, downloadPaymentReceiptPdf });`, context);
+  const api = vm.runInContext(`${source}\n({ paymentReceiptFileName, paymentReceiptHtml, paymentReceiptPreviewHtml, normalizePaymentReceipt, downloadPaymentReceiptPdf });`, context);
   return { api, download: () => ({ anchor, blob, clicks }) };
 }
 
@@ -59,4 +59,57 @@ test('nombres extensos conservan el código y un nombre de archivo acotado', () 
   assert.ok(name.startsWith('Comprobante - Á'));
   assert.ok(name.endsWith(' - PAGO-999.pdf'));
   assert.ok(name.length < 180);
+});
+
+// Regresión: antes, la tabla de Cuotas priorizaba domicilio_cobro y ese valor
+// terminaba tanto en Domicilio como en Domicilio de cobro del cupón.
+test('domicilio particular y de cobro distintos se imprimen separados en las dos copias y en el PDF', async () => {
+  const { api, download } = receiptModule();
+  const source = {
+    operacion: { codigo_operacion: 'PAGO-2086', estado: 'PAGADO' },
+    lineas: [{
+      id_socio: 2086, socio: 'JUAN PRUEBA', id_periodo: 6, anio: 2026,
+      domicilio: 'CALLE PARTICULAR 123',
+      domicilio_cobro: 'DIARIO LA VOZ DE SAN JUSTO',
+    }],
+  };
+  const normalized = api.normalizePaymentReceipt(source);
+  assert.equal(normalized.lineas[0].domicilio, 'CALLE PARTICULAR 123');
+  assert.equal(normalized.lineas[0].domicilioCobro, 'DIARIO LA VOZ DE SAN JUSTO');
+
+  for (const html of [api.paymentReceiptPreviewHtml(source), api.paymentReceiptHtml(source)]) {
+    assert.equal((html.match(/<strong>Domicilio:<\/strong>&nbsp;CALLE PARTICULAR 123/g) || []).length, 2);
+    assert.equal((html.match(/<strong>Domicilio de cobro:<\/strong>&nbsp;DIARIO LA VOZ DE SAN JUSTO/g) || []).length, 2);
+    assert.ok(!html.includes('<strong>Domicilio:</strong>&nbsp;DIARIO LA VOZ DE SAN JUSTO'));
+  }
+
+  assert.equal(await api.downloadPaymentReceiptPdf(source), true);
+  const pdf = Buffer.from(await download().blob.arrayBuffer()).toString('latin1');
+  assert.ok(pdf.includes('(Domicilio: CALLE PARTICULAR 123)'), 'PDF: domicilio particular');
+  assert.ok(pdf.includes('(Domicilio de cobro: DIARIO LA VOZ DE SAN JUSTO)'), 'PDF: domicilio de cobro');
+});
+
+test('si falta el domicilio particular, no se copia allí la dirección de cobro', () => {
+  const { api } = receiptModule();
+  const source = { lineas: [{ id_socio: 1, socio: 'PRUEBA', domicilio_cobro: 'SOLO DOMICILIO COBRO' }] };
+  const normalized = api.normalizePaymentReceipt(source);
+  assert.equal(normalized.lineas[0].domicilio, '');
+  assert.equal(normalized.lineas[0].domicilioCobro, 'SOLO DOMICILIO COBRO');
+  const html = api.paymentReceiptPreviewHtml(source);
+  assert.ok(html.includes('<strong>Domicilio:</strong>&nbsp;</div>'));
+  assert.ok(html.includes('<strong>Domicilio de cobro:</strong>&nbsp;SOLO DOMICILIO COBRO'));
+});
+
+test('domicilios propios de cada socio no se mezclan en los cupones familiares', () => {
+  const { api } = receiptModule();
+  const html = api.paymentReceiptPreviewHtml({
+    lineas: [
+      { id_socio: 91, socio: 'SOCIO A', domicilio: 'PARTICULAR A 10', domicilio_cobro: 'COBRO A 15' },
+      { id_socio: 92, socio: 'SOCIO B', domicilio: 'PARTICULAR B 20', domicilio_cobro: 'COBRO B 25' },
+    ],
+  });
+  assert.ok(html.includes('<strong>Domicilio:</strong>&nbsp;PARTICULAR A 10'));
+  assert.ok(html.includes('<strong>Domicilio de cobro:</strong>&nbsp;COBRO A 15'));
+  assert.ok(html.includes('<strong>Domicilio:</strong>&nbsp;PARTICULAR B 20'));
+  assert.ok(html.includes('<strong>Domicilio de cobro:</strong>&nbsp;COBRO B 25'));
 });

@@ -183,11 +183,11 @@ export const normalizePaymentReceipt = (source = {}) => {
       ),
       monto: Number(line.monto ?? 0),
       domicilio: firstValue(
-        line.domicilio_2,
         line.domicilio,
+        line.domicilio_2,
         line.direccion,
-        operation.domicilio_2,
         operation.domicilio,
+        operation.domicilio_2,
       ),
       domicilioCobro: firstValue(
         line.domicilio_cobro,
@@ -483,9 +483,11 @@ const paymentReceiptPdfContent = (data) => {
   commands.push("0.82 0.82 0.82 RG 0.8 w 56 742 m 539 742 l S");
   commands.push(pdfText(74, 696, 11, `Socio: ${data.id} - ${fitted(data.name, 62)}`, { bold: true }));
   commands.push(pdfText(74, 666, 10, `Domicilio: ${fitted(data.address, 68)}`));
-  commands.push(pdfText(74, 638, 10, `Tel: ${fitted(data.phone, 28)}`));
-  commands.push(pdfText(74, 610, 10, `Periodo: ${fitted(data.periodText, 48)}`));
-  commands.push(pdfText(74, 582, 10, `Grupo: ${fitted(data.bloodGroup, 28)}   Estado: ${data.state}`));
+  // El PDF descargable debe conservar los dos domicilios, igual que el cupón impreso.
+  commands.push(pdfText(74, 646, 10, `Domicilio de cobro: ${fitted(data.collectionAddress, 68)}`));
+  commands.push(pdfText(74, 618, 10, `Tel: ${fitted(data.phone, 28)}`));
+  commands.push(pdfText(74, 590, 10, `Periodo: ${fitted(data.periodText, 48)}`));
+  commands.push(pdfText(74, 562, 10, `Grupo: ${fitted(data.bloodGroup, 28)}   Estado: ${data.state}`));
   commands.push(pdfText(390, 666, 11, `Importe: ${data.amount}`, { bold: true }));
   commands.push("0.85 0.85 0.85 RG 0.7 w 382 652 m 520 652 l S");
   commands.push(pdfText(420, 590, 10, TREASURER));

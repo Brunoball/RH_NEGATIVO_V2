@@ -132,15 +132,14 @@ const collectorTone = (value) => {
   return `is-tone-${(hash % 5) + 1}`;
 };
 
-const preferredAddress = (item = {}) => {
-  const collectionAddress = String(item.domicilio_cobro || "").trim();
-  if (collectionAddress) return collectionAddress;
+// El domicilio particular y el de cobro son campos independientes.
+// La tabla de Cuotas prioriza la dirección de cobro, pero los comprobantes
+// siempre deben imprimir cada dato bajo su propia etiqueta.
+const regularAddress = (item = {}) =>
+  String(item.domicilio || item.domicilio_2 || item.direccion || "").trim();
 
-  const regularAddress = String(
-    item.domicilio || item.domicilio_2 || item.direccion || "",
-  ).trim();
-  return regularAddress || "—";
-};
+const preferredAddress = (item = {}) =>
+  String(item.domicilio_cobro || "").trim() || regularAddress(item) || "—";
 
 const isTruthyFlag = (value) =>
   value === true ||
@@ -1438,7 +1437,7 @@ export default function Cuotas() {
       partners.find(
         (partner) => String(partner.id_socio) === String(item.id_socio),
       ) || item;
-    const domicilio = preferredAddress(receiptPartner);
+    const domicilio = regularAddress(item) || regularAddress(receiptPartner);
     const cobrador = receiptPartner.cobrador || item.cobrador || "";
 
     openPaymentReceipt(
@@ -1483,8 +1482,8 @@ export default function Cuotas() {
                 item.porcentaje_descuento_familiar || 0,
               ),
               monto: amount,
-              domicilio: preferredAddress(item),
-              domicilio_cobro: item.domicilio_cobro || "",
+              domicilio: regularAddress(item) || regularAddress(receiptPartner),
+              domicilio_cobro: item.domicilio_cobro || receiptPartner.domicilio_cobro || "",
               telefono_movil: item.telefono_movil || "",
               telefono_fijo: item.telefono_fijo || "",
             },
@@ -1566,7 +1565,7 @@ export default function Cuotas() {
             item.porcentaje_descuento_familiar || 0,
           ),
           monto: amount,
-          domicilio: preferredAddress(item),
+          domicilio: regularAddress(item),
           domicilio_cobro: item.domicilio_cobro || "",
           telefono_movil: item.telefono_movil || "",
           telefono_fijo: item.telefono_fijo || "",
@@ -2222,11 +2221,7 @@ export default function Cuotas() {
                     paymentForm.monto ||
                     0,
                 ),
-                domicilio:
-                  selectedPartner?.domicilio_2 ||
-                  selectedPartner?.domicilio ||
-                  selectedPartner?.direccion ||
-                  "",
+                domicilio: regularAddress(periodPrincipal) || regularAddress(selectedPartner),
                 domicilio_cobro:
                   periodPrincipal.domicilio_cobro ||
                   selectedPartner?.domicilio_cobro ||
@@ -2265,11 +2260,7 @@ export default function Cuotas() {
       setReceipt(
         enrichPaymentReceipt(response.comprobante || null, {
           socios: receiptPeople,
-          domicilio:
-            selectedPartner?.domicilio_2 ||
-            selectedPartner?.domicilio ||
-            selectedPartner?.direccion ||
-            "",
+          domicilio: regularAddress(selectedPartner),
           cobrador: principal?.cobrador || selectedPartner?.cobrador || "",
           medio: selectedMedium?.nombre || "—",
           tipoEntidad: tipo,

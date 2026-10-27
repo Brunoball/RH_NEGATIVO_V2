@@ -2264,10 +2264,19 @@ test.describe('Cuotas · UI', () => {
     const expectedCouponState = `<strong>Estado:</strong>&nbsp;${expectedSocioState}`;
     const expectedBloodGroup = String(socio.item.grupo_sanguineo || 'SIN INFORMAR');
     const expectedCouponGroup = `<strong>Grupo:</strong>&nbsp;${expectedBloodGroup}`;
+    // El cupón puede mostrar el domicilio de cobro para cobrar, pero no debe
+    // reemplazar con él el domicilio particular de la ficha del socio.
+    const assertCouponAddresses = async () => {
+      const html = String((await lastPopup())?.html || '');
+      expect(html).toContain('<strong>Domicilio:</strong>&nbsp;CALLE PLAYWRIGHT 123');
+      expect(html).toContain('<strong>Domicilio de cobro:</strong>&nbsp;DOMICILIO DE COBRO PLAYWRIGHT');
+      expect(html).not.toContain('<strong>Domicilio:</strong>&nbsp;DOMICILIO DE COBRO PLAYWRIGHT');
+    };
     const assertCouponState = async () => {
       await expect.poll(async () => String((await lastPopup())?.html || '')).toContain(expectedCouponState);
       const html = String((await lastPopup())?.html || '');
       expect(html).toContain(expectedCouponGroup);
+      await assertCouponAddresses();
       expect(html).not.toContain(`<strong>Grupo:</strong>&nbsp;${category.item.nombre}`);
       for (const paymentState of ['PENDIENTE', 'PAGADO', 'CONDONADO']) {
         expect(html).not.toContain(`<strong>Estado:</strong>&nbsp;${paymentState}`);
